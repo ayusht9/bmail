@@ -24,7 +24,9 @@ copies the build machine's Node executable, and installs only locked production
 dependencies. End users do not need Node.js, Rust, or the source repository.
 Build using a supported Node LTS release whose architecture matches the Windows
 target. Preparing resources requires npm registry access. Do not commit generated
-runtime files. Review dependency and Node licenses before distributing releases.
+runtime files. The Node distribution's `LICENSE` is included as `NODE-LICENSE.txt`;
+set `NODE_LICENSE_PATH` if it is not next to your Node executable. Production npm
+packages retain their distributed license files.
 
 ## Data and installation scope
 
@@ -51,7 +53,10 @@ their own mailbox, encrypted credentials, and schedule. Credentials use Windows
 DPAPI and cannot simply be copied to another user. Task names include the Windows
 user SID to prevent users backing up the same mailbox from overwriting each
 other's schedule. Tasks run while their owner is signed in, Monday at 11:00 in
-Windows local time. User data is retained when the app is uninstalled.
+Windows local time. User data is retained on uninstall unless you explicitly
+select the uninstaller's option to delete application data. Remove your weekly
+task in Windows Task Scheduler before uninstalling; tasks are owned by each user
+and are not automatically removed by the installer.
 
 Existing source-folder backups are not migrated automatically. Copy your config
 and backups into the profile folder with the app closed, then configure a fresh
@@ -59,6 +64,15 @@ credential as that Windows user. Remove the old task only after checking the new
 schedule. Standalone scripts still default to storing data next to the scripts.
 
 ## Release verification
+
+Local checks on 2026-11-14: all four automated tests passed; the frontend and
+Windows x64 Tauri/NSIS installer built successfully. The app extracted from the
+installer launched outside the repository, served its dashboard through Rust
+IPC, resolved engine resources, and opened mailbox setup. The extracted bundled
+Node runtime verified a fixture with Node removed from `PATH`. Browser checks
+covered setup errors, retry, save, password clearing, cancel, and backup feedback.
+Actual installation, upgrade, and uninstall across separate Windows users still
+require the clean-VM checks below before a public release.
 
 Test the setup executable on a clean Windows VM with no Node installation:
 
