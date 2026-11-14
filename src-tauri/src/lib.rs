@@ -3,6 +3,20 @@ use std::io::Write;
 use serde_json::Value;
 use std::{fs, path::{Path, PathBuf}, process::Command};
 use tauri::Manager;
+use std::sync::Mutex;
+
+#[derive(Default)]
+struct BackupProcess(Mutex<Option<std::process::Child>>);
+
+fn process_running(pid: u64) -> bool {
+    hidden_command("tasklist.exe").args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+        .output().is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(&format!("\"{pid}\"")))
+}
+
+fn backup_root(root: &Path) -> PathBuf {
+    let config = read_json(&root.join("backup-config.json")).unwrap_or(Value::Null);
+    root.join(config.get("backupDirectory").and_then(Value::as_str).unwrap_or("backups"))
+}
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
@@ -30,6 +44,9 @@ struct Dashboard {
     folder_count: usize,
     last_run: Option<Value>,
     latest_log: Option<LogSummary>,
+    progress: Option<Value>,
+    backup_running: bool,
+    launch_error: Option<String>,
 }
 
 fn data_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -79,7 +96,7 @@ fn schedule_exists(user: &str) -> bool {
 }
 
 #[tauri::command]
-fn get_dashboard(app: tauri::AppHandle) -> Result<Dashboard, String> {
+fn get_dashboard(app: tauri::AppHandle, process: tauri::State<BackupProcess>) -> Result<Dashboard, String> {
     let root = data_root(&app)?;
     let config = read_json(&root.join("backup-config.json")).unwrap_or(Value::Null);
     let user = config.get("user").and_then(Value::as_str).unwrap_or("Set up your mailbox").to_owned();
@@ -88,6 +105,20 @@ fn get_dashboard(app: tauri::AppHandle) -> Result<Dashboard, String> {
     let manifest = read_json(&backup_root.join("manifest.json"));
     let folders = manifest.as_ref().and_then(|m| m.get("folders")).and_then(Value::as_object);
     let total_messages = folders.map(|items| items.values().filter_map(|folder| folder.get("messages")?.as_object()).map(|m| m.len() as u64).sum()).unwrap_or(0);
+    let mut child = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
+    let mut launch_error = None;
+    let launching = if let Some(active) = child.as_mut() {
+        match active.try_wait().map_err(|e| e.to_string())? {
+            None => true,
+            Some(status) => {
+                if !status.success() { launch_error = Some("Backup exited with an error. Check the latest log.".into()); }
+                *child = None;
+                false
+            }
+        }
+    } else { false };
+    let lock_running = read_json(&backup_root.join(".backup.lock")).and_then(|v| v.get("pid").and_then(Value::as_u64)).is_some_and(process_running);
+    let progress = read_json(&backup_root.join("progress.json"));
     Ok(Dashboard {
         host: config.get("host").and_then(Value::as_str).unwrap_or("imap.gmail.com").to_owned(),
         port: config.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).unwrap_or(993),
@@ -97,6 +128,7 @@ fn get_dashboard(app: tauri::AppHandle) -> Result<Dashboard, String> {
         folder_count: folders.map_or(0, |value| value.len()),
         last_run: read_json(&backup_root.join("last-run.json")),
         latest_log: latest_log(&root), user,
+        progress, backup_running: launching || lock_running, launch_error,
     })
 }
 
@@ -154,6 +186,25 @@ fn powershell(engine: &Path, data: &Path, script: &str) -> Result<std::process::
 }
 
 #[tauri::command]
+fn start_backup(app: tauri::AppHandle, process: tauri::State<BackupProcess>) -> Result<String, String> {
+    let root = data_root(&app)?;
+    let engine = engine_root(&app)?;
+    let mut child = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
+    if let Some(active) = child.as_mut() {
+        if active.try_wait().map_err(|e| e.to_string())?.is_none() { return Err("A backup is already running.".into()); }
+    }
+    if read_json(&backup_root(&root).join(".backup.lock")).and_then(|v| v.get("pid").and_then(Value::as_u64)).is_some_and(process_running) {
+        return Err("A backup or verification is already running.".into());
+    }
+    *child = Some(hidden_command("powershell.exe").current_dir(&root).env("MAIL_VAULT_DATA_DIR", &root)
+        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(engine.join("Run-Backup.ps1")).stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn()
+        .map_err(|e| format!("Could not start backup: {e}"))?);
+    Ok("Backup started. Progress will appear here.".into())
+}
+
+#[tauri::command]
 async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let root = data_root(&app)?;
@@ -194,7 +245,8 @@ fn open_directory(app: tauri::AppHandle, kind: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, run_action, open_google_help, open_directory])
+        .manage(BackupProcess::default())
+        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, start_backup, run_action, open_google_help, open_directory])
         .run(tauri::generate_context!())
         .expect("error while running Mail Vault");
 }

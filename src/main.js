@@ -1,5 +1,6 @@
 import './style.css';
 import { invoke } from '@tauri-apps/api/core';
+import { progressPanel } from './progress.js';
 
 const app = document.querySelector('#app');
 let dashboard;
@@ -36,7 +37,7 @@ function render() {
   const run = dashboard.lastRun;
   const healthy = run?.success === true;
   const state = healthy ? 'healthy' : run ? 'attention' : 'empty';
-  const statusTitle = healthy ? 'Backup is healthy' : run ? 'Last run needs attention' : 'Ready for the first backup';
+  const statusTitle = dashboard.backupRunning ? 'Your backup is running' : healthy ? 'Backup is healthy' : run ? 'Last run needs attention' : 'Ready for the first backup';
   const folderRows = (run?.folders || []).map(folder => `
     <tr><td>${escapeHtml(folder.name)}</td><td>${formatNumber(folder.verified)} / ${formatNumber(folder.serverMessages)}</td><td>${formatNumber(folder.downloaded)}</td></tr>
   `).join('');
@@ -54,13 +55,15 @@ function render() {
           <h1>${statusTitle}</h1>
           <p>${run ? `Last finished ${formatDate(run.finishedAt)} · ${formatNumber(run.downloaded)} new messages` : dashboard.credentialReady ? 'Your mailbox is ready. Start your first backup.' : 'Set up your mailbox, then start your first backup.'}</p>
         </div>
-        <button class="primary" data-action="backup" ${busy || !dashboard.credentialReady ? 'disabled' : ''}>
+        <button class="primary" data-action="backup" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>
           ${busy ? '<span class="spinner small"></span>Working…' : 'Back up now'}
         </button>
       </section>
 
       ${!dashboard.credentialReady ? `<aside class="notice"><strong>Set up your mailbox.</strong> Save your IMAP account and app password to start backing up. <button class="ghost" data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
       ${run?.error ? `<aside class="notice error"><strong>${escapeHtml(run.error.message || 'Backup failed')}</strong><span>No server email was deleted. Completed downloads are retained.</span></aside>` : ''}
+      ${dashboard.launchError ? `<aside class="notice error">${escapeHtml(dashboard.launchError)}</aside>` : ''}
+      ${progressPanel(dashboard, escapeHtml, formatNumber)}
 
       <section class="metrics">
         <article><span>Saved messages</span><strong>${formatNumber(dashboard.totalMessages)}</strong><small>verified in the manifest</small></article>
@@ -76,7 +79,7 @@ function render() {
         <aside class="panel actions">
           <p class="eyebrow">Maintenance</p><h2>Tools</h2>
           <button data-action="setup" ${busy ? 'disabled' : ''}><span>${dashboard.credentialReady ? 'Update app password' : 'Set up mailbox'}</span><small>Encrypted for your Windows account</small></button>
-          <button data-action="verify" ${busy || !dashboard.hasManifest ? 'disabled' : ''}><span>Verify local files</span><small>Check hashes without connecting</small></button>
+          <button data-action="verify" ${busy || dashboard.backupRunning || !dashboard.hasManifest ? 'disabled' : ''}><span>Verify local files</span><small>Check hashes without connecting</small></button>
           <button data-action="schedule" ${busy || !dashboard.credentialReady ? 'disabled' : ''}><span>${dashboard.scheduleInstalled ? 'Update schedule' : 'Install schedule'}</span><small>Weekly, Monday at 11:00</small></button>
           <button data-action="open-logs"><span>Open log folder</span><small>${dashboard.latestLog ? escapeHtml(dashboard.latestLog.name) : 'No logs yet'}</small></button>
         </aside>
@@ -125,13 +128,19 @@ function toast(message, isError = false) {
   setTimeout(() => element.className = '', 4500);
 }
 
-async function refresh() {
+let refreshing = false;
+async function refresh(background = false) {
+  if (refreshing) return;
+  refreshing = true;
   try {
     dashboard = await invoke('get_dashboard');
+    if (background && document.querySelector('dialog[open]')) return;
+    const focusAction = document.activeElement?.dataset?.action;
     render();
+    if (focusAction) [...document.querySelectorAll('[data-action]')].find(el => el.dataset.action === focusAction)?.focus({ preventScroll: true });
   } catch (error) {
-    app.innerHTML = `<main class="fatal"><h1>Mail Vault could not start</h1><p>${escapeHtml(error)}</p></main>`;
-  }
+    if (!background) app.innerHTML = `<main class="fatal"><h1>Mail Vault could not start</h1><p>${escapeHtml(error)}</p></main>`;
+  } finally { refreshing = false; }
 }
 
 async function run(action) {
@@ -140,7 +149,7 @@ async function run(action) {
   let message;
   let failed = false;
   try {
-    message = await invoke('run_action', { action });
+    message = action === 'backup' ? await invoke('start_backup') : await invoke('run_action', { action });
   } catch (error) {
     message = String(error);
     failed = true;
@@ -224,3 +233,4 @@ app.addEventListener('submit', async event => {
 
 render();
 refresh();
+setInterval(() => { if (!busy) refresh(true); }, 2000);
