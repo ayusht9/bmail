@@ -1,0 +1,6 @@
+{
+  "host": "imap.example.com",
+  "port": 993,
+  "user": "user@example.com",
+  "backupDirectory": "backups"
+}

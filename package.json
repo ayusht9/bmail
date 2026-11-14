@@ -1,0 +1,22 @@
+{
+  "name": "zoho-local-backup",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "verify": "node backup.cjs --verify"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
+    "imapflow": "^2.10.0",
+    "libmime": "^5.6.3"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.4",
+    "vite": "^7.1.7"
+  }
+}
