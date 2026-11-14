@@ -51,6 +51,64 @@ const assert = require('node:assert/strict');
     assert.equal(dashboard.port, 993);
     assert.ok(fs.existsSync(path.join(profile, '.private/zoho-credential.xml')));
     console.log('Actual app form -> Rust IPC -> windowless PowerShell -> DPAPI -> refreshed dashboard passed with grouped Gmail app password.');
+    const backupRoot = path.join(profile, 'backups');
+    fs.mkdirSync(backupRoot, { recursive: true });
+    fs.writeFileSync(path.join(backupRoot, 'mailboxes.json'), JSON.stringify({ folders: ['INBOX', 'Sent'], updatedAt: new Date().toISOString() }));
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('#folder-choices')?.textContent.includes('Sent'));
+    await page.getByRole('button', { name: 'Choose what to back up', exact: true }).click();
+    await page.getByLabel('All available folders', { exact: true }).uncheck();
+    await page.getByLabel('INBOX', { exact: true }).check();
+    await page.getByLabel('Received from', { exact: true }).fill('2026-01-01');
+    await page.getByLabel('Received through', { exact: true }).fill('2026-11-15');
+    await page.getByLabel('Maximum new emails per run', { exact: true }).fill('25');
+    await page.getByRole('button', { name: 'Save selection', exact: true }).click();
+    await page.locator('#selection-dialog').waitFor({ state: 'hidden' });
+    const selected = JSON.parse(fs.readFileSync(path.join(profile, 'backup-config.json'), 'utf8').replace(/^\uFEFF/, '')).backupOptions;
+    assert.deepEqual(selected, { folders: ['INBOX'], dateFrom: '2026-01-01', dateTo: '2026-11-15', maxMessages: 25 });
+    const progress = { runId: 'isolated-progress-test', pid: process.pid, state: 'running', phase: 'downloading',
+      startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), totalMessages: 100, processedMessages: 20,
+      downloaded: 10, plannedDownloads: 25, savedBytes: 1000000, transferredBytes: 1000000, elapsedSeconds: 60,
+      etaSeconds: 300, totalFolders: 2, completedFolders: 0, currentFolder: 'INBOX', bytesPerSecond: 1000,
+    };
+    const publish = (state, phase = state) => {
+      Object.assign(progress, { state, phase, updatedAt: new Date().toISOString() });
+      const temporary = path.join(backupRoot, 'progress.test.pending');
+      fs.writeFileSync(temporary, JSON.stringify(progress));
+      fs.renameSync(temporary, path.join(backupRoot, 'progress.json'));
+    };
+    fs.writeFileSync(path.join(backupRoot, '.backup.lock'), JSON.stringify({ pid: process.pid }));
+    publish('running', 'downloading');
+    await page.getByRole('button', { name: 'Pause', exact: true }).waitFor();
+    assert.equal(await page.getByRole('progressbar', { name: 'Backup progress' }).getAttribute('value'), '20');
+    const duplicate = await page.evaluate(async () => {
+      try { await window.__TAURI_INTERNALS__.invoke('start_backup'); } catch (error) { return String(error); }
+    });
+    assert.match(duplicate, /already running/);
+    async function expectControl(command) {
+      for (let i = 0; i < 100; i++) {
+        try { if (JSON.parse(fs.readFileSync(path.join(backupRoot, 'control.json'))).command === command) return; } catch {}
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      assert.fail(`Native ${command} command was not saved`);
+    }
+    await page.getByRole('button', { name: 'Pause', exact: true }).click();
+    await expectControl('pause');
+    publish('paused');
+    await page.getByRole('button', { name: 'Resume', exact: true }).click();
+    await expectControl('resume');
+    publish('running', 'downloading');
+    await page.getByRole('button', { name: 'Pause', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Stop after this email', exact: true }).click();
+    await expectControl('stop');
+    publish('stopping');
+    await page.getByRole('button', { name: 'Cancel now', exact: true }).click();
+    await expectControl('cancel');
+    publish('cancelled');
+    fs.unlinkSync(path.join(backupRoot, '.backup.lock'));
+    await page.getByRole('heading', { name: 'Backup cancelled', level: 1 }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Back up now', exact: true }).isEnabled(), true);
+    console.log('Native scope save, automatic progress, duplicate-run protection, pause, resume, stop, and cancel controls passed without connecting to a real mailbox.');
   } finally {
     if (browser) await browser.close();
     if (child && child.exitCode === null) { const stopped = new Promise(resolve => child.once('exit', resolve)); child.kill(); await stopped; }

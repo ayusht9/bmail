@@ -23,10 +23,23 @@ export function progressPanel(dashboard, escapeHtml, formatNumber) {
     <div class="progress-heading"><strong>${known ? `${formatNumber(p.processedMessages)} / ${formatNumber(p.totalMessages)} messages checked` : active && !p ? `${formatNumber(dashboard.totalMessages)} messages saved so far` : 'Preparing your selected backup'}</strong><span>${percent == null ? '' : `${percent}%`}</span></div>
     <progress max="100" ${percent == null ? '' : `value="${percent}"`} aria-label="Backup progress"></progress>
     <p class="progress-detail">${escapeHtml(fresh && p.currentFolder || (phase === 'verifying' ? 'Checking the integrity of saved mail' : 'Completed emails remain on your computer'))}${fresh && p.currentMessageTotal ? ` · Current email ${formatBytes(p.currentMessageBytes)} / ${formatBytes(p.currentMessageTotal)}` : ''}</p>
-    <dl class="run-stats"><div><dt>Saved this run</dt><dd>${formatNumber(p?.downloaded)}</dd></div><div><dt>Transferred</dt><dd>${formatBytes(p?.transferredBytes)}</dd></div><div><dt>Elapsed</dt><dd>${duration(p?.elapsedSeconds)}</dd></div><div><dt>Estimated remaining</dt><dd>${active && fresh ? duration(p.etaSeconds) : '—'}</dd></div></dl>
+    <dl class="run-stats"><div><dt>Saved this run</dt><dd>${formatNumber(p?.downloaded)}${p?.plannedDownloads != null ? ` / ${formatNumber(p.plannedDownloads)}` : ''}</dd></div><div><dt>Transferred</dt><dd>${formatBytes(p?.transferredBytes)}</dd></div><div><dt>Elapsed</dt><dd>${duration(p?.elapsedSeconds)}</dd></div><div><dt>Estimated remaining</dt><dd>${active && fresh ? duration(p.etaSeconds) : '—'}</dd></div></dl>
     ${active && fresh ? `<p class="muted">${formatNumber(p.completedFolders)} of ${formatNumber(p.totalFolders)} folders finished · ${formatBytes(p.bytesPerSecond)}/s · Updates automatically</p>` : ''}
     ${active && !p ? '<p class="muted">This run uses an older backup engine. Its log and saved-message count still update; detailed progress starts with the next run after updating.</p>' : ''}
     ${!active && fresh ? '<p class="notice">This process is no longer running. Start again to reuse completed emails.</p>' : ''}
     ${p?.remainingMessages ? `<p class="notice">${formatNumber(p.remainingMessages)} additional matching emails are outside this run's message limit. Run again to continue.</p>` : ''}
+    ${active && fresh && p.runId ? controlButtons(p, dashboard.controlRequest, escapeHtml) : ''}
   </section>`;
+}
+
+function controlButtons(p, request, escapeHtml) {
+  const pending = request?.runId === p.runId ? request.command : null;
+  const stopping = pending === 'stop' || pending === 'cancel' || p.state === 'stopping';
+  const paused = p.state === 'paused';
+  const waiting = !paused && pending === 'pause' || paused && pending === 'resume';
+  return `<div class="progress-actions">
+    <button class="ghost" data-action="${paused ? 'resume' : 'pause'}" data-run-id="${escapeHtml(p.runId)}" ${stopping || waiting ? 'disabled' : ''}>${waiting ? paused ? 'Resuming...' : 'Pausing...' : paused ? 'Resume' : 'Pause'}</button>
+    <button class="ghost" data-action="stop" data-run-id="${escapeHtml(p.runId)}" ${stopping ? 'disabled' : ''} title="Finish the current email, then stop">${stopping ? 'Stopping...' : 'Stop after this email'}</button>
+    <button class="danger-button" data-action="cancel" data-run-id="${escapeHtml(p.runId)}" ${pending === 'cancel' ? 'disabled' : ''} title="Abort the current download; completed emails are kept">${pending === 'cancel' ? 'Cancelling...' : 'Cancel now'}</button>
+    </div><p class="muted">Pause waits for the current chunk. Stop finishes the current email. Cancel discards only the incomplete download. Saved emails are always kept.</p>`;
 }

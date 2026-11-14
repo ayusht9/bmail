@@ -6,6 +6,7 @@ import { selectionSummary, selectionDialog, folderChoices } from './selection.js
 const app = document.querySelector('#app');
 let dashboard;
 let busy = false;
+let controlBusy = false;
 
 const providerForHost = host => host?.toLowerCase() === 'imap.gmail.com' ? 'google' : host?.toLowerCase() === 'imappro.zoho.in' ? 'zoho' : 'other';
 
@@ -37,9 +38,12 @@ function render() {
   }
   const run = dashboard.lastRun;
   const healthy = run?.success === true;
-  const state = healthy ? 'healthy' : run ? 'attention' : 'empty';
-  const statusTitle = dashboard.backupRunning ? 'Your backup is running' : healthy ? 'Backup is healthy' : run ? 'Last run needs attention' : 'Ready for the first backup';
-  const folderRows = (run?.folders || []).map(folder => `
+  const outcome = run?.outcome || dashboard.progress?.state;
+  const intentional = ['stopped', 'cancelled'].includes(outcome);
+  const state = healthy ? 'healthy' : run && !intentional ? 'attention' : 'empty';
+  const statusTitle = dashboard.backupRunning ? dashboard.progress?.state === 'paused' ? 'Your backup is paused' : 'Your backup is running'
+    : intentional ? outcome === 'stopped' ? 'Backup stopped safely' : 'Backup cancelled' : healthy ? 'Selected backup complete' : run ? 'Last run needs attention' : dashboard.hasManifest ? 'Ready to continue your backup' : 'Ready for the first backup';
+  const folderRows = ((dashboard.backupRunning && dashboard.progress?.folders) || run?.folders || []).map(folder => `
     <tr><td>${escapeHtml(folder.name)}</td><td>${formatNumber(folder.verified)} / ${formatNumber(folder.serverMessages)}</td><td>${formatNumber(folder.downloaded)}</td></tr>
   `).join('');
 
@@ -168,6 +172,7 @@ app.addEventListener('click', event => {
   if (!button || button.disabled) return;
   const action = button.dataset.action;
   if (action === 'setup') document.querySelector('#mailbox-dialog').showModal();
+  else if (['pause', 'resume', 'stop', 'cancel'].includes(action)) controlBackup(action, button.dataset.runId);
   else if (action === 'selection') document.querySelector('#selection-dialog').showModal();
   else if (action === 'cancel-selection') { if (busy) return; document.querySelector('#selection-dialog').close(); render(); }
   else if (action === 'load-folders') loadFolders();
@@ -218,6 +223,18 @@ async function loadFolders() {
     document.querySelector('#selection-error').textContent = '';
   } catch (error) { document.querySelector('#selection-error').textContent = String(error); }
   finally { busy = false; button.disabled = submit.disabled = false; button.textContent = 'Load / refresh mailbox folders'; }
+}
+
+async function controlBackup(command, runId) {
+  if (controlBusy) return;
+  controlBusy = true;
+  document.querySelectorAll('.progress-actions button').forEach(el => el.disabled = true);
+  try {
+    const result = await invoke('control_backup', { command, runId });
+    await refresh();
+    toast(result);
+  } catch (error) { toast(String(error), true); await refresh(); }
+  finally { controlBusy = false; }
 }
 
 app.addEventListener('submit', async event => {
@@ -286,4 +303,4 @@ app.addEventListener('submit', async event => {
 
 render();
 refresh();
-setInterval(() => { if (!busy) refresh(true); }, 2000);
+setInterval(() => { if (!busy && !controlBusy) refresh(true); }, 2000);

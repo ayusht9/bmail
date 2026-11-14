@@ -20,7 +20,7 @@ function createProgress(root, atomicWrite, context = {}) {
     Object.assign(state, patch);
     const now = Date.now();
     if (!force && now - lastWrite < 500) return;
-    const elapsedSeconds = Math.max(0, (now - Date.parse(context.startedAt) - (context.pausedMs || 0)) / 1000);
+    const elapsedSeconds = Math.max(0, (now - Date.parse(context.startedAt) - (context.pausedMs || 0) - (context.pauseStartedAt ? now - context.pauseStartedAt : 0)) / 1000);
     const remaining = state.totalMessages == null ? null : Math.max(0, state.totalMessages - state.processedMessages);
     const snapshot = {
       ...state, updatedAt: new Date(now).toISOString(), elapsedSeconds,

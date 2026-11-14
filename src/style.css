@@ -30,6 +30,8 @@ dialog input[readonly] { background: #eef3f1; }
 #folder-choices legend { font-size: 13px; padding: 0 5px; }
 .date-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 #selection-error { color: #8e3d31; }
+.progress-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.danger-button { padding: 10px 15px; border: 1px solid #b36c5a; border-radius: 9px; color: #833d2e; background: #fff4ef; font-weight: 650; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
 #setup-error { color: #8e3d31; }
 .notice .ghost { margin: 10px 0 0; display: block; }

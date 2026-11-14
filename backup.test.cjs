@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { messageLocation, organize, verify, digest, backup } = require('./backup.cjs');
+const { messageLocation, organize, verify, digest, backup, backupWithRetries } = require('./backup.cjs');
+const { setTimeout: wait } = require('node:timers/promises');
 const key = 'a'.repeat(64) + '-1';
 
 test('decoded subjects, India month boundaries, and Windows filenames', () => {
@@ -18,6 +19,100 @@ test('decoded subjects, India month boundaries, and Windows filenames', () => {
   assert.equal(messageLocation('Sent', key, 1, Buffer.from('From: person@example.com\r\n\r\nbody')).sender, 'person@example.com');
   assert.equal(messageLocation('Sent', key, 1, Buffer.from('From: =?UTF-8?B?QWxpY2U=?=\r\n\r\nbody')).sender, 'Alice');
   assert.ok(messageLocation('Sent', key, 1, Buffer.from('\n\nbody')).file.includes('Unknown-month'));
+});
+
+function requestControl(root, command) {
+  const progress = JSON.parse(fs.readFileSync(path.join(root, 'progress.json')));
+  fs.writeFileSync(path.join(root, 'control.json'), JSON.stringify({ runId: progress.runId, command }));
+}
+
+test('pause holds a partial message and resumes without changing email bytes', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-pause-'));
+  const source = Buffer.concat([Buffer.from('Subject: Pause\r\n\r\n'), Buffer.alloc(700000, 'x')]);
+  let chunkCalls = 0;
+  let run;
+  try {
+    const client = mockMailbox({ INBOX: { 1: source } }, (folder, uid, query) => {
+      if (query.source) { chunkCalls++; if (chunkCalls === 1) requestControl(root, 'pause'); }
+    });
+    run = backup(client, root, { user: 'test@example.com', host: 'imap.example.com' }, () => {});
+    for (let i = 0; i < 200; i++) {
+      if (JSON.parse(fs.readFileSync(path.join(root, 'progress.json'))).state === 'paused') break;
+      await wait(10);
+    }
+    assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'progress.json'))).state, 'paused');
+    const pausedCalls = chunkCalls;
+    await wait(60);
+    assert.equal(chunkCalls, pausedCalls);
+    requestControl(root, 'resume');
+    assert.equal((await run).success, true);
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));
+    const record = Object.values(Object.values(manifest.folders)[0].messages)[0];
+    assert.deepEqual(fs.readFileSync(path.join(root, record.file)), source);
+  } finally {
+    if (run) { requestControl(root, 'cancel'); await run.catch(() => {}); }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('stop finishes the current email and a new run ignores stale controls and continues safely', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-stop-'));
+  const source = Buffer.concat([Buffer.from('Subject: Stop\r\n\r\n'), Buffer.alloc(600000, 'y')]);
+  let requested = false;
+  try {
+    const stopped = await backup(mockMailbox({ INBOX: { 1: source, 2: source } }, (folder, uid, query) => {
+      if (!requested && query.source) { requested = true; requestControl(root, 'stop'); }
+    }), root, { user: 'test@example.com', host: 'imap.example.com' }, () => {});
+    assert.equal(stopped.outcome, 'stopped');
+    assert.equal(stopped.success, false);
+    assert.equal(stopped.downloaded, 1);
+    assert.equal(verify(root, JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')))).checked, 1);
+    assert.equal(fs.existsSync(path.join(root, '.backup.lock')), false);
+    const resumed = await backup(mockMailbox({ INBOX: { 1: source, 2: source } }), root,
+      { user: 'test@example.com', host: 'imap.example.com' }, () => {});
+    assert.equal(resumed.success, true);
+    assert.equal(resumed.downloaded, 1);
+    assert.deepEqual(verify(root, JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')))), { checked: 2, invalid: [] });
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('cancel aborts a blocked transfer and keeps previously committed emails', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-cancel-'));
+  const source = Buffer.from('Subject: Cancel\r\n\r\nOriginal');
+  let rejectTransfer;
+  try {
+    const client = mockMailbox({ INBOX: { 1: source, 2: source } }, (folder, uid, query) => {
+      if (uid === 1 && query.source) {
+        requestControl(root, 'cancel');
+        return new Promise((resolve, reject) => { rejectTransfer = reject; });
+      }
+    });
+    client.close = () => rejectTransfer?.(Object.assign(new Error('Connection closed'), { code: 'NoConnection' }));
+    const result = await backup(client, root, { user: 'test@example.com', host: 'imap.example.com' }, () => {});
+    assert.equal(result.outcome, 'cancelled');
+    assert.equal(result.downloaded, 1);
+    assert.equal(result.error, undefined);
+    assert.deepEqual(verify(root, JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')))), { checked: 1, invalid: [] });
+    assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'progress.json'))).state, 'cancelled');
+    assert.equal(fs.existsSync(path.join(root, '.backup.lock')), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('cancel during reconnect delay prevents another connection attempt', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-retry-cancel-'));
+  let attempts = 0;
+  try {
+    const result = await backupWithRetries(() => {
+      attempts++;
+      const client = mockMailbox({ INBOX: {} });
+      client.connect = async () => { throw Object.assign(new Error('Test timeout'), { code: 'ETIMEDOUT' }); };
+      return client;
+    }, root, { user: 'test@example.com', host: 'imap.example.com' }, () => {}, async () => requestControl(root, 'cancel'));
+    assert.equal(attempts, 1);
+    assert.equal(result.outcome, 'cancelled');
+    assert.equal(result.error, undefined);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'progress.json'))).state, 'cancelled');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 function mockMailbox(folders, onFetch = () => {}, onSearch = () => {}) {
