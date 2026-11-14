@@ -18,6 +18,9 @@ for (const file of [
   'backup-config.example.json', 'package.json', 'package-lock.json',
 ]) fs.copyFileSync(path.join(root, file), path.join(output, file));
 fs.copyFileSync(process.execPath, path.join(output, 'node.exe'));
+const nodeLicense = process.env.NODE_LICENSE_PATH || path.join(path.dirname(process.execPath), 'LICENSE');
+if (!fs.existsSync(nodeLicense)) throw new Error('Set NODE_LICENSE_PATH to the LICENSE file from your Node.js distribution.');
+fs.copyFileSync(nodeLicense, path.join(output, 'NODE-LICENSE.txt'));
 // npm ci installs only the locked production dependency tree in the resource folder.
 execFileSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'npm.cmd ci --omit=dev --ignore-scripts --no-audit --no-fund'], {
   cwd: output, stdio: 'inherit', windowsHide: true,
