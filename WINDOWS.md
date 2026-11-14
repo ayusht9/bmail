@@ -1,9 +1,9 @@
 # Mail Vault for Windows
 
 Mail Vault uses Tauri 2, Rust, and the Windows WebView2 runtime. Its NSIS setup
-executable offers **Only for me** and **Anyone who uses this computer**.
-Installing for all users requires administrator approval; normal app use does
-not. The installer downloads WebView2 if the runtime is missing.
+executable installs **only for the current Windows user**, without requesting
+administrator elevation. It has no all-users installation option. The installer
+downloads WebView2 if the runtime is missing.
 
 ## Build
 
@@ -54,7 +54,7 @@ Live Gmail authentication requires your own account and has not been tested with
 real credentials. Backup remains read-only; messages under multiple Gmail labels
 may be saved in more than one local folder.
 
-In either install mode, each signed-in Windows user gets a separate directory:
+The current Windows user gets a private data directory:
 
 ```text
 %LOCALAPPDATA%\in.co.integramicro.mail-vault\
@@ -65,9 +65,9 @@ In either install mode, each signed-in Windows user gets a separate directory:
   Scheduled-Backup.ps1
 ```
 
-App files and the bundled engine stay in the install directory. All-user
-installation makes the app available to every Windows user; each user configures
-their own mailbox, encrypted credentials, and schedule. Credentials use Windows
+App files and the bundled engine are installed under `%LOCALAPPDATA%\Mail Vault`.
+Other Windows users can install their own copy and configure their own mailbox,
+encrypted credentials, and schedule. Credentials use Windows
 DPAPI and cannot simply be copied to another user. Task names include the Windows
 user SID to prevent users backing up the same mailbox from overwriting each
 other's schedule. Tasks run while their owner is signed in, Monday at 11:00 in
@@ -90,17 +90,25 @@ IPC, resolved engine resources, and opened mailbox setup. The extracted bundled
 Node runtime verified a fixture with Node removed from `PATH`. Browser checks
 covered Gmail presets, provider switching, setup errors, retry, save, password
 clearing, cancel, and backup feedback.
-Actual installation, upgrade, and uninstall across separate Windows users still
+The current-user setup executable's embedded manifest was checked for
+`asInvoker`, confirming it does not request administrator elevation. Packaged
+Gmail setup also saved an encrypted test profile using only bundled scripts.
+Actual installation, upgrade, and uninstall as a standard Windows user still
 require the clean-VM checks below before a public release.
 
 Test the setup executable on a clean Windows VM with no Node installation:
 
 - Install for the current user as a standard user; complete setup, back up,
   verify, and run the scheduled task.
-- Install for all users with administrator approval, then launch as two standard
-  users and check that config, credentials, tasks, and backups remain separate.
-- Upgrade and uninstall both install modes; confirm user data is retained.
+- Confirm there is no all-users option or administrator-elevation prompt.
+- Upgrade and uninstall the current-user installation; confirm user data is
+  retained unless explicitly selected for deletion.
 - Test a machine without WebView2 and check the runtime bootstrapper.
+
+If you previously installed an all-users build, uninstall that copy using its
+original uninstaller before installing this current-user build. Keep application
+data when uninstalling if you want to retain backups. The new installer does not
+remove machine-wide installations or migrate another Windows user's data.
 
 The project does not configure code signing. Configure a Windows code-signing
 certificate for public distribution. Never treat an untested installer build as
