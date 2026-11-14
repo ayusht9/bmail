@@ -7,6 +7,7 @@ const app = document.querySelector('#app');
 let dashboard;
 let busy = false;
 let controlBusy = false;
+let addingAccount = false;
 
 const providerForHost = host => host?.toLowerCase() === 'imap.gmail.com' ? 'google' : host?.toLowerCase() === 'imappro.zoho.in' ? 'zoho' : 'other';
 
@@ -37,6 +38,9 @@ function render() {
     return;
   }
   const run = dashboard.lastRun;
+  const hasAccount = !addingAccount && dashboard.user.includes('@');
+  const mailHost = addingAccount ? 'imap.gmail.com' : dashboard.host;
+  const mailPort = addingAccount ? 993 : dashboard.port;
   const healthy = run?.success === true;
   const outcome = run?.outcome || dashboard.progress?.state;
   const intentional = ['stopped', 'cancelled'].includes(outcome);
@@ -49,16 +53,17 @@ function render() {
 
   app.innerHTML = `
     <header>
-      <div class="brand"><span class="brand-mark">M</span><div><strong>Mail Vault</strong><small>Local email backup</small></div></div>
+      <div class="brand"><span class="brand-mark">B</span><div><strong>Bmail</strong><small>Local email backup</small></div></div>
       <button class="ghost" data-action="refresh" ${busy ? 'disabled' : ''}>Refresh</button>
     </header>
     <main>
-      <section class="hero ${state}">
+      ${dashboard.accounts?.length ? `<section class="account-switcher"><div><label for="active-account">Mailbox account</label><select id="active-account" ${busy || dashboard.backupRunning ? 'disabled' : ''}>${dashboard.accounts.map(email => `<option value="${escapeHtml(email)}" ${email === dashboard.user ? 'selected' : ''}>${escapeHtml(email)}</option>`).join('')}</select></div><button class="ghost" data-action="add-account" ${busy || dashboard.backupRunning ? 'disabled' : ''}>Add account</button></section>` : ''}
+      <section class="hero ${state} ${dashboard.backupRunning ? 'compact-hero' : ''}">
         <div class="status-icon">${healthy ? '✓' : run ? '!' : '→'}</div>
         <div class="hero-copy">
           <p class="eyebrow">${escapeHtml(dashboard.user)}</p>
           <h1>${statusTitle}</h1>
-          <p>${run ? `Last finished ${formatDate(run.finishedAt)} · ${formatNumber(run.downloaded)} new messages` : dashboard.credentialReady ? 'Your mailbox is ready. Start your first backup.' : 'Set up your mailbox, then start your first backup.'}</p>
+          <p>${dashboard.backupRunning ? 'Progress updates automatically. You can pause or stop below.' : run ? `Last finished ${formatDate(run.finishedAt)} · ${formatNumber(run.downloaded)} new messages` : dashboard.credentialReady ? 'Your mailbox is ready. Start or continue your selected backup.' : 'Set up your mailbox, then start your first backup.'}</p>
         </div>
         <button class="primary" data-action="backup" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>
           ${busy ? '<span class="spinner small"></span>Working…' : 'Back up now'}
@@ -69,6 +74,8 @@ function render() {
       ${run?.error ? `<aside class="notice error"><strong>${escapeHtml(run.error.message || 'Backup failed')}</strong><span>No server email was deleted. Completed downloads are retained.</span></aside>` : ''}
       ${dashboard.launchError ? `<aside class="notice error">${escapeHtml(dashboard.launchError)}</aside>` : ''}
       <section class="backup-plan"><div><strong>Your backup selection</strong><p>${escapeHtml(selectionSummary(dashboard.backupOptions))}</p></div><button class="ghost" data-action="selection" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>Choose what to back up</button></section>
+      ${dashboard.credentialReady && dashboard.dataDirectory ? `<p class="data-location">Account folder: <span>${escapeHtml(dashboard.dataDirectory)}</span></p>` : ''}
+      ${dashboard.migrationNotice ? `<aside class="notice">${escapeHtml(dashboard.migrationNotice)}</aside>` : ''}
       ${progressPanel(dashboard, escapeHtml, formatNumber)}
 
       <section class="metrics">
@@ -96,25 +103,25 @@ function render() {
         <pre>${escapeHtml(dashboard.latestLog?.tail || 'Run a backup to see activity here.')}</pre>
       </section>
     </main>
-    <footer>Read-only IMAP backup · Mail Vault never deletes server email</footer>
+    <footer>Read-only IMAP backup · Bmail never deletes server email</footer>
     <div id="toast" role="status"></div>
     ${selectionDialog(dashboard, escapeHtml)}
     <dialog id="mailbox-dialog" aria-labelledby="setup-title" aria-describedby="setup-description">
       <form id="mailbox-form">
-        <h2 id="setup-title">${dashboard.credentialReady ? 'Update app password' : 'Set up your mailbox'}</h2>
+        <h2 id="setup-title">${hasAccount ? 'Update app password' : 'Set up your mailbox'}</h2>
         <p id="setup-description">Use your IMAP server and application-specific password. Your password is encrypted for this Windows user.</p>
         <label for="mail-provider">Email provider</label>
-        <select id="mail-provider" ${dashboard.user.includes('@') ? 'disabled' : ''}>
-          <option value="google" ${providerForHost(dashboard.host) === 'google' ? 'selected' : ''}>Google / Gmail</option>
-          <option value="zoho" ${providerForHost(dashboard.host) === 'zoho' ? 'selected' : ''}>Zoho India</option>
-          <option value="other" ${providerForHost(dashboard.host) === 'other' ? 'selected' : ''}>Other IMAP server</option>
+        <select id="mail-provider" ${hasAccount ? 'disabled' : ''}>
+          <option value="google" ${providerForHost(mailHost) === 'google' ? 'selected' : ''}>Google / Gmail</option>
+          <option value="zoho" ${providerForHost(mailHost) === 'zoho' ? 'selected' : ''}>Zoho India</option>
+          <option value="other" ${providerForHost(mailHost) === 'other' ? 'selected' : ''}>Other IMAP server</option>
         </select>
         <label for="mail-user">Email address</label>
-        <input id="mail-user" name="user" type="email" autocomplete="username" value="${dashboard.user.includes('@') ? escapeHtml(dashboard.user) : ''}" ${dashboard.user.includes('@') ? 'readonly' : ''} required>
+        <input id="mail-user" name="user" type="email" autocomplete="username" value="${hasAccount ? escapeHtml(dashboard.user) : ''}" ${hasAccount ? 'readonly' : ''} required>
         <label for="mail-host">IMAP server</label>
-        <input id="mail-host" name="host" type="text" value="${escapeHtml(dashboard.host)}" pattern="[a-zA-Z0-9.\\-]+" ${dashboard.user.includes('@') ? 'readonly' : ''} required>
+        <input id="mail-host" name="host" type="text" value="${escapeHtml(mailHost)}" pattern="[a-zA-Z0-9.\\-]+" ${hasAccount ? 'readonly' : ''} required>
         <label for="mail-port">TLS port</label>
-        <input id="mail-port" name="port" type="number" min="1" max="65535" value="${dashboard.port}" ${dashboard.user.includes('@') ? 'readonly' : ''} required>
+        <input id="mail-port" name="port" type="number" min="1" max="65535" value="${mailPort}" ${hasAccount ? 'readonly' : ''} required>
         <p id="provider-help"></p>
         <button type="button" class="text-button" data-action="google-help" hidden>How to create a Google app password</button>
         <label for="mail-password">Application-specific password</label>
@@ -146,7 +153,7 @@ async function refresh(background = false) {
     render();
     if (focusAction) [...document.querySelectorAll('[data-action]')].find(el => el.dataset.action === focusAction)?.focus({ preventScroll: true });
   } catch (error) {
-    if (!background) app.innerHTML = `<main class="fatal"><h1>Mail Vault could not start</h1><p>${escapeHtml(error)}</p></main>`;
+    if (!background) app.innerHTML = `<main class="fatal"><h1>Bmail could not start</h1><p>${escapeHtml(error)}</p></main>`;
   } finally { refreshing = false; }
 }
 
@@ -172,6 +179,7 @@ app.addEventListener('click', event => {
   if (!button || button.disabled) return;
   const action = button.dataset.action;
   if (action === 'setup') document.querySelector('#mailbox-dialog').showModal();
+  else if (action === 'add-account') { addingAccount = true; render(); document.querySelector('#mailbox-dialog').showModal(); }
   else if (['pause', 'resume', 'stop', 'cancel'].includes(action)) controlBackup(action, button.dataset.runId);
   else if (action === 'selection') document.querySelector('#selection-dialog').showModal();
   else if (action === 'cancel-selection') { if (busy) return; document.querySelector('#selection-dialog').close(); render(); }
@@ -180,6 +188,8 @@ app.addEventListener('click', event => {
   else if (action === 'cancel-setup') {
     document.querySelector('#mail-password').value = '';
     document.querySelector('#mailbox-dialog').close();
+    addingAccount = false;
+    render();
   }
   else if (action === 'refresh') refresh();
   else if (action.startsWith('open-')) invoke('open_directory', { kind: action.slice(5) }).catch(error => toast(String(error), true));
@@ -187,6 +197,7 @@ app.addEventListener('click', event => {
 });
 
 app.addEventListener('change', event => {
+  if (event.target.id === 'active-account') switchAccount(event.target.value);
   if (event.target.id === 'all-folders') {
     document.querySelector('#folder-choices').disabled = event.target.checked;
   }
@@ -205,6 +216,7 @@ app.addEventListener('cancel', event => {
   if (event.target.id === 'selection-dialog' && busy) event.preventDefault();
   if (event.target.id === 'mailbox-dialog' && !busy) {
     document.querySelector('#mail-password').value = '';
+    addingAccount = false;
   }
 }, true);
 
@@ -235,6 +247,15 @@ async function controlBackup(command, runId) {
     toast(result);
   } catch (error) { toast(String(error), true); await refresh(); }
   finally { controlBusy = false; }
+}
+
+async function switchAccount(email) {
+  if (busy || dashboard.backupRunning) return;
+  busy = true;
+  render();
+  try { await invoke('switch_account', { email }); }
+  catch (error) { toast(String(error), true); }
+  finally { busy = false; await refresh(); }
 }
 
 app.addEventListener('submit', async event => {
@@ -283,6 +304,7 @@ app.addEventListener('submit', async event => {
   document.querySelector('#setup-error').textContent = '';
   try {
     const result = await invoke('configure_mailbox', { settings });
+    addingAccount = false;
     busy = false;
     dialog.close();
     await refresh();

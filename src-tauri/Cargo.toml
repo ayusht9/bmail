@@ -1,12 +1,12 @@
 [package]
-name = "mail-vault"
-version = "0.1.1"
+name = "bmail"
+version = "0.2.0"
 description = "A local, read-only email backup dashboard for Gmail and Zoho"
-authors = ["Mail Vault"]
+authors = ["Bmail"]
 edition = "2021"
 
 [lib]
-name = "mail_vault_lib"
+name = "bmail_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

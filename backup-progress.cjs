@@ -25,7 +25,7 @@ function createProgress(root, atomicWrite, context = {}) {
     const snapshot = {
       ...state, updatedAt: new Date(now).toISOString(), elapsedSeconds,
       transferredBytes: context.transferredBytes,
-      bytesPerSecond: elapsedSeconds > 0 ? context.transferredBytes / elapsedSeconds : 0,
+      bytesPerSecond: elapsedSeconds > 0 && state.state !== 'paused' ? context.transferredBytes / elapsedSeconds : 0,
       etaSeconds: state.downloaded >= 3 && remaining != null && state.state === 'running'
         ? Math.ceil(remaining * elapsedSeconds / state.downloaded) : null,
     };

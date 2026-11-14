@@ -1,6 +1,6 @@
-# Mail Vault for Windows
+# Bmail for Windows
 
-Mail Vault uses Tauri 2, Rust, and the Windows WebView2 runtime. Its NSIS setup
+Bmail uses Tauri 2, Rust, and the Windows WebView2 runtime. Its NSIS setup
 executable installs **only for the current Windows user**, without requesting
 administrator elevation. It has no all-users installation option. The installer
 downloads WebView2 if the runtime is missing.
@@ -30,18 +30,45 @@ packages retain their distributed license files.
 
 ## Data and installation scope
 
-Open Mail Vault and choose **Set up mailbox**. Enter your email address, IMAP
+Open Bmail and choose **Set up mailbox**. Enter your email address, IMAP
 server, TLS port (usually 993), and application-specific password. Saving does
 not connect to your mailbox: choose **Back up now** to start, and **Install
 schedule** when ready. Use **Update app password** to replace a saved password.
 An existing profile keeps its mailbox identity to protect earlier backups.
 
+## Progress and backup controls
+
+Choose **Choose what to back up** to select folders, an inclusive received-date
+range, and an optional maximum number of **new** emails per run. Saved emails
+are verified without using that limit. A later run continues with the next
+matching emails. The newest UIDs are considered first within each folder; folder
+order follows the mailbox listing. Gmail labels may overlap and produce separate
+copies when you select overlapping folders.
+
+The dashboard updates every two seconds. It shows selected messages checked,
+saved this run versus the target, transferred size, current folder and email,
+elapsed active time, speed, and an estimated remaining time. The estimate needs
+several completed messages and can vary with attachment sizes. Counting folders
+and final file verification are shown as separate phases.
+
+- **Pause** waits for a chunk checkpoint and holds the current email in memory.
+  **Resume** continues the same run. While paused the engine keeps the IMAP
+  connection alive; if it drops, reconnecting reuses completed files.
+- **Stop after this email** finishes and commits the current email, then stops.
+- **Cancel now** closes the connection and discards an incomplete download.
+  Completed email files and manifest entries are kept.
+
+Controls are tied to a run ID, so an old request cannot stop a new backup. They
+also work during reconnect waits. Closing the app does not cancel the worker;
+reopen Bmail to see its current progress and controls. A backup started by an
+older engine must finish or be stopped before installing the update.
+
 ### Google / Gmail
 
-Choose **Google / Gmail** in mailbox setup. Mail Vault fills in
+Choose **Google / Gmail** in mailbox setup. Bmail fills in
 `imap.gmail.com` and TLS port `993`; this also works for Google Workspace email
 addresses when the account allows app passwords and IMAP access. Enable Google
-2-Step Verification and generate an app password, then paste it into Mail Vault.
+2-Step Verification and generate an app password, then paste it into Bmail.
 Spaces in Google's grouped app password are removed before saving. Your normal
 Google password will not work here. The help button opens Google's instructions
 in your default browser.
@@ -56,22 +83,32 @@ This integration uses IMAP app passwords, not Google OAuth. Google may disable
 app passwords for managed accounts, Advanced Protection, or some security-key
 configurations. See [Google app passwords](https://support.google.com/accounts/answer/185833)
 and [Gmail IMAP settings](https://developers.google.com/workspace/gmail/imap/imap-smtp).
-Live Gmail authentication requires your own account and has not been tested with
-real credentials. Backup remains read-only; messages under multiple Gmail labels
+Automated tests use dummy credentials and mailbox fixtures. Backup remains
+read-only; messages under multiple Gmail labels
 may be saved in more than one local folder.
 
 The current Windows user gets a private data directory:
 
 ```text
-%LOCALAPPDATA%\in.co.integramicro.mail-vault\
-  backup-config.json
-  .private\zoho-credential.xml
-  backups\
-  logs\
-  Scheduled-Backup.ps1
+%LOCALAPPDATA%\Bmail\
+  app-settings.json
+  accounts\
+    your-email@gmail.com\
+      backup-config.json
+      .private\
+      backups\messages\
+      backups\manifest.json
+      backups\progress.json
+      logs\
+      Scheduled-Backup.ps1
 ```
 
-App files and the bundled engine are installed under `%LOCALAPPDATA%\Mail Vault`.
+App files and the bundled engine are installed under `%LOCALAPPDATA%\Bmail`.
+Use **Add account** and the mailbox selector to manage separate email accounts.
+Each account has independent credentials, backup selection, progress, logs, and
+messages. Finish or stop a run before changing the active account. Account folder
+names use the email address; characters Windows cannot store in a filename are
+percent-encoded instead of being used as path separators.
 Other Windows users can install their own copy and configure their own mailbox,
 encrypted credentials, and schedule. Credentials use Windows
 DPAPI and cannot simply be copied to another user. Task names include the Windows
@@ -82,8 +119,17 @@ select the uninstaller's option to delete application data. Remove your weekly
 task in Windows Task Scheduler before uninstalling; tasks are owned by each user
 and are not automatically removed by the installer.
 
+The first Bmail launch imports the previous installed profile into
+`Bmail\accounts\<email>`. It moves only business data, preserving email bytes and
+DPAPI-encrypted credential files. It keeps the old browser cache in place and
+refuses to overwrite conflicting files. An interrupted migration can be retried.
+An existing weekly task is updated to the new account folder when possible;
+otherwise Bmail displays an instruction to update the schedule.
+
+Install and open Bmail before removing the old application. Verify the imported
+mail first and keep application data when uninstalling the old application.
 Existing source-folder backups are not migrated automatically. Copy your config
-and backups into the profile folder with the app closed, then configure a fresh
+and backups into an account folder with the app closed, then configure a fresh
 credential as that Windows user. Remove the old task only after checking the new
 schedule. Standalone scripts still default to storing data next to the scripts.
 
@@ -103,13 +149,14 @@ real mailbox and removed afterwards. It requires WebView2 and uses Playwright Co
 through the local debugging endpoint; no separate browser download is needed.
 Rebuild the normal installer afterwards to restore the production app identifier.
 
-Local checks on 2026-11-15: all six automated tests passed; the frontend and
+Local checks on 2026-11-15: all twelve automated engine/installer tests and four
+profile migration tests passed; the frontend and
 Windows x64 Tauri/NSIS installer built successfully. The app extracted from the
 installer launched outside the repository, served its dashboard through Rust
 IPC, resolved engine resources, and opened mailbox setup. The extracted bundled
 Node runtime verified a fixture with Node removed from `PATH`. Browser checks
 covered Gmail presets, provider switching, setup errors, retry, save, password
-clearing, cancel, and backup feedback.
+clearing, scope selection, live progress, run controls, and isolated account data.
 The current-user setup executable's embedded manifest was checked for
 `asInvoker`, confirming it does not request administrator elevation. Packaged
 Gmail setup also saved an encrypted test profile using only bundled scripts.
@@ -130,10 +177,8 @@ Test the setup executable on a clean Windows VM with no Node installation:
   retained unless explicitly selected for deletion.
 - Test a machine without WebView2 and check the runtime bootstrapper.
 
-If you previously installed an all-users build, uninstall that copy using its
-original uninstaller before installing this current-user build. Keep application
-data when uninstalling if you want to retain backups. The new installer does not
-remove machine-wide installations or migrate another Windows user's data.
+The new installer does not remove machine-wide installations or migrate another
+Windows user's data. Keep application data if you remove an earlier installation.
 
 The project does not configure code signing. Configure a Windows code-signing
 certificate for public distribution. Never treat an untested installer build as

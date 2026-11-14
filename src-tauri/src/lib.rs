@@ -3,6 +3,7 @@ use std::io::Write;
 use serde_json::Value;
 use std::{fs, path::{Path, PathBuf}, process::Command};
 use tauri::Manager;
+mod profile;
 use std::sync::Mutex;
 
 #[derive(Default)]
@@ -50,14 +51,69 @@ struct Dashboard {
     backup_options: Value,
     mailboxes: Option<Value>,
     control_request: Option<Value>,
+    accounts: Vec<String>,
+    data_directory: String,
+    migration_notice: Option<String>,
 }
 
 fn data_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let root = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let base = base_root(app)?;
+    let settings = read_json(&base.join("app-settings.json")).unwrap_or(Value::Null);
+    let root = settings.get("activeAccount").and_then(Value::as_str).map(|email| profile::account_folder(&base, email)).unwrap_or(base);
     fs::create_dir_all(&root).map_err(|e| format!("Could not create app data directory: {e}"))?;
     // Windows resource paths may use the verbatim \\?\ prefix, which PowerShell
     // providers reject even though Rust and Win32 can open those same files.
     Ok(dunce::simplified(&root).to_path_buf())
+}
+
+fn base_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let root = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    Ok(dunce::simplified(&root).to_path_buf())
+}
+
+fn account_list(base: &Path) -> Vec<String> {
+    let mut accounts: Vec<_> = fs::read_dir(base.join("accounts")).into_iter().flatten().filter_map(Result::ok)
+        .filter_map(|entry| read_json(&entry.path().join("backup-config.json")))
+        .filter_map(|config| config.get("user").and_then(Value::as_str).map(str::to_owned)).collect();
+    accounts.sort();
+    accounts
+}
+
+fn select_account(base: &Path, email: &str) -> Result<(), String> {
+    let temporary = base.join("app-settings.json.pending");
+    fs::write(&temporary, serde_json::to_vec(&serde_json::json!({"activeAccount": email})).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    fs::rename(&temporary, base.join("app-settings.json")).map_err(|e| e.to_string())
+}
+
+fn initialize_profiles(app: &tauri::AppHandle) -> Result<(), String> {
+    let base = base_root(app)?;
+    if app.config().identifier == "com.bmail.desktop" {
+        let legacy = app.path().local_data_dir().map_err(|e| e.to_string())?.join("in.co.integramicro.mail-vault");
+        if let Some(config) = read_json(&legacy.join("backup-config.json")) {
+            if let Some(email) = config.get("user").and_then(Value::as_str) {
+                let destination = profile::account_folder(&base, email);
+                if !destination.join("backup-config.json").exists() {
+                    if active_backup(&backup_root(&legacy)) { return Err("An older backup is still running. Stop it before opening Bmail.".into()); }
+                    let backup_directory = config.get("backupDirectory").and_then(Value::as_str).unwrap_or("backups");
+                    let relative = if Path::new(backup_directory).is_absolute() { None } else { Some(Path::new(backup_directory)) };
+                    let scheduled = schedule_exists(email);
+                    profile::migrate(&legacy, &destination, relative).map_err(|e| format!("Could not migrate your existing mail: {e}"))?;
+                    select_account(&base, email)?;
+                    if scheduled {
+                        let output = powershell(&engine_root(app)?, &destination, "Install-BackupSchedule.ps1");
+                        if !output.is_ok_and(|o| o.status.success()) {
+                            fs::write(base.join("migration-notice.txt"), "Your mail was migrated. Use Update schedule in Bmail to point the existing weekly task to its new account folder.").map_err(|e| e.to_string())?;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if read_json(&base.join("app-settings.json")).is_none() {
+        if let Some(email) = account_list(&base).first() { select_account(&base, email)?; }
+    }
+    Ok(())
 }
 
 fn engine_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -67,7 +123,7 @@ fn engine_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         app.path().resource_dir().map_err(|e| e.to_string())?.join("engine")
     };
     if !root.join("node.exe").is_file() || !root.join("backup.cjs").is_file() {
-        return Err("Bundled backup runtime is missing. Rebuild or reinstall Mail Vault.".into());
+        return Err("Bundled backup runtime is missing. Rebuild or reinstall Bmail.".into());
     }
     Ok(dunce::simplified(&root).to_path_buf())
 }
@@ -101,7 +157,7 @@ fn schedule_exists(user: &str) -> bool {
         .and_then(|output| String::from_utf8(output.stdout).ok())
         .and_then(|text| text.trim().split(',').next_back().map(|v| v.trim_matches('"').to_owned()));
     let Some(sid) = sid else { return false; };
-    ["Mail Vault Backup", "Zoho Mail Backup"].iter().any(|prefix| {
+    ["Bmail Backup", "Mail Vault Backup", "Zoho Mail Backup"].iter().any(|prefix| {
         hidden_command("schtasks.exe").args(["/Query", "/TN", &format!("{prefix} - {sid} - {user}")])
             .output().is_ok_and(|output| output.status.success())
     })
@@ -144,6 +200,9 @@ fn get_dashboard(app: tauri::AppHandle, process: tauri::State<BackupProcess>) ->
         backup_options: config.get("backupOptions").cloned().unwrap_or_else(|| serde_json::json!({"folders": [], "dateFrom": null, "dateTo": null, "maxMessages": null})),
         mailboxes: read_json(&backup_root.join("mailboxes.json")),
         control_request: read_json(&backup_root.join("control.json")),
+        accounts: account_list(&base_root(&app)?),
+        data_directory: root.to_string_lossy().into_owned(),
+        migration_notice: fs::read_to_string(base_root(&app)?.join("migration-notice.txt")).ok(),
     })
 }
 
@@ -156,9 +215,18 @@ struct MailboxSettings {
 }
 
 #[tauri::command]
-async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings) -> Result<String, String> {
+async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings, process: tauri::State<'_, BackupProcess>) -> Result<String, String> {
+    {
+        let guard = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
+        if guard.as_ref().is_some_and(|child| process_running(child.id() as u64)) || active_backup(&backup_root(&data_root(&app)?)) {
+            return Err("Stop or finish the current backup before changing accounts or credentials.".into());
+        }
+    }
     tauri::async_runtime::spawn_blocking(move || {
-        let root = data_root(&app)?;
+        let base = base_root(&app)?;
+        let root = profile::account_folder(&base, &settings.user);
+        if settings.user.trim().is_empty() || root.file_name().is_some_and(|n| n.to_string_lossy().len() > 240) { return Err("Enter a valid email address for this account.".into()); }
+        fs::create_dir_all(&root).map_err(|_| "Could not create the account folder.".to_owned())?;
         let engine = engine_root(&app)?;
         let mut child = hidden_command("powershell.exe").current_dir(&root)
             .env("MAIL_VAULT_DATA_DIR", &root)
@@ -180,18 +248,30 @@ async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings) -> 
                 "GMAIL_REQUIRES_993" => "Gmail requires TLS port 993. Port 25 cannot receive Gmail backups.",
                 "PASSWORD_REQUIRED" => "Enter your application-specific password. Spaces between Google app-password groups are accepted.",
                 "MAILBOX_IDENTITY_MISMATCH" => "This profile already belongs to another mailbox. Keep its saved email and server to update the password.",
-                "DATA_DIRECTORY_UNAVAILABLE" => "Windows could not write to your Mail Vault data folder. Check its permissions and try again.",
+                "DATA_DIRECTORY_UNAVAILABLE" => "Windows could not write to your Bmail data folder. Check its permissions and try again.",
                 "CREDENTIAL_DIRECTORY_UNAVAILABLE" => "Windows could not secure your credential folder. Check its permissions and try again.",
-                "PASSWORD_ENCRYPTION_FAILED" => "Windows could not encrypt the app password for your account. Try again while signed in as the account that installed Mail Vault.",
+                "PASSWORD_ENCRYPTION_FAILED" => "Windows could not encrypt the app password for your account. Try again while signed in as the account that installed Bmail.",
                 "CREDENTIAL_SAVE_FAILED" => "Windows could not save your encrypted app password. Check folder permissions and available disk space.",
                 "CONFIG_UNREADABLE" => "Your saved mailbox configuration could not be read. Keep your backups and repair the configuration before trying again.",
                 "CONFIG_SAVE_FAILED" => "Windows could not save your mailbox settings. Check folder permissions and available disk space.",
-                _ => "Secure mailbox setup could not run. Reinstall the latest Mail Vault build and check that Windows permits PowerShell to run.",
+                _ => "Secure mailbox setup could not run. Reinstall the latest Bmail build and check that Windows permits PowerShell to run.",
             };
             return Err(message.into());
         }
+        select_account(&base, &settings.user)?;
         Ok("Mailbox saved. You can start your first backup.".into())
     }).await.map_err(|_| "Mailbox setup was interrupted".to_owned())?
+}
+
+#[tauri::command]
+fn switch_account(app: tauri::AppHandle, email: String, process: tauri::State<BackupProcess>) -> Result<(), String> {
+    let guard = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
+    if guard.as_ref().is_some_and(|child| process_running(child.id() as u64)) || active_backup(&backup_root(&data_root(&app)?)) {
+        return Err("Stop or finish the current backup before switching accounts.".into());
+    }
+    let base = base_root(&app)?;
+    if !account_list(&base).contains(&email) { return Err("That account has not been added to Bmail.".into()); }
+    select_account(&base, &email)
 }
 
 fn powershell(engine: &Path, data: &Path, script: &str) -> Result<std::process::Output, String> {
@@ -262,7 +342,7 @@ fn control_backup(app: tauri::AppHandle, command: String, run_id: String, proces
     if !["pause", "resume", "stop", "cancel"].contains(&command.as_str()) { return Err("Unknown backup control.".into()); }
     let _guard = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
     let root = backup_root(&data_root(&app)?);
-    let progress = read_json(&root.join("progress.json")).ok_or("This run does not support controls. Update Mail Vault before starting the next run.")?;
+    let progress = read_json(&root.join("progress.json")).ok_or("This run does not support controls. Update Bmail before starting the next run.")?;
     if progress.get("runId").and_then(Value::as_str) != Some(run_id.as_str()) ||
         !matches!(progress.get("state").and_then(Value::as_str), Some("running" | "paused" | "stopping" | "retrying")) || !active_backup(&root) {
         return Err("That backup is no longer active. Refresh to see its latest state.".into());
@@ -336,7 +416,8 @@ fn open_directory(app: tauri::AppHandle, kind: String) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .manage(BackupProcess::default())
-        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory])
+        .setup(|app| { initialize_profiles(app.handle()).map_err(std::io::Error::other)?; Ok(()) })
+        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory])
         .run(tauri::generate_context!())
-        .expect("error while running Mail Vault");
+        .expect("error while running Bmail");
 }
