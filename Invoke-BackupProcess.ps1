@@ -3,11 +3,13 @@ function Invoke-BackupProcess {
         [Parameter(Mandatory = $true)][string]$NodePath,
         [Parameter(Mandatory = $true)][string]$ScriptPath,
         [Parameter(Mandatory = $true)][string]$Payload,
-        [Parameter(Mandatory = $true)][string]$LogPath
+        [Parameter(Mandatory = $true)][string]$LogPath,
+        [ValidateSet('', '--list-folders')][string]$EngineArgument = ''
     )
     $start = New-Object Diagnostics.ProcessStartInfo
     $start.FileName = $NodePath
     $start.Arguments = '"' + $ScriptPath + '"'
+    if ($EngineArgument) { $start.Arguments += ' ' + $EngineArgument }
     $start.WorkingDirectory = Split-Path -Parent $ScriptPath
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true

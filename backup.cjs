@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const libmime = require('libmime');
 const { setTimeout: sleep } = require('node:timers/promises');
 const { createProgress } = require('./backup-progress.cjs');
+const { normalizeSelection, searchForSelection } = require('./backup-selection.cjs');
 let redactions = [];
 
 function safeError(error) {
@@ -177,23 +178,44 @@ async function backup(client, root, config, log = console.log, context = {}) {
     const manifest = readJson(manifestPath, { version: 1, user: config.user, host: config.host, folders: {} });
     if (manifest.user !== config.user || manifest.host !== config.host || manifest.version !== 1)
       throw new Error('Backup identity does not match configuration');
+    const selection = normalizeSelection(config.backupOptions);
+    status.selection = selection;
     await client.connect();
     progress.publish({ phase: 'discovering' }, true);
-    const folders = (await client.list()).filter(folder => !folder.flags.has('\\Noselect'));
-    atomicWrite(path.join(root, 'mailboxes.json'), JSON.stringify({ updatedAt: new Date().toISOString(), folders: folders.map(f => f.path) }));
+    const available = (await client.list()).filter(folder => !folder.flags.has('\\Noselect'));
+    atomicWrite(path.join(root, 'mailboxes.json'), JSON.stringify({ updatedAt: new Date().toISOString(), folders: available.map(f => f.path) }));
+    const folders = available.filter(f => !selection.folders.length || selection.folders.includes(f.path));
+    if (selection.folders.some(f => !available.some(item => item.path === f))) throw new Error('A selected folder is unavailable. Reload folders and update your selection.');
     const plan = [];
+    let budget = selection.maxMessages == null ? Infinity : Math.max(0, selection.maxMessages - context.downloaded);
+    let remainingMessages = 0;
+    let plannedDownloads = 0;
+    let alreadyVerified = 0;
     for (const folder of folders) {
       progress.publish({ currentFolder: folder.path }, true);
       const mailboxLock = await client.getMailboxLock(folder.path, { readOnly: true });
       try {
         const validity = String(client.mailbox.uidValidity);
         if (!/^\d+$/.test(validity)) throw new Error('Server did not supply UIDVALIDITY');
-        const uids = await client.search({ all: true }, { uid: true });
+        const uids = await client.search(searchForSelection(selection), { uid: true });
         if (!Array.isArray(uids)) throw new Error('Unable to enumerate messages');
-        plan.push({ ...folder, validity, uids });
+        const key = digest(Buffer.from(folder.path, 'utf8')) + '-' + validity;
+        const previous = manifest.folders[key]?.messages || {};
+        const selected = [];
+        for (const uid of [...uids].sort((a, b) => b - a)) {
+          if (previous[uid]?.complete !== false && previous[uid] && validateRecord(root, previous[uid])) {
+            selected.push(uid); alreadyVerified++;
+            progress.publish({ phase: 'checking', alreadyVerified });
+          } else if (budget > 0) {
+            selected.push(uid); budget--; plannedDownloads++;
+          } else remainingMessages++;
+        }
+        plan.push({ ...folder, validity, uids: selected, matchingMessages: uids.length });
       } finally { mailboxLock.release(); }
     }
-    progress.publish({ totalFolders: plan.length, totalMessages: plan.reduce((n, f) => n + f.uids.length, 0), phase: 'downloading' }, true);
+    status.remainingMessages = remainingMessages;
+    progress.publish({ totalFolders: plan.length, totalMessages: plan.reduce((n, f) => n + f.uids.length, 0), phase: 'downloading',
+      plannedDownloads: plannedDownloads + context.downloaded, remainingMessages, alreadyVerified, selection }, true);
     for (const folder of plan) {
       log('Checking folder: ' + folder.path);
       const lock = await client.getMailboxLock(folder.path, { readOnly: true });
@@ -203,7 +225,7 @@ async function backup(client, root, config, log = console.log, context = {}) {
         const key = digest(Buffer.from(folder.path, 'utf8')) + '-' + validity;
         const saved = manifest.folders[key] ||= { name: folder.path, uidValidity: validity, messages: {} };
         const uids = folder.uids;
-        const result = { name: folder.path, uidValidity: validity, serverMessages: uids.length, verified: 0, downloaded: 0 };
+        const result = { name: folder.path, uidValidity: validity, serverMessages: uids.length, matchingMessages: folder.matchingMessages, verified: 0, downloaded: 0 };
         status.folders.push(result);
         progress.publish({ currentFolder: folder.path, phase: 'downloading' }, true);
         for (const uid of uids) {
@@ -212,6 +234,11 @@ async function backup(client, root, config, log = console.log, context = {}) {
           if (previousValid && previous.complete !== false) {
             result.verified++;
             progress.publish({ processedMessages: progress.state.processedMessages + 1 });
+            continue;
+          }
+          if (selection.maxMessages != null && context.downloaded >= selection.maxMessages) {
+            status.remainingMessages++;
+            progress.publish({ remainingMessages: status.remainingMessages, totalMessages: progress.state.totalMessages - 1 });
             continue;
           }
           status.currentMessage = { folder: folder.path, uid };
@@ -340,6 +367,18 @@ async function main() {
     });
     return client;
   };
+  if (process.argv.includes('--list-folders')) {
+    fs.mkdirSync(root, { recursive: true });
+    const release = acquireLock(root);
+    const client = makeClient();
+    try {
+      await client.connect();
+      const folders = (await client.list()).filter(f => !f.flags.has('\\Noselect')).map(f => f.path);
+      atomicWrite(path.join(root, 'mailboxes.json'), JSON.stringify({ updatedAt: new Date().toISOString(), folders }));
+      console.log('Loaded ' + folders.length + ' mailbox folders.');
+    } finally { try { client.close(); } finally { release(); } }
+    return;
+  }
   await backupWithRetries(makeClient, root, config);
 }
 if (require.main === module) main().catch(error => {
