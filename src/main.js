@@ -39,14 +39,14 @@ function render() {
         <div class="hero-copy">
           <p class="eyebrow">${escapeHtml(dashboard.user)}</p>
           <h1>${statusTitle}</h1>
-          <p>${run ? `Last finished ${formatDate(run.finishedAt)} · ${formatNumber(run.downloaded)} new messages` : 'Your encrypted credential and first backup can be created with the existing setup script.'}</p>
+          <p>${run ? `Last finished ${formatDate(run.finishedAt)} · ${formatNumber(run.downloaded)} new messages` : dashboard.credentialReady ? 'Your mailbox is ready. Start your first backup.' : 'Set up your mailbox, then start your first backup.'}</p>
         </div>
         <button class="primary" data-action="backup" ${busy || !dashboard.credentialReady ? 'disabled' : ''}>
           ${busy ? '<span class="spinner small"></span>Working…' : 'Back up now'}
         </button>
       </section>
 
-      ${!dashboard.credentialReady ? `<aside class="notice"><strong>Setup required.</strong> Run <code>Setup-Backup.cmd</code> once to save your app password securely, then return here.</aside>` : ''}
+      ${!dashboard.credentialReady ? `<aside class="notice"><strong>Set up your mailbox.</strong> Save your IMAP account and app password to start backing up. <button class="ghost" data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
       ${run?.error ? `<aside class="notice error"><strong>${escapeHtml(run.error.message || 'Backup failed')}</strong><span>No server email was deleted. Completed downloads are retained.</span></aside>` : ''}
 
       <section class="metrics">
@@ -62,6 +62,7 @@ function render() {
         </article>
         <aside class="panel actions">
           <p class="eyebrow">Maintenance</p><h2>Tools</h2>
+          <button data-action="setup" ${busy ? 'disabled' : ''}><span>${dashboard.credentialReady ? 'Update app password' : 'Set up mailbox'}</span><small>Encrypted for your Windows account</small></button>
           <button data-action="verify" ${busy || !dashboard.hasManifest ? 'disabled' : ''}><span>Verify local files</span><small>Check hashes without connecting</small></button>
           <button data-action="schedule" ${busy || !dashboard.credentialReady ? 'disabled' : ''}><span>${dashboard.scheduleInstalled ? 'Update schedule' : 'Install schedule'}</span><small>Weekly, Monday at 11:00</small></button>
           <button data-action="open-logs"><span>Open log folder</span><small>${dashboard.latestLog ? escapeHtml(dashboard.latestLog.name) : 'No logs yet'}</small></button>
@@ -75,6 +76,22 @@ function render() {
     </main>
     <footer>Read-only IMAP backup · Mail Vault never deletes server email</footer>
     <div id="toast" role="status"></div>
+    <dialog id="mailbox-dialog" aria-labelledby="setup-title" aria-describedby="setup-description">
+      <form id="mailbox-form">
+        <h2 id="setup-title">${dashboard.credentialReady ? 'Update app password' : 'Set up your mailbox'}</h2>
+        <p id="setup-description">Use your IMAP server and application-specific password. Your password is encrypted for this Windows user.</p>
+        <label for="mail-user">Email address</label>
+        <input id="mail-user" name="user" type="email" autocomplete="username" value="${dashboard.user.includes('@') ? escapeHtml(dashboard.user) : ''}" required>
+        <label for="mail-host">IMAP server</label>
+        <input id="mail-host" name="host" type="text" value="${escapeHtml(dashboard.host)}" pattern="[a-zA-Z0-9.\\-]+" required>
+        <label for="mail-port">TLS port</label>
+        <input id="mail-port" name="port" type="number" min="1" max="65535" value="${dashboard.port}" required>
+        <label for="mail-password">Application-specific password</label>
+        <input id="mail-password" name="password" type="password" autocomplete="new-password" required>
+        <p id="setup-error" role="alert"></p>
+        <div class="dialog-actions"><button type="button" class="ghost" data-action="cancel-setup">Cancel</button><button class="primary" type="submit">Save mailbox</button></div>
+      </form>
+    </dialog>
   `;
 }
 
@@ -98,14 +115,17 @@ async function refresh() {
 async function run(action) {
   busy = true;
   render();
+  let message;
+  let failed = false;
   try {
-    const result = await invoke('run_action', { action });
-    toast(result);
+    message = await invoke('run_action', { action });
   } catch (error) {
-    toast(String(error), true);
+    message = String(error);
+    failed = true;
   } finally {
     busy = false;
     await refresh();
+    toast(message, failed);
   }
 }
 
@@ -113,9 +133,56 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
-  if (action === 'refresh') refresh();
+  if (action === 'setup') document.querySelector('#mailbox-dialog').showModal();
+  else if (action === 'cancel-setup') {
+    document.querySelector('#mail-password').value = '';
+    document.querySelector('#mailbox-dialog').close();
+  }
+  else if (action === 'refresh') refresh();
   else if (action.startsWith('open-')) invoke('open_directory', { kind: action.slice(5) }).catch(error => toast(String(error), true));
   else run(action);
+});
+
+app.addEventListener('cancel', event => {
+  if (event.target.id === 'mailbox-dialog' && !busy) {
+    document.querySelector('#mail-password').value = '';
+  }
+}, true);
+
+app.addEventListener('submit', async event => {
+  if (event.target.id !== 'mailbox-form') return;
+  event.preventDefault();
+  if (busy) return;
+  const form = event.target;
+  const values = new FormData(form);
+  const settings = {
+    user: values.get('user').trim(), host: values.get('host').trim(),
+    port: Number(values.get('port')), password: values.get('password'),
+  };
+  busy = true;
+  const dialog = document.querySelector('#mailbox-dialog');
+  const preventCancel = event => event.preventDefault();
+  dialog.addEventListener('cancel', preventCancel);
+  form.querySelectorAll('button, input').forEach(element => element.disabled = true);
+  form.querySelector('[type="submit"]').textContent = 'Saving...';
+  document.querySelector('#setup-error').textContent = '';
+  try {
+    const result = await invoke('configure_mailbox', { settings });
+    busy = false;
+    dialog.close();
+    await refresh();
+    toast(result);
+  } catch (error) {
+    document.querySelector('#setup-error').textContent = String(error);
+  } finally {
+    settings.password = '';
+    values.delete('password');
+    form.querySelector('[name="password"]').value = '';
+    form.querySelectorAll('button, input').forEach(element => element.disabled = false);
+    form.querySelector('[type="submit"]').textContent = 'Save mailbox';
+    dialog.removeEventListener('cancel', preventCancel);
+    busy = false;
+  }
 });
 
 render();

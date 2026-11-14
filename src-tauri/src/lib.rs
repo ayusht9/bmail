@@ -1,4 +1,5 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::io::Write;
 use serde_json::Value;
 use std::{fs, path::{Path, PathBuf}, process::Command};
 use tauri::Manager;
@@ -20,6 +21,8 @@ struct LogSummary { name: String, tail: String }
 #[serde(rename_all = "camelCase")]
 struct Dashboard {
     user: String,
+    host: String,
+    port: u16,
     credential_ready: bool,
     schedule_installed: bool,
     has_manifest: bool,
@@ -82,6 +85,8 @@ fn get_dashboard(app: tauri::AppHandle) -> Result<Dashboard, String> {
     let folders = manifest.as_ref().and_then(|m| m.get("folders")).and_then(Value::as_object);
     let total_messages = folders.map(|items| items.values().filter_map(|folder| folder.get("messages")?.as_object()).map(|m| m.len() as u64).sum()).unwrap_or(0);
     Ok(Dashboard {
+        host: config.get("host").and_then(Value::as_str).unwrap_or("imappro.zoho.in").to_owned(),
+        port: config.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).unwrap_or(993),
         credential_ready: root.join(".private/zoho-credential.xml").is_file(),
         schedule_installed: schedule_exists(&user),
         has_manifest: manifest.is_some(), total_messages,
@@ -89,6 +94,37 @@ fn get_dashboard(app: tauri::AppHandle) -> Result<Dashboard, String> {
         last_run: read_json(&backup_root.join("last-run.json")),
         latest_log: latest_log(&root), user,
     })
+}
+
+#[derive(Deserialize, Serialize)]
+struct MailboxSettings {
+    user: String,
+    host: String,
+    port: u16,
+    password: String,
+}
+
+#[tauri::command]
+async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = data_root(&app)?;
+        let engine = engine_root(&app)?;
+        let mut child = hidden_command("powershell.exe").current_dir(&root)
+            .env("MAIL_VAULT_DATA_DIR", &root)
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(engine.join("Save-Mailbox.ps1"))
+            .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped()).spawn()
+            .map_err(|_| "Could not start secure mailbox setup".to_owned())?;
+        let payload = serde_json::to_vec(&settings).map_err(|_| "Could not prepare mailbox setup".to_owned())?;
+        let write_result = child.stdin.take().ok_or("Mailbox setup input is unavailable")?
+            .write_all(&payload);
+        let output = child.wait_with_output().map_err(|_| "Mailbox setup was interrupted".to_owned())?;
+        if !output.status.success() || write_result.is_err() {
+            return Err("Mailbox setup failed. Check your email, server and port. Existing profiles must keep the same mailbox settings.".into());
+        }
+        Ok("Mailbox saved. You can start your first backup.".into())
+    }).await.map_err(|_| "Mailbox setup was interrupted".to_owned())?
 }
 
 fn powershell(engine: &Path, data: &Path, script: &str) -> Result<std::process::Output, String> {
@@ -132,7 +168,7 @@ fn open_directory(app: tauri::AppHandle, kind: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![get_dashboard, run_action, open_directory])
+        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, run_action, open_directory])
         .run(tauri::generate_context!())
         .expect("error while running Mail Vault");
 }

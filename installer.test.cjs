@@ -28,3 +28,36 @@ test('installed engine verifies user data when launched from a different directo
     assert.equal(JSON.parse(bad.stdout).invalid.length, 1);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('mailbox setup encrypts the password and rejects mailbox identity changes', { skip: process.platform !== 'win32' }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-vault-setup-'));
+  const secret = 'test-only-app-password-9381';
+  const settings = { user: 'test@example.com', host: 'imap.example.com', port: 993, password: secret };
+  const options = { env: { ...process.env, MAIL_VAULT_DATA_DIR: root }, encoding: 'utf8', timeout: 30000 };
+  const save = request => spawnSync('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('Save-Mailbox.ps1'),
+  ], { ...options, input: JSON.stringify(request) });
+  try {
+    const result = save(settings);
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(!result.stdout.includes(secret));
+    assert.ok(!result.stderr.includes(secret));
+    const configPath = path.join(root, 'backup-config.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8').replace(/^\uFEFF/, ''));
+    assert.equal(config.user, settings.user);
+    assert.equal(config.backupDirectory, 'backups');
+    const credentialPath = path.join(root, '.private/zoho-credential.xml');
+    assert.ok(!fs.readFileSync(credentialPath, 'utf8').includes(secret));
+    const decrypted = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      "$c = Import-Clixml -LiteralPath (Join-Path $env:MAIL_VAULT_DATA_DIR '.private/zoho-credential.xml'); if ($c.UserName -ne 'test@example.com' -or $c.GetNetworkCredential().Password -ne 'test-only-app-password-9381') { exit 1 }",
+    ], options);
+    assert.equal(decrypted.status, 0, decrypted.stderr);
+    const before = fs.readFileSync(credentialPath);
+    assert.equal(save({ ...settings, user: 'other@example.com' }).status, 1);
+    assert.deepEqual(fs.readFileSync(credentialPath), before);
+    assert.equal(save({ ...settings, password: '' }).status, 1);
+    assert.equal(save({ ...settings, password: 'updated-test-password' }).status, 0);
+    assert.notDeepEqual(fs.readFileSync(credentialPath), before);
+    assert.deepEqual(JSON.parse(fs.readFileSync(configPath, 'utf8').replace(/^\uFEFF/, '')), config);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

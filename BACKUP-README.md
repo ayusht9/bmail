@@ -19,9 +19,11 @@ npm install
 npm run tauri:dev
 ```
 
-The dashboard expects to run from this project directory because the backup
-configuration, encrypted credential, messages, and logs remain here. Run
-`Setup-Backup.cmd` once before using **Back up now** in the app.
+The desktop app keeps configuration, encrypted credentials, messages, and logs
+in your Windows profile. Use **Set up mailbox** in the app before **Back up now**.
+For install scope, building the installer, and migrating source-folder backups,
+see [Windows installation](WINDOWS.md). The standalone scripts below continue to
+use this project directory by default.
 
 ## Activate
 
