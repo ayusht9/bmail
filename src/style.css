@@ -9,6 +9,10 @@ dialog p { font-size: 13px; line-height: 1.6; }
 dialog label { display: block; margin: 16px 0 6px; font-size: 13px; font-weight: 650; }
 dialog input { width: 100%; padding: 11px 12px; border: 1px solid #9eb7ae; border-radius: 8px; background: white; color: #183238; font: inherit; }
 dialog input:focus-visible { outline: 3px solid #66b9a1; outline-offset: 2px; }
+dialog select { width: 100%; padding: 11px 12px; border: 1px solid #9eb7ae; border-radius: 8px; color: #183238; background: white; font: inherit; }
+dialog select:focus-visible { outline: 3px solid #66b9a1; outline-offset: 2px; }
+dialog input[readonly] { background: #eef3f1; }
+#provider-help { color: #44645c; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
 #setup-error { color: #8e3d31; }
 .notice .ghost { margin: 10px 0 0; display: block; }

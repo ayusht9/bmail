@@ -5,6 +5,16 @@ const app = document.querySelector('#app');
 let dashboard;
 let busy = false;
 
+const providerForHost = host => host?.toLowerCase() === 'imap.gmail.com' ? 'google' : host?.toLowerCase() === 'imappro.zoho.in' ? 'zoho' : 'other';
+
+function updateProviderHelp() {
+  const google = document.querySelector('#mail-provider').value === 'google';
+  document.querySelector('#provider-help').textContent = google
+    ? 'Turn on Google 2-Step Verification, then create an app password. Use that 16-character password here. Some work or school accounts do not allow app passwords.'
+    : 'Use the application-specific password supplied by your email provider.';
+  document.querySelector('[data-action="google-help"]').hidden = !google;
+}
+
 const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
 }[char]));
@@ -30,7 +40,7 @@ function render() {
 
   app.innerHTML = `
     <header>
-      <div class="brand"><span class="brand-mark">M</span><div><strong>Mail Vault</strong><small>Local Zoho backup</small></div></div>
+      <div class="brand"><span class="brand-mark">M</span><div><strong>Mail Vault</strong><small>Local email backup</small></div></div>
       <button class="ghost" data-action="refresh" ${busy ? 'disabled' : ''}>Refresh</button>
     </header>
     <main>
@@ -80,12 +90,20 @@ function render() {
       <form id="mailbox-form">
         <h2 id="setup-title">${dashboard.credentialReady ? 'Update app password' : 'Set up your mailbox'}</h2>
         <p id="setup-description">Use your IMAP server and application-specific password. Your password is encrypted for this Windows user.</p>
+        <label for="mail-provider">Email provider</label>
+        <select id="mail-provider" ${dashboard.user.includes('@') ? 'disabled' : ''}>
+          <option value="google" ${providerForHost(dashboard.host) === 'google' ? 'selected' : ''}>Google / Gmail</option>
+          <option value="zoho" ${providerForHost(dashboard.host) === 'zoho' ? 'selected' : ''}>Zoho India</option>
+          <option value="other" ${providerForHost(dashboard.host) === 'other' ? 'selected' : ''}>Other IMAP server</option>
+        </select>
         <label for="mail-user">Email address</label>
-        <input id="mail-user" name="user" type="email" autocomplete="username" value="${dashboard.user.includes('@') ? escapeHtml(dashboard.user) : ''}" required>
+        <input id="mail-user" name="user" type="email" autocomplete="username" value="${dashboard.user.includes('@') ? escapeHtml(dashboard.user) : ''}" ${dashboard.user.includes('@') ? 'readonly' : ''} required>
         <label for="mail-host">IMAP server</label>
-        <input id="mail-host" name="host" type="text" value="${escapeHtml(dashboard.host)}" pattern="[a-zA-Z0-9.\\-]+" required>
+        <input id="mail-host" name="host" type="text" value="${escapeHtml(dashboard.host)}" pattern="[a-zA-Z0-9.\\-]+" ${dashboard.user.includes('@') ? 'readonly' : ''} required>
         <label for="mail-port">TLS port</label>
-        <input id="mail-port" name="port" type="number" min="1" max="65535" value="${dashboard.port}" required>
+        <input id="mail-port" name="port" type="number" min="1" max="65535" value="${dashboard.port}" ${dashboard.user.includes('@') ? 'readonly' : ''} required>
+        <p id="provider-help"></p>
+        <button type="button" class="text-button" data-action="google-help" hidden>How to create a Google app password</button>
         <label for="mail-password">Application-specific password</label>
         <input id="mail-password" name="password" type="password" autocomplete="new-password" required>
         <p id="setup-error" role="alert"></p>
@@ -93,6 +111,7 @@ function render() {
       </form>
     </dialog>
   `;
+  updateProviderHelp();
 }
 
 function toast(message, isError = false) {
@@ -134,6 +153,7 @@ app.addEventListener('click', event => {
   if (!button || button.disabled) return;
   const action = button.dataset.action;
   if (action === 'setup') document.querySelector('#mailbox-dialog').showModal();
+  else if (action === 'google-help') invoke('open_google_help').catch(error => toast(String(error), true));
   else if (action === 'cancel-setup') {
     document.querySelector('#mail-password').value = '';
     document.querySelector('#mailbox-dialog').close();
@@ -141,6 +161,18 @@ app.addEventListener('click', event => {
   else if (action === 'refresh') refresh();
   else if (action.startsWith('open-')) invoke('open_directory', { kind: action.slice(5) }).catch(error => toast(String(error), true));
   else run(action);
+});
+
+app.addEventListener('change', event => {
+  if (event.target.id === 'mail-provider') {
+    const provider = event.target.value;
+    document.querySelector('#mail-host').value = provider === 'google' ? 'imap.gmail.com' : provider === 'zoho' ? 'imappro.zoho.in' : '';
+    document.querySelector('#mail-port').value = '993';
+    updateProviderHelp();
+  } else if (event.target.id === 'mail-host') {
+    document.querySelector('#mail-provider').value = providerForHost(event.target.value.trim());
+    updateProviderHelp();
+  }
 });
 
 app.addEventListener('cancel', event => {
@@ -163,7 +195,8 @@ app.addEventListener('submit', async event => {
   const dialog = document.querySelector('#mailbox-dialog');
   const preventCancel = event => event.preventDefault();
   dialog.addEventListener('cancel', preventCancel);
-  form.querySelectorAll('button, input').forEach(element => element.disabled = true);
+  const enabledControls = [...form.querySelectorAll('button, input, select')].filter(element => !element.disabled);
+  enabledControls.forEach(element => element.disabled = true);
   form.querySelector('[type="submit"]').textContent = 'Saving...';
   document.querySelector('#setup-error').textContent = '';
   try {
@@ -178,7 +211,7 @@ app.addEventListener('submit', async event => {
     settings.password = '';
     values.delete('password');
     form.querySelector('[name="password"]').value = '';
-    form.querySelectorAll('button, input').forEach(element => element.disabled = false);
+    enabledControls.forEach(element => element.disabled = false);
     form.querySelector('[type="submit"]').textContent = 'Save mailbox';
     dialog.removeEventListener('cancel', preventCancel);
     busy = false;

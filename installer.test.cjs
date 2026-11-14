@@ -29,6 +29,28 @@ test('installed engine verifies user data when launched from a different directo
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test('Gmail setup saves the IMAP preset and normalizes a grouped Google app password', { skip: process.platform !== 'win32' }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-vault-gmail-'));
+  const env = { ...process.env, MAIL_VAULT_DATA_DIR: root };
+  try {
+    const saved = spawnSync('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('Save-Mailbox.ps1'),
+    ], { env, encoding: 'utf8', windowsHide: true, input: JSON.stringify({
+      user: 'fixture@gmail.com', host: 'imap.gmail.com', port: 993, password: 'abcd efgh ijkl mnop',
+    }) });
+    assert.equal(saved.status, 0, saved.stderr);
+    const config = JSON.parse(fs.readFileSync(path.join(root, 'backup-config.json'), 'utf8').replace(/^\uFEFF/, ''));
+    assert.equal(config.host, 'imap.gmail.com');
+    assert.equal(config.port, 993);
+    assert.equal(config.user, 'fixture@gmail.com');
+    assert.ok(!JSON.stringify(config).includes('password'));
+    const checked = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      "$c = Import-Clixml -LiteralPath (Join-Path $env:MAIL_VAULT_DATA_DIR '.private/zoho-credential.xml'); if ($c.UserName -ne 'fixture@gmail.com' -or $c.GetNetworkCredential().Password -cne 'abcdefghijklmnop') { exit 1 }",
+    ], { env, encoding: 'utf8', windowsHide: true });
+    assert.equal(checked.status, 0, checked.stderr);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('mailbox setup encrypts the password and rejects mailbox identity changes', { skip: process.platform !== 'win32' }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-vault-setup-'));
   const secret = 'test-only-app-password-9381';

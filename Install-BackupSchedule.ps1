@@ -17,6 +17,9 @@ $action = New-ScheduledTaskAction -Execute $powershellPath -Argument $arguments 
 $weekly = New-ScheduledTaskTrigger -Weekly -WeeksInterval 1 -DaysOfWeek Monday -At '11:00'
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Days 2)
 $principal = New-ScheduledTaskPrincipal -UserId $identity.Name -LogonType Interactive -RunLevel Limited
-$taskName = 'Zoho Mail Backup - ' + $identity.User.Value + ' - ' + $config.user
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $weekly -Settings $settings -Principal $principal -Description 'Weekly read-only incremental Zoho email backup, retaining local copies after server deletion.' -Force | Out-Null
+$taskName = 'Mail Vault Backup - ' + $identity.User.Value + ' - ' + $config.user
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $weekly -Settings $settings -Principal $principal -Description 'Weekly read-only incremental email backup, retaining local copies after server deletion.' -Force | Out-Null
+# Retire only this user's exact legacy task after its replacement is registered.
+$legacyName = 'Zoho Mail Backup - ' + $identity.User.Value + ' - ' + $config.user
+Get-ScheduledTask | Where-Object { $_.TaskName -eq $legacyName -and $_.TaskPath -eq '\' } | Unregister-ScheduledTask -Confirm:$false
 Write-Host 'Scheduled weekly on Monday at 11:00 Windows local time, while signed in and the computer is on.'
