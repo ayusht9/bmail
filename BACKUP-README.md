@@ -8,7 +8,7 @@ Account: ayushkumar@integramicro.co.in. Server: imappro.zoho.in:993 over verifie
 
 ## Desktop dashboard
 
-The optional **Mail Vault** Tauri app shows the latest backup result, folder
+The optional **Bmail** Tauri app shows the latest backup result, folder
 coverage, saved-message count and recent log output. It can start a backup,
 verify local files, install or update the weekly schedule, and open the backup
 or log folders. It calls the same read-only scripts documented below and never
@@ -76,7 +76,7 @@ Backups alone do not free mailbox storage. After a successful full backup, compa
 To stop scheduling:
 
 ```powershell
-$taskName = 'Mail Vault Backup - ' + [Security.Principal.WindowsIdentity]::GetCurrent().User.Value + ' - ayushkumar@integramicro.co.in'
+$taskName = 'Bmail Backup - ' + [Security.Principal.WindowsIdentity]::GetCurrent().User.Value + ' - ayushkumar@integramicro.co.in'
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
 ```
 

@@ -5,13 +5,13 @@ const path = require('node:path');
 const os = require('node:os');
 const assert = require('node:assert/strict');
 (async () => {
-  const profile = path.join(process.env.LOCALAPPDATA, 'in.co.integramicro.mail-vault.setup-smoke');
+  const profile = path.join(process.env.LOCALAPPDATA, 'Bmail Setup Smoke');
   assert.ok(!fs.existsSync(profile), 'Isolated test profile already exists; refusing to overwrite it.');
   const webProfile = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-vault-ipc-web-'));
   let child;
   let browser;
   try {
-    child = spawn(path.resolve('src-tauri/target/release/mail-vault.exe'), [], {
+    child = spawn(path.resolve('src-tauri/target/release/bmail.exe'), [], {
       cwd: webProfile, windowsHide: true, stdio: 'ignore', env: { ...process.env,
         WEBVIEW2_USER_DATA_FOLDER: path.join(webProfile, 'webview'),
         WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=9338',
@@ -49,9 +49,10 @@ const assert = require('node:assert/strict');
     assert.equal(dashboard.user, 'fixture@gmail.com');
     assert.equal(dashboard.credentialReady, true);
     assert.equal(dashboard.port, 993);
-    assert.ok(fs.existsSync(path.join(profile, '.private/zoho-credential.xml')));
+    const accountRoot = path.join(profile, 'accounts/fixture@gmail.com');
+    assert.ok(fs.existsSync(path.join(accountRoot, '.private/zoho-credential.xml')));
     console.log('Actual app form -> Rust IPC -> windowless PowerShell -> DPAPI -> refreshed dashboard passed with grouped Gmail app password.');
-    const backupRoot = path.join(profile, 'backups');
+    const backupRoot = path.join(accountRoot, 'backups');
     fs.mkdirSync(backupRoot, { recursive: true });
     fs.writeFileSync(path.join(backupRoot, 'mailboxes.json'), JSON.stringify({ folders: ['INBOX', 'Sent'], updatedAt: new Date().toISOString() }));
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
@@ -64,7 +65,7 @@ const assert = require('node:assert/strict');
     await page.getByLabel('Maximum new emails per run', { exact: true }).fill('25');
     await page.getByRole('button', { name: 'Save selection', exact: true }).click();
     await page.locator('#selection-dialog').waitFor({ state: 'hidden' });
-    const selected = JSON.parse(fs.readFileSync(path.join(profile, 'backup-config.json'), 'utf8').replace(/^\uFEFF/, '')).backupOptions;
+    const selected = JSON.parse(fs.readFileSync(path.join(accountRoot, 'backup-config.json'), 'utf8').replace(/^\uFEFF/, '')).backupOptions;
     assert.deepEqual(selected, { folders: ['INBOX'], dateFrom: '2026-01-01', dateTo: '2026-11-15', maxMessages: 25 });
     const progress = { runId: 'isolated-progress-test', pid: process.pid, state: 'running', phase: 'downloading',
       startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), totalMessages: 100, processedMessages: 20,
@@ -81,6 +82,7 @@ const assert = require('node:assert/strict');
     publish('running', 'downloading');
     await page.getByRole('button', { name: 'Pause', exact: true }).waitFor();
     assert.equal(await page.getByRole('progressbar', { name: 'Backup progress' }).getAttribute('value'), '20');
+    await page.screenshot({ path: '.tools/bmail-progress.png', fullPage: true });
     const duplicate = await page.evaluate(async () => {
       try { await window.__TAURI_INTERNALS__.invoke('start_backup'); } catch (error) { return String(error); }
     });
@@ -109,11 +111,33 @@ const assert = require('node:assert/strict');
     await page.getByRole('heading', { name: 'Backup cancelled', level: 1 }).waitFor();
     assert.equal(await page.getByRole('button', { name: 'Back up now', exact: true }).isEnabled(), true);
     console.log('Native scope save, automatic progress, duplicate-run protection, pause, resume, stop, and cancel controls passed without connecting to a real mailbox.');
+    fs.writeFileSync(path.join(backupRoot, 'manifest.json'), JSON.stringify({ user: 'fixture@gmail.com', host: 'imap.gmail.com', version: 1,
+      folders: { inbox: { name: 'INBOX', messages: { 1: { file: 'preserved.eml', bytes: 4 } } } } }));
+    fs.writeFileSync(path.join(backupRoot, 'preserved.eml'), 'mail');
+    await page.getByRole('button', { name: 'Add account', exact: true }).click();
+    assert.equal(await page.getByLabel('Email address', { exact: true }).inputValue(), '');
+    await page.getByLabel('Email address', { exact: true }).fill('second@example.com');
+    await page.getByLabel('Application-specific password', { exact: true }).fill('abcd efgh ijkl mnop');
+    await page.getByRole('button', { name: 'Save mailbox', exact: true }).click();
+    await page.locator('#mailbox-dialog').waitFor({ state: 'hidden' });
+    assert.ok(fs.existsSync(path.join(profile, 'accounts/second@example.com/.private/zoho-credential.xml')));
+    let active = await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('get_dashboard'));
+    assert.equal(active.user, 'second@example.com');
+    assert.equal(active.totalMessages, 0);
+    assert.deepEqual(active.accounts, ['fixture@gmail.com', 'second@example.com']);
+    await page.getByLabel('Mailbox account', { exact: true }).selectOption('fixture@gmail.com');
+    await page.waitForFunction(() => document.querySelector('.hero .eyebrow')?.textContent === 'fixture@gmail.com');
+    active = await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('get_dashboard'));
+    assert.equal(active.user, 'fixture@gmail.com');
+    assert.equal(active.totalMessages, 1);
+    assert.deepEqual(active.backupOptions, selected);
+    assert.equal(fs.readFileSync(path.join(backupRoot, 'preserved.eml'), 'utf8'), 'mail');
+    console.log('Separate account folders, credentials, selections and saved-message counts passed through the native account selector.');
   } finally {
     if (browser) await browser.close();
     if (child && child.exitCode === null) { const stopped = new Promise(resolve => child.once('exit', resolve)); child.kill(); await stopped; }
     // Only the dedicated, known test identifier is removed; real app data is untouched.
-    assert.equal(path.basename(profile), 'in.co.integramicro.mail-vault.setup-smoke');
+    assert.equal(path.basename(profile), 'Bmail Setup Smoke');
     await fs.promises.rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     await fs.promises.rm(webProfile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }

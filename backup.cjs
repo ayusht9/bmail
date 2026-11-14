@@ -370,7 +370,7 @@ async function backupWithRetries(makeClient, root, config, log = console.log, wa
           return status;
         }
         const state = requested === 'pause' ? 'paused' : 'retrying';
-        atomicWrite(path.join(root, 'progress.json'), JSON.stringify({ ...snapshot, state, phase: state, etaSeconds: null, updatedAt: new Date().toISOString() }));
+        atomicWrite(path.join(root, 'progress.json'), JSON.stringify({ ...snapshot, state, phase: state, bytesPerSecond: 0, etaSeconds: null, updatedAt: new Date().toISOString() }));
         const slice = Math.min(250, remaining);
         await wait(slice);
         if (requested === 'pause') context.pausedMs = (context.pausedMs || 0) + slice;

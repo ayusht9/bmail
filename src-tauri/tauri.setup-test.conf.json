@@ -1,3 +1,4 @@
 {
-  "identifier": "in.co.integramicro.mail-vault.setup-smoke"
+  "identifier": "com.bmail.desktop.setup-smoke",
+  "app": { "appDirectoriesOverride": "$LOCALDATA/Bmail Setup Smoke" }
 }

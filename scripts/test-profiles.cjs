@@ -1,0 +1,11 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+fs.mkdirSync('.tools', { recursive: true });
+const executable = path.resolve('.tools/profile-tests.exe');
+const compiled = spawnSync('rustc', ['--test', 'src-tauri/src/profile.rs', '-o', executable], { stdio: 'inherit', windowsHide: true });
+if (compiled.error) throw compiled.error;
+if (compiled.status !== 0) process.exit(compiled.status || 1);
+const result = spawnSync(executable, [], { stdio: 'inherit', windowsHide: true });
+if (result.error) throw result.error;
+process.exit(result.status || 0);

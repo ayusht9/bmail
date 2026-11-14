@@ -32,6 +32,15 @@ dialog input[readonly] { background: #eef3f1; }
 #selection-error { color: #8e3d31; }
 .progress-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
 .danger-button { padding: 10px 15px; border: 1px solid #b36c5a; border-radius: 9px; color: #833d2e; background: #fff4ef; font-weight: 650; }
+.account-switcher { display: flex; align-items: flex-end; gap: 16px; margin-bottom: 20px; }
+.account-switcher label { display: block; margin-bottom: 7px; color: #44645c; font-size: 12px; }
+.account-switcher select { min-width: 280px; max-width: 65vw; padding: 10px 12px; border-radius: 8px; border: 1px solid #a5bcb3; color: #183238; background: white; font: inherit; }
+.account-switcher select:focus-visible { outline: 3px solid #66b9a1; outline-offset: 2px; }
+.data-location { margin: 0 4px 12px; font-size: 12px; color: #44645c; overflow-wrap: anywhere; }
+.hero.compact-hero { padding: 20px 24px; }
+.hero.compact-hero h1 { font-size: 28px; }
+.hero.compact-hero .status-icon { width: 40px; height: 40px; font-size: 21px; }
+.run-progress .progress-actions { margin-top: 0; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
 #setup-error { color: #8e3d31; }
 .notice .ghost { margin: 10px 0 0; display: block; }
