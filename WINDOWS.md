@@ -28,6 +28,12 @@ runtime files. Review dependency and Node licenses before distributing releases.
 
 ## Data and installation scope
 
+Open Mail Vault and choose **Set up mailbox**. Enter your email address, IMAP
+server, TLS port (usually 993), and application-specific password. Saving does
+not connect to your mailbox: choose **Back up now** to start, and **Install
+schedule** when ready. Use **Update app password** to replace a saved password.
+An existing profile keeps its mailbox identity to protect earlier backups.
+
 In either install mode, each signed-in Windows user gets a separate directory:
 
 ```text

@@ -14,6 +14,7 @@ fs.mkdirSync(output, { recursive: true });
 for (const file of [
   'backup.cjs', 'Run-Backup.ps1', 'Invoke-BackupProcess.ps1', 'Backup-Paths.ps1',
   'Install-BackupSchedule.ps1', 'Setup-Backup.ps1', 'Protect-CredentialDirectory.ps1',
+  'Save-Mailbox.ps1',
   'backup-config.example.json', 'package.json', 'package-lock.json',
 ]) fs.copyFileSync(path.join(root, file), path.join(output, file));
 fs.copyFileSync(process.execPath, path.join(output, 'node.exe'));
