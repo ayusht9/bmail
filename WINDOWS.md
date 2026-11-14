@@ -46,6 +46,12 @@ Spaces in Google's grouped app password are removed before saving. Your normal
 Google password will not work here. The help button opens Google's instructions
 in your default browser.
 
+Gmail's TLS port is fixed to `993`. An older profile saved with a different port
+can be repaired by opening **Update app password** and saving again. Existing
+mailbox identity and backup files are preserved. Setup failures now distinguish
+configuration, folder-access, encryption, and password errors without exposing
+the password or the raw PowerShell error.
+
 This integration uses IMAP app passwords, not Google OAuth. Google may disable
 app passwords for managed accounts, Advanced Protection, or some security-key
 configurations. See [Google app passwords](https://support.google.com/accounts/answer/185833)
@@ -83,7 +89,21 @@ schedule. Standalone scripts still default to storing data next to the scripts.
 
 ## Release verification
 
-Local checks on 2026-11-14: all five automated tests passed; the frontend and
+For changes to mailbox setup or Windows process invocation, run:
+
+```powershell
+npm.cmd run test:desktop:setup
+npm.cmd run tauri:build
+```
+
+The first command builds a separate test app identifier and exercises the actual
+native dialog, Rust IPC, windowless PowerShell, and DPAPI using a dummy grouped
+Gmail app password. Its temporary data and browser profile are isolated from your
+real mailbox and removed afterwards. It requires WebView2 and uses Playwright Core
+through the local debugging endpoint; no separate browser download is needed.
+Rebuild the normal installer afterwards to restore the production app identifier.
+
+Local checks on 2026-11-15: all six automated tests passed; the frontend and
 Windows x64 Tauri/NSIS installer built successfully. The app extracted from the
 installer launched outside the repository, served its dashboard through Rust
 IPC, resolved engine resources, and opened mailbox setup. The extracted bundled
@@ -93,6 +113,11 @@ clearing, cancel, and backup feedback.
 The current-user setup executable's embedded manifest was checked for
 `asInvoker`, confirming it does not request administrator elevation. Packaged
 Gmail setup also saved an encrypted test profile using only bundled scripts.
+Version 0.1.1 fixes a native-only setup failure: Tauri's verbatim Windows resource
+path (`\\?\C:\...`) reached PowerShell's provider-based path operations, which
+rejected it before the password was read. Windows paths are now simplified before
+being passed to PowerShell. The full native setup test confirms a grouped app
+password can be saved from the actual form and appears ready on the dashboard.
 Actual installation, upgrade, and uninstall as a standard Windows user still
 require the clean-VM checks below before a public release.
 

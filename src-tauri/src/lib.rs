@@ -35,7 +35,9 @@ struct Dashboard {
 fn data_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let root = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&root).map_err(|e| format!("Could not create app data directory: {e}"))?;
-    Ok(root)
+    // Windows resource paths may use the verbatim \\?\ prefix, which PowerShell
+    // providers reject even though Rust and Win32 can open those same files.
+    Ok(dunce::simplified(&root).to_path_buf())
 }
 
 fn engine_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -47,7 +49,7 @@ fn engine_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     if !root.join("node.exe").is_file() || !root.join("backup.cjs").is_file() {
         return Err("Bundled backup runtime is missing. Rebuild or reinstall Mail Vault.".into());
     }
-    Ok(root)
+    Ok(dunce::simplified(&root).to_path_buf())
 }
 
 fn read_json(path: &Path) -> Option<Value> {
@@ -89,7 +91,7 @@ fn get_dashboard(app: tauri::AppHandle) -> Result<Dashboard, String> {
     Ok(Dashboard {
         host: config.get("host").and_then(Value::as_str).unwrap_or("imap.gmail.com").to_owned(),
         port: config.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).unwrap_or(993),
-        credential_ready: root.join(".private/zoho-credential.xml").is_file(),
+        credential_ready: config.get("user").and_then(Value::as_str).is_some() && root.join(".private/zoho-credential.xml").is_file(),
         schedule_installed: schedule_exists(&user),
         has_manifest: manifest.is_some(), total_messages,
         folder_count: folders.map_or(0, |value| value.len()),
@@ -123,7 +125,23 @@ async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings) -> 
             .write_all(&payload);
         let output = child.wait_with_output().map_err(|_| "Mailbox setup was interrupted".to_owned())?;
         if !output.status.success() || write_result.is_err() {
-            return Err("Mailbox setup failed. Check your email, server and port. Existing profiles must keep the same mailbox settings.".into());
+            let status = serde_json::from_slice::<Value>(&output.stdout).unwrap_or(Value::Null);
+            let message = match status.get("errorCode").and_then(Value::as_str).unwrap_or("") {
+                "INVALID_EMAIL" => "Enter your complete email address.",
+                "INVALID_HOST" => "Enter a valid IMAP server hostname.",
+                "INVALID_PORT" => "Enter a TLS port between 1 and 65535.",
+                "GMAIL_REQUIRES_993" => "Gmail requires TLS port 993. Port 25 cannot receive Gmail backups.",
+                "PASSWORD_REQUIRED" => "Enter your application-specific password. Spaces between Google app-password groups are accepted.",
+                "MAILBOX_IDENTITY_MISMATCH" => "This profile already belongs to another mailbox. Keep its saved email and server to update the password.",
+                "DATA_DIRECTORY_UNAVAILABLE" => "Windows could not write to your Mail Vault data folder. Check its permissions and try again.",
+                "CREDENTIAL_DIRECTORY_UNAVAILABLE" => "Windows could not secure your credential folder. Check its permissions and try again.",
+                "PASSWORD_ENCRYPTION_FAILED" => "Windows could not encrypt the app password for your account. Try again while signed in as the account that installed Mail Vault.",
+                "CREDENTIAL_SAVE_FAILED" => "Windows could not save your encrypted app password. Check folder permissions and available disk space.",
+                "CONFIG_UNREADABLE" => "Your saved mailbox configuration could not be read. Keep your backups and repair the configuration before trying again.",
+                "CONFIG_SAVE_FAILED" => "Windows could not save your mailbox settings. Check folder permissions and available disk space.",
+                _ => "Secure mailbox setup could not run. Reinstall the latest Mail Vault build and check that Windows permits PowerShell to run.",
+            };
+            return Err(message.into());
         }
         Ok("Mailbox saved. You can start your first backup.".into())
     }).await.map_err(|_| "Mailbox setup was interrupted".to_owned())?
