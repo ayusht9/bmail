@@ -13,6 +13,9 @@ function updateProviderHelp() {
     ? 'Turn on Google 2-Step Verification, then create an app password. Use that 16-character password here. Some work or school accounts do not allow app passwords.'
     : 'Use the application-specific password supplied by your email provider.';
   document.querySelector('[data-action="google-help"]').hidden = !google;
+  const port = document.querySelector('#mail-port');
+  port.readOnly = google;
+  if (google) port.value = '993';
 }
 
 const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, char => ({
@@ -105,7 +108,7 @@ function render() {
         <p id="provider-help"></p>
         <button type="button" class="text-button" data-action="google-help" hidden>How to create a Google app password</button>
         <label for="mail-password">Application-specific password</label>
-        <input id="mail-password" name="password" type="password" autocomplete="new-password" required>
+        <input id="mail-password" name="password" type="password" autocomplete="new-password" aria-describedby="provider-help" required>
         <p id="setup-error" role="alert"></p>
         <div class="dialog-actions"><button type="button" class="ghost" data-action="cancel-setup">Cancel</button><button class="primary" type="submit">Save mailbox</button></div>
       </form>
@@ -207,6 +210,7 @@ app.addEventListener('submit', async event => {
     toast(result);
   } catch (error) {
     document.querySelector('#setup-error').textContent = String(error);
+    document.querySelector('#setup-error').scrollIntoView({ block: 'nearest' });
   } finally {
     settings.password = '';
     values.delete('password');

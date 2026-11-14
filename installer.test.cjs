@@ -83,3 +83,37 @@ test('mailbox setup encrypts the password and rejects mailbox identity changes',
     assert.deepEqual(JSON.parse(fs.readFileSync(configPath, 'utf8').replace(/^\uFEFF/, '')), config);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('Gmail rejects SMTP port 25 and repairs a saved wrong port without changing backups', { skip: process.platform !== 'win32' }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-vault-gmail-repair-'));
+  const secret = 'abcd efgh ijkl mnop';
+  const settings = { user: 'fixture@gmail.com', host: 'imap.gmail.com', port: 993, password: secret };
+  const save = request => spawnSync('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('Save-Mailbox.ps1'),
+  ], { env: { ...process.env, MAIL_VAULT_DATA_DIR: root }, encoding: 'utf8', windowsHide: true, input: JSON.stringify(request) });
+  try {
+    const wrong = save({ ...settings, port: 25 });
+    assert.equal(wrong.status, 1);
+    assert.equal(JSON.parse(wrong.stdout).errorCode, 'GMAIL_REQUIRES_993');
+    assert.equal(fs.existsSync(path.join(root, '.private')), false);
+    assert.equal(fs.existsSync(path.join(root, 'backup-config.json')), false);
+    fs.mkdirSync(path.join(root, 'my-mail'));
+    fs.writeFileSync(path.join(root, 'my-mail/preserved.eml'), 'Existing backup');
+    fs.writeFileSync(path.join(root, 'backup-config.json'), JSON.stringify({
+      user: settings.user, host: settings.host, port: 25, backupDirectory: 'my-mail',
+    }));
+    const repaired = save(settings);
+    assert.equal(repaired.status, 0, repaired.stderr || repaired.stdout);
+    const config = JSON.parse(fs.readFileSync(path.join(root, 'backup-config.json'), 'utf8').replace(/^\uFEFF/, ''));
+    assert.equal(config.port, 993);
+    assert.equal(config.backupDirectory, 'my-mail');
+    assert.equal(fs.readFileSync(path.join(root, 'my-mail/preserved.eml'), 'utf8'), 'Existing backup');
+    assert.ok(!repaired.stdout.includes(secret));
+    fs.writeFileSync(path.join(root, 'backup-config.json'), '{bad config');
+    const corrupt = save(settings);
+    assert.equal(corrupt.status, 1);
+    assert.equal(JSON.parse(corrupt.stdout).errorCode, 'CONFIG_UNREADABLE');
+    assert.ok(!corrupt.stdout.includes(secret));
+    assert.ok(!corrupt.stderr.includes(secret));
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
