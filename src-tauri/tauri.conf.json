@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "in.co.integramicro.mail-vault",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run prepare:runtime && npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run prepare:runtime && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -23,6 +23,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "resources": { "resources/engine/": "engine/" },
     "shortDescription": "Local read-only email backup dashboard",
     "windows": {
       "nsis": { "installMode": "both", "languages": ["English"] },

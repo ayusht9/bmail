@@ -8,6 +8,8 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "prepare:runtime": "node scripts/prepare-runtime.cjs",
+    "test": "node --test backup.test.cjs installer.test.cjs",
     "verify": "node backup.cjs --verify"
   },
   "dependencies": {

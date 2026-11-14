@@ -266,8 +266,9 @@ async function backupWithRetries(makeClient, root, config, log = console.log, wa
 }
 
 async function main() {
-  const config = readJson(path.join(__dirname, 'backup-config.json'));
-  const root = path.resolve(__dirname, config.backupDirectory);
+  const dataDirectory = process.env.MAIL_VAULT_DATA_DIR || __dirname;
+  const config = readJson(path.join(dataDirectory, 'backup-config.json'));
+  const root = path.resolve(dataDirectory, config.backupDirectory);
   if (process.argv.includes('--verify') || process.argv.includes('--organize')) {
     fs.mkdirSync(root, { recursive: true });
     const release = acquireLock(root);
