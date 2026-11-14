@@ -6,6 +6,8 @@ $ErrorActionPreference = 'Stop'
 try {
     # Read secrets only from stdin, never from process arguments or log files.
     $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
+    # Google's app-password screen groups characters with spaces for readability.
+    if ($request.host -ieq 'imap.gmail.com') { $request.password = $request.password -replace '\s', '' }
     if ($request.user -notmatch '^[^\s@]+@[^\s@]+$') { throw 'Enter a valid email address.' }
     if ($request.host -notmatch '^[a-zA-Z0-9.-]+$') { throw 'Enter an IMAP server hostname.' }
     if ([int]$request.port -lt 1 -or [int]$request.port -gt 65535) { throw 'Enter a valid IMAP port.' }

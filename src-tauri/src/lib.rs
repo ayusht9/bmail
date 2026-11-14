@@ -70,8 +70,10 @@ fn schedule_exists(user: &str) -> bool {
         .and_then(|output| String::from_utf8(output.stdout).ok())
         .and_then(|text| text.trim().split(',').next_back().map(|v| v.trim_matches('"').to_owned()));
     let Some(sid) = sid else { return false; };
-    hidden_command("schtasks.exe").args(["/Query", "/TN", &format!("Zoho Mail Backup - {sid} - {user}")])
-        .output().is_ok_and(|output| output.status.success())
+    ["Mail Vault Backup", "Zoho Mail Backup"].iter().any(|prefix| {
+        hidden_command("schtasks.exe").args(["/Query", "/TN", &format!("{prefix} - {sid} - {user}")])
+            .output().is_ok_and(|output| output.status.success())
+    })
 }
 
 #[tauri::command]
@@ -85,7 +87,7 @@ fn get_dashboard(app: tauri::AppHandle) -> Result<Dashboard, String> {
     let folders = manifest.as_ref().and_then(|m| m.get("folders")).and_then(Value::as_object);
     let total_messages = folders.map(|items| items.values().filter_map(|folder| folder.get("messages")?.as_object()).map(|m| m.len() as u64).sum()).unwrap_or(0);
     Ok(Dashboard {
-        host: config.get("host").and_then(Value::as_str).unwrap_or("imappro.zoho.in").to_owned(),
+        host: config.get("host").and_then(Value::as_str).unwrap_or("imap.gmail.com").to_owned(),
         port: config.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).unwrap_or(993),
         credential_ready: root.join(".private/zoho-credential.xml").is_file(),
         schedule_installed: schedule_exists(&user),
@@ -154,6 +156,12 @@ async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, Str
 }
 
 #[tauri::command]
+fn open_google_help() -> Result<(), String> {
+    Command::new("explorer.exe").arg("https://support.google.com/accounts/answer/185833")
+        .spawn().map(|_| ()).map_err(|e| format!("Could not open Google help: {e}"))
+}
+
+#[tauri::command]
 fn open_directory(app: tauri::AppHandle, kind: String) -> Result<(), String> {
     let root = data_root(&app)?;
     let config = read_json(&root.join("backup-config.json")).unwrap_or(Value::Null);
@@ -168,7 +176,7 @@ fn open_directory(app: tauri::AppHandle, kind: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, run_action, open_directory])
+        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, run_action, open_google_help, open_directory])
         .run(tauri::generate_context!())
         .expect("error while running Mail Vault");
 }

@@ -1,4 +1,8 @@
-# Zoho local email backup
+# Local email backup for Gmail and Zoho
+
+For Gmail, choose **Google / Gmail** in the desktop app. Use your Google app
+password with 2-Step Verification enabled. See [Gmail setup](WINDOWS.md#google--gmail).
+The standalone setup below describes the original Zoho configuration.
 
 Account: ayushkumar@integramicro.co.in. Server: imappro.zoho.in:993 over verified TLS.
 
@@ -72,7 +76,8 @@ Backups alone do not free mailbox storage. After a successful full backup, compa
 To stop scheduling:
 
 ```powershell
-Unregister-ScheduledTask -TaskName 'Zoho Mail Backup - ayushkumar@integramicro.co.in' -Confirm:$false
+$taskName = 'Mail Vault Backup - ' + [Security.Principal.WindowsIdentity]::GetCurrent().User.Value + ' - ayushkumar@integramicro.co.in'
+Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
 ```
 
 Source documentation: [Zoho IMAP settings](https://www.zoho.com/mail/help/imap-access.html), [Zoho application passwords](https://www.zoho.com/mail/help/adminconsole/two-factor-authentication.html).

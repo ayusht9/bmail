@@ -306,7 +306,7 @@ async function main() {
 }
 if (require.main === module) main().catch(error => {
   console.error('Backup failed. No server emails were deleted.');
-  console.error(error.authenticationFailed ? 'Authentication rejected: check your Zoho app password and IMAP policy.' : JSON.stringify(safeError(error)));
+  console.error(error.authenticationFailed ? 'Authentication rejected: check your email provider app password and IMAP access settings.' : JSON.stringify(safeError(error)));
   process.exitCode = 1;
 });
 module.exports = { backup, backupWithRetries, fetchCompleteMessage, verify, digest, readJson, messageLocation, organize };

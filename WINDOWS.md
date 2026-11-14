@@ -36,6 +36,24 @@ not connect to your mailbox: choose **Back up now** to start, and **Install
 schedule** when ready. Use **Update app password** to replace a saved password.
 An existing profile keeps its mailbox identity to protect earlier backups.
 
+### Google / Gmail
+
+Choose **Google / Gmail** in mailbox setup. Mail Vault fills in
+`imap.gmail.com` and TLS port `993`; this also works for Google Workspace email
+addresses when the account allows app passwords and IMAP access. Enable Google
+2-Step Verification and generate an app password, then paste it into Mail Vault.
+Spaces in Google's grouped app password are removed before saving. Your normal
+Google password will not work here. The help button opens Google's instructions
+in your default browser.
+
+This integration uses IMAP app passwords, not Google OAuth. Google may disable
+app passwords for managed accounts, Advanced Protection, or some security-key
+configurations. See [Google app passwords](https://support.google.com/accounts/answer/185833)
+and [Gmail IMAP settings](https://developers.google.com/workspace/gmail/imap/imap-smtp).
+Live Gmail authentication requires your own account and has not been tested with
+real credentials. Backup remains read-only; messages under multiple Gmail labels
+may be saved in more than one local folder.
+
 In either install mode, each signed-in Windows user gets a separate directory:
 
 ```text
@@ -65,12 +83,13 @@ schedule. Standalone scripts still default to storing data next to the scripts.
 
 ## Release verification
 
-Local checks on 2026-11-14: all four automated tests passed; the frontend and
+Local checks on 2026-11-14: all five automated tests passed; the frontend and
 Windows x64 Tauri/NSIS installer built successfully. The app extracted from the
 installer launched outside the repository, served its dashboard through Rust
 IPC, resolved engine resources, and opened mailbox setup. The extracted bundled
 Node runtime verified a fixture with Node removed from `PATH`. Browser checks
-covered setup errors, retry, save, password clearing, cancel, and backup feedback.
+covered Gmail presets, provider switching, setup errors, retry, save, password
+clearing, cancel, and backup feedback.
 Actual installation, upgrade, and uninstall across separate Windows users still
 require the clean-VM checks below before a public release.
 
