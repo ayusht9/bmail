@@ -1,10 +1,10 @@
 param([switch]$ResetCredential)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Protect-CredentialDirectory.ps1')
-$config = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'backup-config.json') -Raw | ConvertFrom-Json
-$nodePath = (Get-Command node -ErrorAction Stop).Source
+. (Join-Path $PSScriptRoot 'Backup-Paths.ps1')
+$config = Get-Content -LiteralPath (Join-Path $dataDirectory 'backup-config.json') -Raw | ConvertFrom-Json
 Write-Host ('Configuring read-only backups for ' + $config.user)
-$privateDirectory = Join-Path $PSScriptRoot '.private'
+$privateDirectory = Join-Path $dataDirectory '.private'
 New-Item -ItemType Directory -Path $privateDirectory -Force | Out-Null
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 Protect-CredentialDirectory -LiteralPath $privateDirectory
@@ -26,5 +26,5 @@ $powershellPath = Join-Path $PSHOME 'powershell.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Backup did not complete. No schedule was installed. See logs and backups\last-run.json for the error; completed downloads are retained.' }
 . (Join-Path $PSScriptRoot 'Install-BackupSchedule.ps1')
 Write-Host 'Ready: weekly on Monday at 11:00 Windows local time, while you are signed in and the computer is on.'
-Write-Host ('Local emails: ' + (Join-Path $PSScriptRoot $config.backupDirectory))
+Write-Host ('Local emails: ' + (Join-Path $dataDirectory $config.backupDirectory))
 Write-Host 'This backup never deletes server email and therefore does not automatically free Zoho storage.'

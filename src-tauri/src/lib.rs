@@ -1,6 +1,16 @@
 use serde::Serialize;
 use serde_json::Value;
 use std::{fs, path::{Path, PathBuf}, process::Command};
+use tauri::Manager;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+fn hidden_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    let mut command = Command::new(program);
+    #[cfg(windows)]
+    command.creation_flags(0x08000000);
+    command
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,11 +29,22 @@ struct Dashboard {
     latest_log: Option<LogSummary>,
 }
 
-fn project_root() -> Result<PathBuf, String> {
-    let manifest_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().map(Path::to_path_buf);
-    let current = std::env::current_dir().ok();
-    current.into_iter().chain(manifest_root).find(|path| path.join("backup.cjs").is_file())
-        .ok_or_else(|| "Could not locate backup.cjs. Keep Mail Vault in the email-backup folder.".into())
+fn data_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let root = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    fs::create_dir_all(&root).map_err(|e| format!("Could not create app data directory: {e}"))?;
+    Ok(root)
+}
+
+fn engine_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let root = if cfg!(debug_assertions) {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/engine")
+    } else {
+        app.path().resource_dir().map_err(|e| e.to_string())?.join("engine")
+    };
+    if !root.join("node.exe").is_file() || !root.join("backup.cjs").is_file() {
+        return Err("Bundled backup runtime is missing. Rebuild or reinstall Mail Vault.".into());
+    }
+    Ok(root)
 }
 
 fn read_json(path: &Path) -> Option<Value> {
@@ -41,15 +62,20 @@ fn latest_log(root: &Path) -> Option<LogSummary> {
 }
 
 fn schedule_exists(user: &str) -> bool {
-    Command::new("schtasks.exe").args(["/Query", "/TN", &format!("Zoho Mail Backup - {user}")])
+    // Match the per-user task name used by Install-BackupSchedule.ps1.
+    let sid = hidden_command("whoami.exe").args(["/user", "/fo", "csv", "/nh"]).output().ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .and_then(|text| text.trim().split(',').next_back().map(|v| v.trim_matches('"').to_owned()));
+    let Some(sid) = sid else { return false; };
+    hidden_command("schtasks.exe").args(["/Query", "/TN", &format!("Zoho Mail Backup - {sid} - {user}")])
         .output().is_ok_and(|output| output.status.success())
 }
 
 #[tauri::command]
-fn get_dashboard() -> Result<Dashboard, String> {
-    let root = project_root()?;
-    let config = read_json(&root.join("backup-config.json")).ok_or("backup-config.json is missing or invalid")?;
-    let user = config.get("user").and_then(Value::as_str).unwrap_or("Unknown account").to_owned();
+fn get_dashboard(app: tauri::AppHandle) -> Result<Dashboard, String> {
+    let root = data_root(&app)?;
+    let config = read_json(&root.join("backup-config.json")).unwrap_or(Value::Null);
+    let user = config.get("user").and_then(Value::as_str).unwrap_or("Set up your mailbox").to_owned();
     let backup_dir = config.get("backupDirectory").and_then(Value::as_str).unwrap_or("backups");
     let backup_root = root.join(backup_dir);
     let manifest = read_json(&backup_root.join("manifest.json"));
@@ -65,20 +91,22 @@ fn get_dashboard() -> Result<Dashboard, String> {
     })
 }
 
-fn powershell(root: &Path, script: &str) -> Result<std::process::Output, String> {
-    Command::new("powershell.exe").current_dir(root).args([
+fn powershell(engine: &Path, data: &Path, script: &str) -> Result<std::process::Output, String> {
+    hidden_command("powershell.exe").current_dir(data).env("MAIL_VAULT_DATA_DIR", data).args([
         "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"
-    ]).arg(root.join(script)).output().map_err(|e| format!("Could not start PowerShell: {e}"))
+    ]).arg(engine.join(script)).output().map_err(|e| format!("Could not start PowerShell: {e}"))
 }
 
 #[tauri::command]
-async fn run_action(action: String) -> Result<String, String> {
+async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let root = project_root()?;
+        let root = data_root(&app)?;
+        let engine = engine_root(&app)?;
         let (program, output) = match action.as_str() {
-            "backup" => ("Backup", powershell(&root, "Run-Backup.ps1")?),
-            "schedule" => ("Schedule", powershell(&root, "Install-BackupSchedule.ps1")?),
-            "verify" => ("Verification", Command::new("node").current_dir(&root).args(["backup.cjs", "--verify"])
+            "backup" => ("Backup", powershell(&engine, &root, "Run-Backup.ps1")?),
+            "schedule" => ("Schedule", powershell(&engine, &root, "Install-BackupSchedule.ps1")?),
+            "verify" => ("Verification", hidden_command(engine.join("node.exe")).current_dir(&root)
+                .env("MAIL_VAULT_DATA_DIR", &root).arg(engine.join("backup.cjs")).arg("--verify")
                 .output().map_err(|e| format!("Could not start Node.js: {e}"))?),
             _ => return Err("Unknown action".into()),
         };
@@ -90,9 +118,13 @@ async fn run_action(action: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn open_directory(kind: String) -> Result<(), String> {
-    let root = project_root()?;
-    let target = match kind.as_str() { "backups" => root.join("backups"), "logs" => root.join("logs"), _ => return Err("Unknown folder".into()) };
+fn open_directory(app: tauri::AppHandle, kind: String) -> Result<(), String> {
+    let root = data_root(&app)?;
+    let config = read_json(&root.join("backup-config.json")).unwrap_or(Value::Null);
+    let target = match kind.as_str() {
+        "backups" => root.join(config.get("backupDirectory").and_then(Value::as_str).unwrap_or("backups")),
+        "logs" => root.join("logs"), _ => return Err("Unknown folder".into())
+    };
     fs::create_dir_all(&target).map_err(|e| format!("Could not create folder: {e}"))?;
     Command::new("explorer.exe").arg(&target).spawn().map(|_| ()).map_err(|e| format!("Could not open folder: {e}"))
 }

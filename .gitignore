@@ -1,6 +1,7 @@
 node_modules/
 .npm-cache/
 .tools/
+.tools-rustup-init.exe
 .private/
 backups/
 logs/
@@ -19,3 +20,4 @@ backup-config.json
 SYSTEM-HANDOFF.md
 src-tauri/target/
 dist/
+src-tauri/resources/engine/
