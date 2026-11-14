@@ -22,8 +22,11 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "shortDescription": "Local read-only email backup dashboard",
-    "windows": { "wix": { "language": "en-US" } }
+    "windows": {
+      "nsis": { "installMode": "both", "languages": ["English"] },
+      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true }
+    }
   }
 }
