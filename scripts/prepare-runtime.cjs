@@ -12,7 +12,7 @@ const output = path.join(root, 'src-tauri/resources/engine');
 fs.mkdirSync(output, { recursive: true });
 // Explicit allowlist: never package credentials, backups, logs, or local config.
 for (const file of [
-  'backup.cjs', 'Run-Backup.ps1', 'Invoke-BackupProcess.ps1', 'Backup-Paths.ps1',
+  'backup.cjs', 'backup-progress.cjs', 'Run-Backup.ps1', 'Invoke-BackupProcess.ps1', 'Backup-Paths.ps1',
   'Install-BackupSchedule.ps1', 'Setup-Backup.ps1', 'Protect-CredentialDirectory.ps1',
   'Save-Mailbox.ps1',
   'backup-config.example.json', 'package.json', 'package-lock.json',

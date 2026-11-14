@@ -3,6 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const libmime = require('libmime');
 const { setTimeout: sleep } = require('node:timers/promises');
+const { createProgress } = require('./backup-progress.cjs');
 let redactions = [];
 
 function safeError(error) {
@@ -163,38 +164,64 @@ async function fetchCompleteMessage(client, uid, progress = () => {}, seed) {
   return message;
 }
 
-async function backup(client, root, config, log = console.log) {
+async function backup(client, root, config, log = console.log, context = {}) {
   fs.mkdirSync(root, { recursive: true });
   const release = acquireLock(root);
   const manifestPath = path.join(root, 'manifest.json');
   const statusPath = path.join(root, 'last-run.json');
-  const status = { startedAt: new Date().toISOString(), success: false, downloaded: 0, folders: [] };
+  let progress;
+  try { progress = createProgress(root, atomicWrite, context); }
+  catch (error) { try { client.close(); } finally { release(); } throw error; }
+  const status = { startedAt: context.startedAt, runId: context.runId, success: false, downloaded: context.downloaded, folders: [] };
   try {
     const manifest = readJson(manifestPath, { version: 1, user: config.user, host: config.host, folders: {} });
     if (manifest.user !== config.user || manifest.host !== config.host || manifest.version !== 1)
       throw new Error('Backup identity does not match configuration');
     await client.connect();
-    const folders = await client.list();
+    progress.publish({ phase: 'discovering' }, true);
+    const folders = (await client.list()).filter(folder => !folder.flags.has('\\Noselect'));
+    atomicWrite(path.join(root, 'mailboxes.json'), JSON.stringify({ updatedAt: new Date().toISOString(), folders: folders.map(f => f.path) }));
+    const plan = [];
     for (const folder of folders) {
-      if (folder.flags.has('\\Noselect')) continue;
+      progress.publish({ currentFolder: folder.path }, true);
+      const mailboxLock = await client.getMailboxLock(folder.path, { readOnly: true });
+      try {
+        const validity = String(client.mailbox.uidValidity);
+        if (!/^\d+$/.test(validity)) throw new Error('Server did not supply UIDVALIDITY');
+        const uids = await client.search({ all: true }, { uid: true });
+        if (!Array.isArray(uids)) throw new Error('Unable to enumerate messages');
+        plan.push({ ...folder, validity, uids });
+      } finally { mailboxLock.release(); }
+    }
+    progress.publish({ totalFolders: plan.length, totalMessages: plan.reduce((n, f) => n + f.uids.length, 0), phase: 'downloading' }, true);
+    for (const folder of plan) {
       log('Checking folder: ' + folder.path);
       const lock = await client.getMailboxLock(folder.path, { readOnly: true });
       try {
         const validity = String(client.mailbox.uidValidity);
-        if (!/^\d+$/.test(validity)) throw new Error('Server did not supply UIDVALIDITY');
+        if (validity !== folder.validity) throw new Error('Mailbox changed during planning. Retry to safely rebuild the plan.');
         const key = digest(Buffer.from(folder.path, 'utf8')) + '-' + validity;
         const saved = manifest.folders[key] ||= { name: folder.path, uidValidity: validity, messages: {} };
-        const uids = await client.search({ all: true }, { uid: true });
-        if (!Array.isArray(uids)) throw new Error('Unable to enumerate messages');
+        const uids = folder.uids;
         const result = { name: folder.path, uidValidity: validity, serverMessages: uids.length, verified: 0, downloaded: 0 };
         status.folders.push(result);
+        progress.publish({ currentFolder: folder.path, phase: 'downloading' }, true);
         for (const uid of uids) {
           const previous = saved.messages[uid];
           const previousValid = previous && validateRecord(root, previous);
-          if (previousValid && previous.complete !== false) { result.verified++; continue; }
+          if (previousValid && previous.complete !== false) {
+            result.verified++;
+            progress.publish({ processedMessages: progress.state.processedMessages + 1 });
+            continue;
+          }
           status.currentMessage = { folder: folder.path, uid };
           let lastProgress = 0;
+          let transferred = 0;
+          progress.publish({ currentUid: uid, currentMessageBytes: 0, currentMessageTotal: 0 });
           const message = await fetchCompleteMessage(client, uid, (received, total) => {
+            context.transferredBytes += Math.max(0, received - transferred);
+            transferred = received;
+            progress.publish({ currentMessageBytes: received, currentMessageTotal: total });
             if (total < 1024 * 1024) return;
             if (!received) log('  Downloading UID ' + uid + ': ' + (total / 1048576).toFixed(1) + ' MB');
             else if (received - lastProgress >= 1048576 || received === total) {
@@ -222,18 +249,25 @@ async function backup(client, root, config, log = console.log) {
           saved.messages[uid] = record;
           atomicWrite(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
           result.verified++; result.downloaded++; status.downloaded++;
+          context.downloaded++;
+          context.savedBytes += message.source.length;
+          progress.publish({ downloaded: context.downloaded, savedBytes: context.savedBytes,
+            processedMessages: progress.state.processedMessages + 1, currentMessageBytes: 0, currentMessageTotal: 0 });
           if (result.downloaded % 25 === 0) log('  Downloaded ' + result.downloaded + ' messages');
         }
         atomicWrite(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
         log('  Verified ' + result.verified + '/' + result.serverMessages + '; new: ' + result.downloaded);
+        progress.publish({ completedFolders: progress.state.completedFolders + 1 }, true);
       } finally { lock.release(); }
     }
     if (!status.folders.length) throw new Error('No accessible folders found');
+    progress.publish({ phase: 'verifying', currentFolder: null }, true);
     const verified = verify(root, manifest);
     status.totalLocalMessages = verified.checked;
     status.invalidLocalFiles = verified.invalid;
     if (verified.invalid.length) throw new Error('Some retained local files are missing or damaged');
     status.success = true;
+    status.downloaded = context.downloaded;
     delete status.currentMessage;
     log('Backup complete: ' + status.downloaded + ' downloaded; ' + verified.checked + ' local emails verified.');
     return status;
@@ -245,17 +279,21 @@ async function backup(client, root, config, log = console.log) {
     throw error;
   } finally {
     status.finishedAt = new Date().toISOString();
-    try { atomicWrite(statusPath, JSON.stringify(status, null, 2) + '\n'); }
+    try {
+      progress.finish({ state: status.success ? 'completed' : 'failed', phase: status.success ? 'completed' : 'failed', error: status.error || null });
+      atomicWrite(statusPath, JSON.stringify(status, null, 2) + '\n');
+    }
     finally { try { client.close(); } finally { release(); } }
   }
 }
 
 async function backupWithRetries(makeClient, root, config, log = console.log, wait = sleep) {
+  const context = {};
   const transient = new Set(['ETIMEOUT', 'ETIMEDOUT', 'CONNECT_TIMEOUT', 'GREETING_TIMEOUT',
     'NoConnection', 'EConnectionClosed', 'StateLogout', 'ClosedAfterConnectText', 'ClosedAfterConnectTLS',
     'ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'EAI_AGAIN']);
   for (let attempt = 1; attempt <= 3; attempt++) {
-    try { return await backup(makeClient(), root, config, log); }
+    try { return await backup(makeClient(), root, config, log, context); }
     catch (error) {
       if (attempt === 3 || error.authenticationFailed || !transient.has(error.code)) throw error;
       const delay = attempt * 30000;

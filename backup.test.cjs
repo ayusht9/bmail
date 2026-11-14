@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { messageLocation, organize, verify, digest } = require('./backup.cjs');
+const { messageLocation, organize, verify, digest, backup } = require('./backup.cjs');
 const key = 'a'.repeat(64) + '-1';
 
 test('decoded subjects, India month boundaries, and Windows filenames', () => {
@@ -18,6 +18,53 @@ test('decoded subjects, India month boundaries, and Windows filenames', () => {
   assert.equal(messageLocation('Sent', key, 1, Buffer.from('From: person@example.com\r\n\r\nbody')).sender, 'person@example.com');
   assert.equal(messageLocation('Sent', key, 1, Buffer.from('From: =?UTF-8?B?QWxpY2U=?=\r\n\r\nbody')).sender, 'Alice');
   assert.ok(messageLocation('Sent', key, 1, Buffer.from('\n\nbody')).file.includes('Unknown-month'));
+});
+
+function mockMailbox(folders, onFetch = () => {}) {
+  let current;
+  const client = {
+    mailbox: null, connect: async () => {}, close: () => {},
+    list: async () => Object.keys(folders).map(name => ({ path: name, flags: new Set() })),
+    getMailboxLock: async (name, options) => {
+      assert.equal(options.readOnly, true);
+      current = name; client.mailbox = { uidValidity: 1 };
+      return { release() {} };
+    },
+    search: async () => Object.keys(folders[current]).map(Number),
+    fetchOne: async (uid, query) => {
+      await onFetch(current, uid, query);
+      const source = folders[current][uid];
+      if (!query.source) return { uid, size: source.length, internalDate: new Date('2026-11-01T00:00:00Z'), flags: [] };
+      return { uid, source: source.subarray(query.source.start, query.source.start + query.source.maxLength), partialOrigins: new Map([['', query.source.start]]) };
+    },
+  };
+  return client;
+}
+
+test('live progress discovers the full workload and publishes verified downloads before completion', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-progress-'));
+  const message = Buffer.from('Subject: Example\r\n\r\nOriginal bytes');
+  const observed = [];
+  try {
+    const client = mockMailbox({ INBOX: { 1: message, 2: message }, Sent: { 3: message } }, () => {
+      observed.push(JSON.parse(fs.readFileSync(path.join(root, 'progress.json'))));
+    });
+    const result = await backup(client, root, { user: 'test@example.com', host: 'imap.example.com' }, () => {});
+    assert.equal(result.success, true);
+    assert.equal(result.downloaded, 3);
+    assert.ok(observed.every(p => p.totalMessages === 3 && p.totalFolders === 2));
+    assert.ok(observed.some(p => p.downloaded > 0 && p.state === 'running'));
+    const progress = JSON.parse(fs.readFileSync(path.join(root, 'progress.json')));
+    assert.equal(progress.state, 'completed');
+    assert.equal(progress.processedMessages, 3);
+    assert.equal(progress.downloaded, 3);
+    assert.equal(progress.savedBytes, message.length * 3);
+    assert.equal(fs.existsSync(path.join(root, '.backup.lock')), false);
+    const second = await backup(mockMailbox({ INBOX: { 1: message, 2: message }, Sent: { 3: message } }), root,
+      { user: 'test@example.com', host: 'imap.example.com' }, () => {});
+    assert.equal(second.downloaded, 0);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'progress.json'))).processedMessages, 3);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('migration preserves bytes, updates manifest, and is repeatable', () => {
