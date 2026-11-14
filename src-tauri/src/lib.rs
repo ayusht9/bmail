@@ -47,6 +47,8 @@ struct Dashboard {
     progress: Option<Value>,
     backup_running: bool,
     launch_error: Option<String>,
+    backup_options: Value,
+    mailboxes: Option<Value>,
 }
 
 fn data_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -129,6 +131,8 @@ fn get_dashboard(app: tauri::AppHandle, process: tauri::State<BackupProcess>) ->
         last_run: read_json(&backup_root.join("last-run.json")),
         latest_log: latest_log(&root), user,
         progress, backup_running: launching || lock_running, launch_error,
+        backup_options: config.get("backupOptions").cloned().unwrap_or_else(|| serde_json::json!({"folders": [], "dateFrom": null, "dateTo": null, "maxMessages": null})),
+        mailboxes: read_json(&backup_root.join("mailboxes.json")),
     })
 }
 
@@ -204,6 +208,44 @@ fn start_backup(app: tauri::AppHandle, process: tauri::State<BackupProcess>) -> 
     Ok("Backup started. Progress will appear here.".into())
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BackupOptions {
+    folders: Vec<String>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+    max_messages: Option<u64>,
+}
+
+fn valid_date(value: &str) -> bool {
+    let parts: Vec<_> = value.split('-').collect();
+    if parts.len() != 3 || parts[0].len() != 4 || parts[1].len() != 2 || parts[2].len() != 2 { return false; }
+    let (Ok(y), Ok(m), Ok(d)) = (parts[0].parse::<u32>(), parts[1].parse::<usize>(), parts[2].parse::<u32>()) else { return false; };
+    let days = [31, if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    y >= 1 && (1..=12).contains(&m) && d >= 1 && d <= days[m - 1]
+}
+
+#[tauri::command]
+fn save_backup_options(app: tauri::AppHandle, options: BackupOptions, process: tauri::State<BackupProcess>) -> Result<String, String> {
+    let root = data_root(&app)?;
+    let _guard = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
+    if _guard.as_ref().is_some_and(|child| process_running(child.id() as u64)) ||
+        read_json(&backup_root(&root).join(".backup.lock")).and_then(|v| v.get("pid").and_then(Value::as_u64)).is_some_and(process_running) {
+        return Err("Stop or finish the current backup before changing its selection.".into());
+    }
+    if options.folders.len() > 1000 || options.folders.iter().any(|f| f.trim().is_empty() || f.len() > 4096) { return Err("Choose valid mailbox folders.".into()); }
+    if options.date_from.iter().chain(options.date_to.iter()).any(|v| !valid_date(v)) { return Err("Choose valid backup dates.".into()); }
+    if let (Some(from), Some(to)) = (&options.date_from, &options.date_to) { if from > to { return Err("The start date must be before the end date.".into()); } }
+    if options.max_messages.is_some_and(|n| n == 0 || n > 1000000) { return Err("Choose a limit from 1 to 1,000,000 new messages.".into()); }
+    let config_path = root.join("backup-config.json");
+    let mut config = read_json(&config_path).ok_or("Set up your mailbox first.")?;
+    config["backupOptions"] = serde_json::to_value(options).map_err(|e| e.to_string())?;
+    let temporary = root.join("backup-config.json.pending");
+    fs::write(&temporary, serde_json::to_vec_pretty(&config).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    fs::rename(&temporary, &config_path).map_err(|e| e.to_string())?;
+    Ok("Backup selection saved. It will apply to manual and scheduled runs.".into())
+}
+
 #[tauri::command]
 async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -212,6 +254,14 @@ async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, Str
         let (program, output) = match action.as_str() {
             "backup" => ("Backup", powershell(&engine, &root, "Run-Backup.ps1")?),
             "schedule" => ("Schedule", powershell(&engine, &root, "Install-BackupSchedule.ps1")?),
+            "folders" => ("Folder discovery", {
+                if read_json(&backup_root(&root).join(".backup.lock")).and_then(|v| v.get("pid").and_then(Value::as_u64)).is_some_and(process_running) {
+                    return Err("Wait for the current backup to finish before reloading folders.".into());
+                }
+                hidden_command("powershell.exe").current_dir(&root).env("MAIL_VAULT_DATA_DIR", &root)
+                    .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+                    .arg(engine.join("Run-Backup.ps1")).args(["-Mode", "Folders"]).output().map_err(|e| e.to_string())?
+            }),
             "verify" => ("Verification", hidden_command(engine.join("node.exe")).current_dir(&root)
                 .env("MAIL_VAULT_DATA_DIR", &root).arg(engine.join("backup.cjs")).arg("--verify")
                 .output().map_err(|e| format!("Could not start Node.js: {e}"))?),
@@ -246,7 +296,7 @@ fn open_directory(app: tauri::AppHandle, kind: String) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .manage(BackupProcess::default())
-        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, start_backup, run_action, open_google_help, open_directory])
+        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, start_backup, save_backup_options, run_action, open_google_help, open_directory])
         .run(tauri::generate_context!())
         .expect("error while running Mail Vault");
 }

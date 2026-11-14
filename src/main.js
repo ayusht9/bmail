@@ -1,6 +1,7 @@
 import './style.css';
 import { invoke } from '@tauri-apps/api/core';
 import { progressPanel } from './progress.js';
+import { selectionSummary, selectionDialog, folderChoices } from './selection.js';
 
 const app = document.querySelector('#app');
 let dashboard;
@@ -63,6 +64,7 @@ function render() {
       ${!dashboard.credentialReady ? `<aside class="notice"><strong>Set up your mailbox.</strong> Save your IMAP account and app password to start backing up. <button class="ghost" data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
       ${run?.error ? `<aside class="notice error"><strong>${escapeHtml(run.error.message || 'Backup failed')}</strong><span>No server email was deleted. Completed downloads are retained.</span></aside>` : ''}
       ${dashboard.launchError ? `<aside class="notice error">${escapeHtml(dashboard.launchError)}</aside>` : ''}
+      <section class="backup-plan"><div><strong>Your backup selection</strong><p>${escapeHtml(selectionSummary(dashboard.backupOptions))}</p></div><button class="ghost" data-action="selection" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>Choose what to back up</button></section>
       ${progressPanel(dashboard, escapeHtml, formatNumber)}
 
       <section class="metrics">
@@ -92,6 +94,7 @@ function render() {
     </main>
     <footer>Read-only IMAP backup · Mail Vault never deletes server email</footer>
     <div id="toast" role="status"></div>
+    ${selectionDialog(dashboard, escapeHtml)}
     <dialog id="mailbox-dialog" aria-labelledby="setup-title" aria-describedby="setup-description">
       <form id="mailbox-form">
         <h2 id="setup-title">${dashboard.credentialReady ? 'Update app password' : 'Set up your mailbox'}</h2>
@@ -165,6 +168,9 @@ app.addEventListener('click', event => {
   if (!button || button.disabled) return;
   const action = button.dataset.action;
   if (action === 'setup') document.querySelector('#mailbox-dialog').showModal();
+  else if (action === 'selection') document.querySelector('#selection-dialog').showModal();
+  else if (action === 'cancel-selection') { if (busy) return; document.querySelector('#selection-dialog').close(); render(); }
+  else if (action === 'load-folders') loadFolders();
   else if (action === 'google-help') invoke('open_google_help').catch(error => toast(String(error), true));
   else if (action === 'cancel-setup') {
     document.querySelector('#mail-password').value = '';
@@ -176,6 +182,9 @@ app.addEventListener('click', event => {
 });
 
 app.addEventListener('change', event => {
+  if (event.target.id === 'all-folders') {
+    document.querySelector('#folder-choices').disabled = event.target.checked;
+  }
   if (event.target.id === 'mail-provider') {
     const provider = event.target.value;
     document.querySelector('#mail-host').value = provider === 'google' ? 'imap.gmail.com' : provider === 'zoho' ? 'imappro.zoho.in' : '';
@@ -188,12 +197,56 @@ app.addEventListener('change', event => {
 });
 
 app.addEventListener('cancel', event => {
+  if (event.target.id === 'selection-dialog' && busy) event.preventDefault();
   if (event.target.id === 'mailbox-dialog' && !busy) {
     document.querySelector('#mail-password').value = '';
   }
 }, true);
 
+async function loadFolders() {
+  if (busy) return;
+  busy = true;
+  const button = document.querySelector('[data-action="load-folders"]');
+  const submit = document.querySelector('#selection-form [type="submit"]');
+  button.disabled = submit.disabled = true;
+  button.textContent = 'Loading folders...';
+  try {
+    await invoke('run_action', { action: 'folders' });
+    dashboard = await invoke('get_dashboard');
+    const selected = [...document.querySelectorAll('[name="folders"]:checked')].map(el => el.value);
+    document.querySelector('#folder-options').innerHTML = folderChoices(dashboard.mailboxes?.folders || [], selected, document.querySelector('#all-folders').checked, escapeHtml);
+    document.querySelector('#selection-error').textContent = '';
+  } catch (error) { document.querySelector('#selection-error').textContent = String(error); }
+  finally { busy = false; button.disabled = submit.disabled = false; button.textContent = 'Load / refresh mailbox folders'; }
+}
+
 app.addEventListener('submit', async event => {
+  if (event.target.id === 'selection-form') {
+    event.preventDefault();
+    if (busy) return;
+    const form = event.target;
+    const values = new FormData(form);
+    const folders = document.querySelector('#all-folders').checked ? [] : values.getAll('folders');
+    const dateFrom = values.get('dateFrom') || null;
+    const dateTo = values.get('dateTo') || null;
+    if ((!document.querySelector('#all-folders').checked && !folders.length) || (dateFrom && dateTo && dateFrom > dateTo)) {
+      document.querySelector('#selection-error').textContent = !document.querySelector('#all-folders').checked && !folders.length ? 'Choose at least one folder or select all folders.' : 'The start date must be before the end date.';
+      return;
+    }
+    busy = true;
+    const button = form.querySelector('[type="submit"]');
+    button.disabled = true;
+    button.textContent = 'Saving...';
+    try {
+      const result = await invoke('save_backup_options', { options: { folders, dateFrom, dateTo, maxMessages: values.get('maxMessages') ? Number(values.get('maxMessages')) : null } });
+      document.querySelector('#selection-dialog').close();
+      busy = false;
+      await refresh();
+      toast(result);
+    } catch (error) { document.querySelector('#selection-error').textContent = String(error); }
+    finally { busy = false; button.disabled = false; button.textContent = 'Save selection'; }
+    return;
+  }
   if (event.target.id !== 'mailbox-form') return;
   event.preventDefault();
   if (busy) return;

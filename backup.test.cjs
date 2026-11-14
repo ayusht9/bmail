@@ -20,7 +20,7 @@ test('decoded subjects, India month boundaries, and Windows filenames', () => {
   assert.ok(messageLocation('Sent', key, 1, Buffer.from('\n\nbody')).file.includes('Unknown-month'));
 });
 
-function mockMailbox(folders, onFetch = () => {}) {
+function mockMailbox(folders, onFetch = () => {}, onSearch = () => {}) {
   let current;
   const client = {
     mailbox: null, connect: async () => {}, close: () => {},
@@ -30,7 +30,7 @@ function mockMailbox(folders, onFetch = () => {}) {
       current = name; client.mailbox = { uidValidity: 1 };
       return { release() {} };
     },
-    search: async () => Object.keys(folders[current]).map(Number),
+    search: async query => onSearch(current, query) || Object.keys(folders[current]).map(Number),
     fetchOne: async (uid, query) => {
       await onFetch(current, uid, query);
       const source = folders[current][uid];
@@ -64,6 +64,39 @@ test('live progress discovers the full workload and publishes verified downloads
       { user: 'test@example.com', host: 'imap.example.com' }, () => {});
     assert.equal(second.downloaded, 0);
     assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'progress.json'))).processedMessages, 3);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('selection limits new downloads, uses inclusive received dates, and continues the next batch without deleting saved mail', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-selection-'));
+  const source = Buffer.from('Subject: Selection\r\n\r\nOriginal email');
+  const folders = { INBOX: { 1: source, 2: source, 3: source, 4: source, 5: source }, Sent: { 6: source } };
+  const config = { user: 'test@example.com', host: 'imap.example.com', backupOptions: {
+    folders: ['INBOX'], dateFrom: '2026-01-01', dateTo: '2026-11-01', maxMessages: 2,
+  } };
+  const fetched = [];
+  const client = () => mockMailbox(folders, (folder, uid, query) => {
+    assert.equal(folder, 'INBOX');
+    if (!query.source) fetched.push(uid);
+  }, (folder, query) => {
+    assert.equal(folder, 'INBOX');
+    assert.equal(query.since.toISOString(), '2026-01-01T00:00:00.000Z');
+    assert.equal(query.before.toISOString(), '2026-11-02T00:00:00.000Z');
+  });
+  try {
+    const first = await backup(client(), root, config, () => {});
+    assert.equal(first.downloaded, 2);
+    assert.equal(first.remainingMessages, 3);
+    assert.deepEqual(fetched, [5, 4]);
+    fetched.length = 0;
+    const second = await backup(client(), root, config, () => {});
+    assert.equal(second.downloaded, 2);
+    assert.equal(second.remainingMessages, 1);
+    assert.deepEqual(fetched, [3, 2]);
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));
+    assert.equal(verify(root, manifest).checked, 4);
+    assert.deepEqual(verify(root, manifest).invalid, []);
+    assert.ok(Object.values(manifest.folders).every(folder => folder.name === 'INBOX'));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 

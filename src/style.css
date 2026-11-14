@@ -21,6 +21,15 @@ dialog input[readonly] { background: #eef3f1; }
 .run-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 22px 0 12px; }
 .run-stats dt { font-size: 12px; color: #55716e; }
 .run-stats dd { margin: 6px 0 0; font-size: 19px; font-weight: 650; }
+.backup-plan { display: flex; gap: 20px; align-items: center; justify-content: space-between; margin-top: 20px; padding: 8px 4px; }
+.backup-plan strong { font-size: 13px; }.backup-plan p { margin: 6px 0; font-size: 13px; color: #44645c; }
+.selection-dialog { width: min(620px, 92vw); }
+.folder-choice { display: flex; align-items: center; gap: 10px; margin: 10px 0; font-size: 13px; }
+.folder-choice input[type="checkbox"] { width: 18px; height: 18px; padding: 0; margin: 0; flex-shrink: 0; accent-color: #147765; }
+#folder-choices { max-height: 200px; overflow: auto; border: 1px solid #d9e3df; border-radius: 8px; padding: 8px 14px; margin-top: 16px; }
+#folder-choices legend { font-size: 13px; padding: 0 5px; }
+.date-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+#selection-error { color: #8e3d31; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
 #setup-error { color: #8e3d31; }
 .notice .ghost { margin: 10px 0 0; display: block; }
