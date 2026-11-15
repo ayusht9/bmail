@@ -6,7 +6,7 @@ export const weekdayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursd
 export function defaultSchedule(now = new Date()) {
   return { enabled: true, frequency: 'weekly', startDate: localDate(now), time: '11:00', weekdays: [1], monthDay: '1',
     intervalHours: 6, every: 1, endDate: null, startWhenAvailable: true, networkRequired: true, wakeComputer: false,
-    allowOnBattery: true, stopOnBattery: false, maxRunHours: 48, restartCount: 0, restartMinutes: 15 };
+    allowOnBattery: true, stopOnBattery: false, maxRunHours: 48, restartCount: 0, restartMinutes: 15, allFolders: true, folders: [] };
 }
 
 export function normalizeSchedule(input, now = new Date()) {
@@ -19,7 +19,10 @@ export function normalizeSchedule(input, now = new Date()) {
   for (const [key, min, max] of [['every', 1, s.frequency === 'weekly' ? 52 : 365], ['intervalHours', 1, 24], ['maxRunHours', 1, 168], ['restartCount', 0, 10], ['restartMinutes', 1, 1440]]) {
     if (!Number.isInteger(s[key]) || s[key] < min || s[key] > max) throw new Error(`Choose a valid ${key}.`);
   }
-  for (const key of ['enabled', 'startWhenAvailable', 'networkRequired', 'wakeComputer', 'allowOnBattery', 'stopOnBattery']) if (typeof s[key] !== 'boolean') throw new Error(`Choose a valid ${key}.`);
+  for (const key of ['enabled', 'startWhenAvailable', 'networkRequired', 'wakeComputer', 'allowOnBattery', 'stopOnBattery', 'allFolders']) if (typeof s[key] !== 'boolean') throw new Error(`Choose a valid ${key}.`);
+  if (!Array.isArray(s.folders) || s.folders.length > 1000 || s.folders.some(folder => typeof folder !== 'string' || !folder.trim() || folder.length > 1024)) throw new Error('Choose valid scheduled folders.');
+  if (!s.allFolders && !s.folders.length) throw new Error('Choose at least one scheduled folder.');
+  s.folders = s.allFolders ? [] : [...new Set(s.folders)];
   if (!Array.isArray(s.weekdays) || s.weekdays.some(day => !Number.isInteger(day) || day < 0 || day > 6)) throw new Error('Choose valid weekdays.');
   s.weekdays = [...new Set(s.weekdays)].sort();
   if (s.frequency === 'weekly' && !s.weekdays.length) throw new Error('Choose at least one weekday.');
@@ -84,7 +87,15 @@ export function scheduleFromForm(form) {
     every: ['daily','weekly'].includes(frequency) ? Number(value('every')) : 1, intervalHours: frequency === 'interval' ? Number(value('intervalHours')) : 6,
     endDate: value('endDate') || null, startWhenAvailable: values.has('startWhenAvailable'), networkRequired: values.has('networkRequired'),
     wakeComputer: values.has('wakeComputer'), allowOnBattery: values.has('allowOnBattery'), stopOnBattery: values.has('stopOnBattery'),
-    maxRunHours: Number(value('maxRunHours')), restartCount: Number(value('restartCount')), restartMinutes: Number(value('restartMinutes')) };
+    maxRunHours: Number(value('maxRunHours')), restartCount: Number(value('restartCount')), restartMinutes: Number(value('restartMinutes')),
+    allFolders: form.elements.scheduleAllFolders.checked,
+    folders: [...form.querySelectorAll('[name="scheduledFolders"]:checked')].map(input => input.value) };
+}
+
+export function scheduleFolderChoices(dashboard, selected, disabled, escape) {
+  const names = [...new Set([...(dashboard.mailboxes?.folders || []), ...(dashboard.localStats?.folders || []).map(folder => folder.name),
+    ...(dashboard.mailboxStatus?.folders || []).map(folder => folder.name), ...selected])].sort();
+  return `<fieldset id="schedule-folder-choices" ${disabled ? 'disabled' : ''}><legend>Scheduled folders</legend>${names.length ? names.map(name => `<label class="folder-choice"><input type="checkbox" name="scheduledFolders" value="${escape(name)}" ${selected.includes(name) ? 'checked' : ''}><span>${escape(name)}</span></label>`).join('') : '<p class="muted">Load mailbox folders to choose a custom selection.</p>'}</fieldset>`;
 }
 
 export function calendarMarkup(schedule, month, focusDate, escape, now = new Date()) {
@@ -102,10 +113,10 @@ export function calendarMarkup(schedule, month, focusDate, escape, now = new Dat
     <table class="schedule-calendar" role="grid" aria-label="Schedule calendar"><thead><tr>${weekdayNames.map(day => `<th scope="col" abbr="${day}">${day.slice(0, 2)}</th>`).join('')}</tr></thead><tbody>${Array.from({ length: 6 }, (_, row) => `<tr>${cells.slice(row * 7, row * 7 + 7).join('')}</tr>`).join('')}</tbody></table><p class="calendar-legend">Blue dots: planned run dates. Select a date to change the start.</p>`;
 }
 
-export function schedulerDialog(dashboard, escape) {
-  const s = { ...defaultSchedule(), ...dashboard.schedule?.settings };
+export function schedulerView(dashboard, escape, draft = null) {
+  const s = { ...defaultSchedule(), ...dashboard.schedule?.settings, ...draft };
   const checkbox = (name, label) => `<label class="folder-choice"><input type="checkbox" name="${name}" ${s[name] ? 'checked' : ''}>${label}</label>`;
-  return `<dialog id="scheduler-dialog" class="scheduler-dialog" aria-labelledby="scheduler-title"><form id="scheduler-form"><h2 id="scheduler-title">Backup scheduler</h2><p>Schedule for ${escape(dashboard.user)}. Times use this computer's local time zone.</p>
+  return `<section id="scheduler-panel" class="scheduler-page" aria-labelledby="scheduler-title"><form id="scheduler-form"><h2 id="scheduler-title">Backup scheduler</h2><p>Schedule for ${escape(dashboard.user)}. Times use this computer's local time zone.</p>
     <div class="scheduler-layout"><aside class="scheduler-calendar-pane"><div class="scheduler-clock"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="45"/>${Array.from({ length: 12 }, (_, hour) => `<line x1="50" y1="8" x2="50" y2="13" transform="rotate(${hour * 30} 50 50)"/>`).join('')}<line id="clock-hour" x1="50" y1="50" x2="50" y2="26"/><line id="clock-minute" x1="50" y1="50" x2="50" y2="16"/><line id="clock-second" x1="50" y1="54" x2="50" y2="12"/><circle cx="50" cy="50" r="2"/></svg><time id="scheduler-clock" aria-label="Current local time"></time><small id="scheduler-zone"></small></div><div id="schedule-calendar"></div><div id="schedule-upcoming"></div></aside>
     <section class="scheduler-fields" aria-label="Schedule settings">${checkbox('enabled', 'Enable scheduled backups')}
       <label for="schedule-frequency">Repeat</label><select id="schedule-frequency" name="frequency">${[['once','One time'],['daily','Daily'],['weekly','Weekly'],['monthly','Monthly'],['interval','Every few hours']].map(([value,label]) => `<option value="${value}" ${s.frequency === value ? 'selected' : ''}>${label}</option>`).join('')}</select>
@@ -115,17 +126,18 @@ export function schedulerDialog(dashboard, escape) {
       <div data-recurrence="monthly"><label for="schedule-month-day">Day of month</label><select id="schedule-month-day" name="monthDay">${[...Array.from({ length: 31 }, (_, index) => String(index + 1)), 'last'].map(day => `<option value="${day}" ${s.monthDay === day ? 'selected' : ''}>${day === 'last' ? 'Last day' : day}</option>`).join('')}</select><p class="muted">Dates 29–31 skip months without that date. Use Last day to run every month.</p></div>
       <div data-recurrence="interval"><label for="schedule-hours">Interval (hours)</label><input id="schedule-hours" name="intervalHours" type="number" min="1" max="24" value="${s.intervalHours}" required></div>
       <label for="schedule-end">End date (optional)</label><input id="schedule-end" name="endDate" type="date" value="${escape(s.endDate || '')}">
-      <details class="scheduler-advanced"><summary>Power, network and recovery</summary>${checkbox('startWhenAvailable','Run a missed backup when available')}${checkbox('networkRequired','Require a network connection')}${checkbox('wakeComputer','Ask Windows to wake the computer')}${checkbox('allowOnBattery','Allow starting on battery power')}${checkbox('stopOnBattery','Stop if the computer switches to battery')}
+      <section class="scheduled-folder-selection"><h3>Folders for scheduled backups</h3><label class="folder-choice"><input id="schedule-all-folders" type="checkbox" name="scheduleAllFolders" ${s.allFolders ? 'checked' : ''}>All mailbox folders</label><button type="button" data-action="schedule-load-folders" ${dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>Load / refresh scheduled folders</button><div id="schedule-folder-options">${scheduleFolderChoices(dashboard, s.folders, s.allFolders, escape)}</div><p class="muted">This folder choice is independent of manual backups. Date filters, exclusions and limits follow Backup options.</p></section>
+      <details class="scheduler-advanced" ${s._uiAdvancedOpen ? 'open' : ''}><summary>Power, network and recovery</summary>${checkbox('startWhenAvailable','Run a missed backup when available')}${checkbox('networkRequired','Require a network connection')}${checkbox('wakeComputer','Ask Windows to wake the computer')}${checkbox('allowOnBattery','Allow starting on battery power')}${checkbox('stopOnBattery','Stop if the computer switches to battery')}
         <label for="schedule-duration">Maximum run duration (hours)</label><input id="schedule-duration" name="maxRunHours" type="number" min="1" max="168" value="${s.maxRunHours}" required>
         <div class="date-fields"><div><label for="schedule-restarts">Task restart attempts</label><input id="schedule-restarts" name="restartCount" type="number" min="0" max="10" value="${s.restartCount}" required></div><div><label for="schedule-restart-delay">Restart interval (minutes)</label><input id="schedule-restart-delay" name="restartMinutes" type="number" min="1" max="1440" value="${s.restartMinutes}" required></div></div></details>
-      <p class="muted">Runs with Bmail closed while you are signed in. Windows power/network policies may delay a run. Overlapping runs are ignored. Backup selection applies to scheduled and manual runs.</p>
+      <p class="muted">Runs with Bmail closed while you are signed in. Windows power/network policies may delay a run. Overlapping runs are ignored.</p>
       <div id="schedule-status" class="schedule-status"></div><p id="schedule-error" role="alert"></p>
-    </section></div><div class="dialog-actions"><button type="button" data-action="schedule-remove" ${dashboard.scheduleInstalled ? '' : 'disabled'}>Remove schedule</button><button type="button" data-action="schedule-read">Refresh status</button><button type="button" data-action="cancel-schedule">Close</button><button type="submit" class="primary" ${dashboard.backupRunning ? 'disabled' : ''}>Save schedule</button></div></form></dialog>`;
+    </section></div><div class="dialog-actions"><button type="button" data-action="schedule-remove" ${dashboard.scheduleInstalled ? '' : 'disabled'}>Remove schedule</button><button type="button" data-action="schedule-read" ${!dashboard.credentialReady ? 'disabled' : ''}>Refresh status</button><button type="submit" class="primary" ${dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>Save schedule</button></div></form></section>`;
 }
 
 export function updateClock(now = new Date()) {
   const text = document.querySelector('#scheduler-clock');
-  if (!text || document.hidden || !document.querySelector('#scheduler-dialog')?.open) return;
+  if (!text || document.hidden || !document.querySelector('#scheduler-panel')) return;
   text.textContent = new Intl.DateTimeFormat('en-IN', { timeStyle: 'medium' }).format(now);
   document.querySelector('#scheduler-zone').textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
   for (const [id, angle] of [['hour', now.getHours() * 30 + now.getMinutes() / 2], ['minute', now.getMinutes() * 6], ['second', now.getSeconds() * 6]]) document.querySelector(`#clock-${id}`).setAttribute('transform', `rotate(${angle} 50 50)`);

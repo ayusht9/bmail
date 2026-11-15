@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
-const { normalizeSelection, searchForSelection } = require('./backup-selection.cjs');
+const { normalizeSelection, searchForSelection, scheduledSelection } = require('./backup-selection.cjs');
 const { recordRun, notifyRun } = require('./backup-history.cjs');
 const { atomicWrite, readJson } = require('./backup.cjs');
 
@@ -78,9 +78,11 @@ test('Windows schedule XML and persistence support all recurrences and keep acco
     Assert-That $blocked 'Schedule updates must hold an exclusive account lock'
     foreach ($frequency in @('once','daily','weekly','monthly','interval')) {
       $raw = [pscustomobject](Get-BmailScheduleDefaults)
-      $raw.frequency = $frequency; $raw.startDate = '2035-01-01'; $raw.time='13:45'; $raw.weekdays=@(1,3,5); $raw.monthDay='last'; $raw.restartCount=2; $raw.wakeComputer=$true
+      $raw.allFolders=$false; $raw.folders=@('INBOX','Sent'); $raw.frequency = $frequency; $raw.startDate = '2035-01-01'; $raw.time='13:45'; $raw.weekdays=@(1,3,5); $raw.monthDay='last'; $raw.restartCount=2; $raw.wakeComputer=$true
       $result = Save-BmailSchedule $data $env:BMAIL_SOURCE_ROOT 'first@example.com' $raw
       Assert-That $result.installed 'Task registration did not persist'
+      Assert-That (-not $result.settings.allFolders -and $result.settings.folders.Count -eq 2) 'Scheduled folders were not persisted'
+      Assert-That ((Get-Content -LiteralPath (Join-Path $data 'Scheduled-Backup.ps1') -Raw).Contains('-Scheduled')) 'Launcher must use scheduled folder preferences'
       Assert-That ($result.settings.frequency -eq $frequency) 'Recurrence not saved'
       $xml = $script:xmls[(Get-BmailTaskName 'first@example.com')]
       Assert-That ($xml.Task.Actions.Exec.Arguments.Contains("Account's data & spaces")) 'Action path was not escaped correctly'
@@ -165,4 +167,17 @@ test('notification preferences route only enabled outcomes and do not expose cre
   const checked = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('Notify-Backup.ps1'), '-ValidateOnly'],
     { input: JSON.stringify(payloads[0]), encoding: 'utf8', windowsHide: true, timeout: 10000 });
   assert.equal(checked.status, 0, checked.stderr || checked.stdout);
+});
+
+ test('scheduled folders override only manual folders without changing saved preferences', () => {
+  const manual = { folders: ['INBOX'], maxMessages: 25, advanced: { sender: 'billing@example.com' } };
+  const before = JSON.stringify(manual);
+  const selected = scheduledSelection(manual, { enabled: true, allFolders: false, folders: ['Sent'] });
+  assert.deepEqual(selected.folders, ['Sent']);
+  assert.equal(selected.maxMessages, 25);
+  assert.equal(selected.advanced.sender, 'billing@example.com');
+  assert.equal(JSON.stringify(manual), before);
+  assert.deepEqual(scheduledSelection(manual, { enabled: true, allFolders: true, folders: [] }).folders, []);
+  assert.equal(scheduledSelection(manual, { enabled: false }), null);
+  assert.throws(() => scheduledSelection(manual, { enabled: true, allFolders: false, folders: [] }), /at least one/);
 });

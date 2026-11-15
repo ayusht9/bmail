@@ -1,10 +1,11 @@
 # Backup statistics
 
-The desktop workspace has an account and folder sidebar, a coverage table and
-recent saved records in the centre, and account statistics on the right. Select
-a folder to narrow the tables; use Filter folders to find a folder by name.
+The desktop workspace has an account and folder sidebar and six tabs: Mailbox,
+Overview, Backup options, Scheduler, History and Activity. Mailbox shows folder
+coverage and recent saved records; Overview shows account statistics. Select a
+folder to open Mailbox and narrow its tables; use Filter folders to find a name.
 Mailbox-check failures remain visible with diagnostic details and Retry until
-dismissed or successfully retried. Activity log opens from the sidebar.
+dismissed or successfully retried. Activity log has its own tab.
 
 ## Per-account caching
 

@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const libmime = require('libmime');
 const { setTimeout: sleep } = require('node:timers/promises');
 const { createProgress } = require('./backup-progress.cjs');
-const { normalizeSelection, searchForSelection } = require('./backup-selection.cjs');
+const { normalizeSelection, searchForSelection, scheduledSelection } = require('./backup-selection.cjs');
 const { RunInterrupted, readControl, createControl } = require('./backup-control.cjs');
 const { checkMailbox } = require('./backup-stats.cjs');
 const { recordRun, notifyRun } = require('./backup-history.cjs');
@@ -399,6 +399,11 @@ async function backupWithRetries(makeClient, root, config, log = console.log, wa
 async function main() {
   const dataDirectory = process.env.MAIL_VAULT_DATA_DIR || __dirname;
   const config = readJson(path.join(dataDirectory, 'backup-config.json'));
+  if (process.argv.includes('--scheduled')) {
+    const selected = scheduledSelection(config.backupOptions, readJson(path.join(dataDirectory, 'backup-schedule.json'), null));
+    if (!selected) { console.log('Scheduled backup is paused or has been removed.'); return; }
+    config.backupOptions = selected;
+  }
   const root = path.resolve(dataDirectory, config.backupDirectory);
   if (process.argv.includes('--verify') || process.argv.includes('--organize')) {
     fs.mkdirSync(root, { recursive: true });

@@ -794,3 +794,32 @@ dialog input[readonly] {
 .advanced-backup textarea { width: 100%; resize: vertical; border: 1px solid #aeb7c4; border-radius: 3px; padding: 7px 8px; font: inherit; }
 .scheduler-dialog .dialog-actions { position: sticky; bottom: -22px; padding: 14px 0; background: #f8f9fb; border-top: 1px solid var(--line); flex-wrap: wrap; }
 @media (max-width: 760px) { .scheduler-layout { grid-template-columns: 216px minmax(0, 1fr); gap: 14px; }.scheduler-calendar-pane { padding-right: 12px; }.scheduler-dialog { padding: 16px; } }
+
+/* One active workspace, with an Outlook-style horizontal tab strip. */
+.desktop-layout { grid-template-columns: 224px minmax(0, 1fr); }
+.workspace-tabs { display: flex; gap: 2px; padding: 0 10px; background: #f1f3f6; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 3; overflow-x: auto; }
+.workspace-tabs [role="tab"] { flex-shrink: 0; border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; min-height: 39px; padding: 8px 14px 6px; color: #526070; }
+.workspace-tabs [role="tab"][aria-selected="true"] { color: #145caf; border-bottom-color: var(--accent); background: #fff; font-weight: 600; }
+[role="tabpanel"][hidden] { display: none; }
+[role="tabpanel"] { min-width: 0; }
+.scheduler-page, .backup-options-page { padding: 18px 22px; max-width: 1060px; }
+.scheduler-page h2, .backup-options-page h2 { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
+.scheduler-page h3, .backup-options-page h3 { font-size: 13px; }
+.scheduler-page p, .backup-options-page p { font-size: 12px; }
+.scheduler-page label:not(.folder-choice), .backup-options-page label:not(.folder-choice) { display: block; font-size: 12px; font-weight: 600; margin: 13px 0 5px; }
+.scheduler-page input:not([type="checkbox"]), .scheduler-page select, .backup-options-page input:not([type="checkbox"]), .backup-options-page select { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid #aeb7c4; border-radius: 3px; background: #fff; color: inherit; }
+.backup-options-page { max-width: 780px; }
+.scheduler-page .scheduler-layout { grid-template-columns: 258px minmax(0, 1fr); }
+.scheduler-page .dialog-actions, .backup-options-page .dialog-actions { position: sticky; bottom: 0; padding: 14px 0; background: #fff; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.scheduled-folder-selection { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 8px; }
+#schedule-folder-choices { border: 1px solid var(--line); max-height: 210px; overflow: auto; padding: 8px 12px; margin: 12px 0; }
+#schedule-folder-choices legend { font-size: 12px; }
+.scheduler-page .schedule-weekdays label { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-weight: 400; }
+.overview-page { max-width: 900px; margin: 20px; }
+.overview-page .backup-statistics { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); }
+.overview-page .pane-title, .overview-page .coverage-status, .overview-page .coverage-help { grid-column: 1 / -1; }
+.overview-page .stats-list { border-right: 1px solid var(--soft); }
+.overview-page .check-dates { border-top: 0; }
+.activity-pane pre { max-height: none; min-height: 200px; }
+@media (max-width: 1050px) { .desktop-layout { grid-template-columns: 184px minmax(0, 1fr); }.workspace-tabs [role="tab"] { padding-left: 10px; padding-right: 10px; } }
+@media (max-width: 850px) { .desktop-layout { grid-template-columns: 166px minmax(0, 1fr); }.scheduler-page, .backup-options-page { padding: 14px; }.scheduler-page .scheduler-layout { grid-template-columns: 200px minmax(0, 1fr); gap: 12px; }.scheduler-calendar-pane { padding-right: 10px; }.scheduler-page .date-fields { grid-template-columns: 1fr; gap: 0; }.overview-page { margin: 14px; } }
