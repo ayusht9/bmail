@@ -1,5 +1,5 @@
 {
-  "name": "zoho-local-backup",
+  "name": "bmail",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -8,7 +8,13 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "verify": "node backup.cjs --verify"
+    "prepare:runtime": "node scripts/prepare-runtime.cjs",
+    "test": "node --test backup.test.cjs installer.test.cjs stats.test.cjs polling.test.cjs scheduler.test.cjs",
+    "test:desktop:setup": "tauri build --config src-tauri/tauri.setup-test.conf.json --no-bundle && node scripts/test-desktop-setup.cjs",
+    "test:profiles": "node scripts/test-profiles.cjs",
+    "verify": "node backup.cjs --verify",
+    "test:stats:ui": "node scripts/test-stats-ui.cjs",
+    "test:cache": "cargo test --manifest-path src-tauri/Cargo.toml --lib cache::tests"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",
@@ -17,6 +23,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.4",
+    "playwright-core": "^1.65.1",
     "vite": "^7.1.7"
   }
 }

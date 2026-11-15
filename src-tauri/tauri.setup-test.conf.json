@@ -1,0 +1,4 @@
+{
+  "identifier": "com.bmail.desktop.setup-smoke",
+  "app": { "appDirectoriesOverride": "$LOCALDATA/Bmail Setup Smoke" }
+}

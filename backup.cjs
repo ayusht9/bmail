@@ -3,6 +3,11 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const libmime = require('libmime');
 const { setTimeout: sleep } = require('node:timers/promises');
+const { createProgress } = require('./backup-progress.cjs');
+const { normalizeSelection, searchForSelection, scheduledSelection } = require('./backup-selection.cjs');
+const { RunInterrupted, readControl, createControl } = require('./backup-control.cjs');
+const { checkMailbox } = require('./backup-stats.cjs');
+const { recordRun, notifyRun } = require('./backup-history.cjs');
 let redactions = [];
 
 function safeError(error) {
@@ -114,9 +119,10 @@ function verify(root, manifest) {
   return { checked, invalid };
 }
 
-async function fetchCompleteMessage(client, uid, progress = () => {}, seed) {
+async function fetchCompleteMessage(client, uid, progress = () => {}, seed, checkpoint = async () => {}) {
   // Bound each IMAP literal instead of requesting a large attachment in one response.
   const chunkSize = 256 * 1024;
+  await checkpoint();
   const message = await client.fetchOne(uid, {
     uid: true, size: true, internalDate: true, flags: true
   }, { uid: true });
@@ -138,9 +144,11 @@ async function fetchCompleteMessage(client, uid, progress = () => {}, seed) {
   // RFC822.SIZE is demonstrably too small for some Zoho Sent messages. Require
   // an actual zero-length response at the next offset before committing a file.
   while (true) {
+    await checkpoint();
     const next = await client.fetchOne(uid, {
       uid: true, source: { start: received, maxLength: chunkSize }
     }, { uid: true });
+    await checkpoint();
     if (!next || next.uid !== uid || !Buffer.isBuffer(next.source))
       throw new Error('Message download ended before its declared size');
     const origin = next.partialOrigins?.get('');
@@ -163,45 +171,106 @@ async function fetchCompleteMessage(client, uid, progress = () => {}, seed) {
   return message;
 }
 
-async function backup(client, root, config, log = console.log) {
+async function backup(client, root, config, log = console.log, context = {}) {
   fs.mkdirSync(root, { recursive: true });
   const release = acquireLock(root);
   const manifestPath = path.join(root, 'manifest.json');
   const statusPath = path.join(root, 'last-run.json');
-  const status = { startedAt: new Date().toISOString(), success: false, downloaded: 0, folders: [] };
+  let progress;
+  try { progress = createProgress(root, atomicWrite, context); }
+  catch (error) { try { client.close(); } finally { release(); } throw error; }
+  const status = { startedAt: context.startedAt, runId: context.runId, success: false, downloaded: context.downloaded, folders: [] };
+  const controls = createControl(root, client, progress, readJson);
   try {
+    await controls.checkpoint();
     const manifest = readJson(manifestPath, { version: 1, user: config.user, host: config.host, folders: {} });
     if (manifest.user !== config.user || manifest.host !== config.host || manifest.version !== 1)
       throw new Error('Backup identity does not match configuration');
+    const selection = normalizeSelection(config.backupOptions);
+    status.selection = selection;
     await client.connect();
-    const folders = await client.list();
+    await controls.checkpoint();
+    progress.publish({ phase: 'discovering' }, true);
+    const available = (await client.list()).filter(folder => !folder.flags.has('\\Noselect'));
+    atomicWrite(path.join(root, 'mailboxes.json'), JSON.stringify({ updatedAt: new Date().toISOString(), folders: available.map(f => f.path) }));
+    const folders = available.filter(f => (!selection.folders.length || selection.folders.includes(f.path)) && !selection.advanced.excludedFolders.includes(f.path));
+    if (selection.folders.some(f => !available.some(item => item.path === f))) throw new Error('A selected folder is unavailable. Reload folders and update your selection.');
+    const plan = [];
+    let budget = selection.maxMessages == null ? Infinity : Math.max(0, selection.maxMessages - context.downloaded);
+    let remainingMessages = 0;
+    let plannedDownloads = 0;
+    let alreadyVerified = 0;
     for (const folder of folders) {
-      if (folder.flags.has('\\Noselect')) continue;
+      await controls.checkpoint();
+      progress.publish({ currentFolder: folder.path }, true);
+      const mailboxLock = await client.getMailboxLock(folder.path, { readOnly: true });
+      try {
+        const validity = String(client.mailbox.uidValidity);
+        if (!/^\d+$/.test(validity)) throw new Error('Server did not supply UIDVALIDITY');
+        const uids = await client.search(searchForSelection(selection), { uid: true });
+        if (!Array.isArray(uids)) throw new Error('Unable to enumerate messages');
+        const key = digest(Buffer.from(folder.path, 'utf8')) + '-' + validity;
+        const previous = manifest.folders[key]?.messages || {};
+        const selected = [];
+        for (const uid of [...uids].sort((a, b) => selection.advanced.order === 'oldest' ? a - b : b - a)) {
+          await controls.checkpoint();
+          if (previous[uid]?.complete !== false && previous[uid] && validateRecord(root, previous[uid])) {
+            selected.push(uid); alreadyVerified++;
+            progress.publish({ phase: 'checking', alreadyVerified });
+          } else if (budget > 0) {
+            selected.push(uid); budget--; plannedDownloads++;
+          } else remainingMessages++;
+        }
+        plan.push({ ...folder, validity, uids: selected, matchingMessages: uids.length });
+      } finally { mailboxLock.release(); }
+    }
+    status.remainingMessages = remainingMessages;
+    progress.publish({ totalFolders: plan.length, totalMessages: plan.reduce((n, f) => n + f.uids.length, 0), phase: 'downloading',
+      plannedDownloads: plannedDownloads + context.downloaded, remainingMessages, alreadyVerified, selection }, true);
+    for (const folder of plan) {
+      await controls.checkpoint();
       log('Checking folder: ' + folder.path);
       const lock = await client.getMailboxLock(folder.path, { readOnly: true });
       try {
         const validity = String(client.mailbox.uidValidity);
-        if (!/^\d+$/.test(validity)) throw new Error('Server did not supply UIDVALIDITY');
+        if (validity !== folder.validity) throw new Error('Mailbox changed during planning. Retry to safely rebuild the plan.');
         const key = digest(Buffer.from(folder.path, 'utf8')) + '-' + validity;
         const saved = manifest.folders[key] ||= { name: folder.path, uidValidity: validity, messages: {} };
-        const uids = await client.search({ all: true }, { uid: true });
-        if (!Array.isArray(uids)) throw new Error('Unable to enumerate messages');
-        const result = { name: folder.path, uidValidity: validity, serverMessages: uids.length, verified: 0, downloaded: 0 };
+        const uids = folder.uids;
+        const result = { name: folder.path, uidValidity: validity, serverMessages: uids.length, matchingMessages: folder.matchingMessages, verified: 0, downloaded: 0 };
         status.folders.push(result);
+        progress.publish({ currentFolder: folder.path, phase: 'downloading', folders: status.folders }, true);
         for (const uid of uids) {
+          await controls.checkpoint();
           const previous = saved.messages[uid];
           const previousValid = previous && validateRecord(root, previous);
-          if (previousValid && previous.complete !== false) { result.verified++; continue; }
+          if (previousValid && previous.complete !== false) {
+            result.verified++;
+            progress.publish({ processedMessages: progress.state.processedMessages + 1 });
+            continue;
+          }
+          if (selection.maxMessages != null && context.downloaded >= selection.maxMessages) {
+            status.remainingMessages++;
+            progress.publish({ remainingMessages: status.remainingMessages, totalMessages: progress.state.totalMessages - 1 });
+            continue;
+          }
           status.currentMessage = { folder: folder.path, uid };
+          controls.beginMessage();
           let lastProgress = 0;
+          let transferred = 0;
+          progress.publish({ currentUid: uid, currentMessageBytes: 0, currentMessageTotal: 0 });
           const message = await fetchCompleteMessage(client, uid, (received, total) => {
+            context.transferredBytes += Math.max(0, received - transferred);
+            transferred = received;
+            progress.publish({ currentMessageBytes: received, currentMessageTotal: total });
             if (total < 1024 * 1024) return;
             if (!received) log('  Downloading UID ' + uid + ': ' + (total / 1048576).toFixed(1) + ' MB');
             else if (received - lastProgress >= 1048576 || received === total) {
               lastProgress = received;
               log('    ' + (received / 1048576).toFixed(1) + '/' + (total / 1048576).toFixed(1) + ' MB');
             }
-          }, previousValid ? fs.readFileSync(path.resolve(root, previous.file)) : undefined);
+          }, previousValid ? fs.readFileSync(path.resolve(root, previous.file)) : undefined, () => controls.checkpoint(false));
+          await controls.checkpoint(false);
           // Concurrent deletion must make the run incomplete, rather than silently claiming full coverage.
           if (!message || message.uid !== uid || !Buffer.isBuffer(message.source) || !message.source.length)
             throw new Error('A message disappeared or could not be fetched; rerun the backup');
@@ -222,52 +291,120 @@ async function backup(client, root, config, log = console.log) {
           saved.messages[uid] = record;
           atomicWrite(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
           result.verified++; result.downloaded++; status.downloaded++;
+          context.downloaded++;
+          context.savedBytes += message.source.length;
+          progress.publish({ downloaded: context.downloaded, savedBytes: context.savedBytes,
+            processedMessages: progress.state.processedMessages + 1, currentMessageBytes: 0, currentMessageTotal: 0 });
           if (result.downloaded % 25 === 0) log('  Downloaded ' + result.downloaded + ' messages');
+          controls.endMessage();
+          await controls.checkpoint();
         }
         atomicWrite(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
         log('  Verified ' + result.verified + '/' + result.serverMessages + '; new: ' + result.downloaded);
+        progress.publish({ completedFolders: progress.state.completedFolders + 1 }, true);
       } finally { lock.release(); }
     }
     if (!status.folders.length) throw new Error('No accessible folders found');
-    const verified = verify(root, manifest);
+    progress.publish({ phase: 'verifying', currentFolder: null }, true);
+    const verified = { checked: 0, invalid: [] };
+    status.verificationSkipped = !selection.advanced.verifyAfterBackup;
+    for (const folder of Object.values(manifest.folders)) {
+      for (const record of Object.values(folder.messages)) {
+        await controls.checkpoint();
+        verified.checked++;
+        if (selection.advanced.verifyAfterBackup && (record.complete === false || !validateRecord(root, record))) verified.invalid.push(record.file);
+      }
+    }
     status.totalLocalMessages = verified.checked;
     status.invalidLocalFiles = verified.invalid;
     if (verified.invalid.length) throw new Error('Some retained local files are missing or damaged');
     status.success = true;
+    status.downloaded = context.downloaded;
     delete status.currentMessage;
-    log('Backup complete: ' + status.downloaded + ' downloaded; ' + verified.checked + ' local emails verified.');
+    log('Backup complete: ' + status.downloaded + ' downloaded; ' + verified.checked + (selection.advanced.verifyAfterBackup ? ' local emails verified.' : ' local records retained. Final archive verification was skipped.'));
     return status;
   } catch (error) {
+    const requested = controls.command();
+    if (error instanceof RunInterrupted || requested === 'cancel' || requested === 'stop') {
+      status.outcome = error.outcome || (requested === 'cancel' ? 'cancelled' : 'stopped');
+      status.downloaded = context.downloaded;
+      log((status.outcome === 'stopped' ? 'Stopped' : 'Cancelled') + ': completed emails are retained.');
+      return status;
+    }
     status.error = safeError(error);
     if (client.lastConnectionError) status.error.connectionError = client.lastConnectionError;
     if (client.byeReason) status.error.serverBye = safeError({ message: client.byeReason }).message;
     if (status.error.connectionError) error.connectionDiagnostic = status.error.connectionError;
     throw error;
   } finally {
+    controls.dispose();
     status.finishedAt = new Date().toISOString();
-    try { atomicWrite(statusPath, JSON.stringify(status, null, 2) + '\n'); }
+    try {
+      const outcome = status.outcome || (status.success ? 'completed' : 'failed');
+      progress.finish({ state: outcome, phase: outcome, error: status.error || null, currentMessageBytes: 0, currentMessageTotal: 0 });
+      try { recordRun(root, status, context, { readJson, atomicWrite }); }
+      catch (error) { status.historyError = safeError(error).message; log('Backup history could not be updated: ' + status.historyError); }
+      atomicWrite(statusPath, JSON.stringify(status, null, 2) + '\n');
+    }
     finally { try { client.close(); } finally { release(); } }
   }
 }
 
 async function backupWithRetries(makeClient, root, config, log = console.log, wait = sleep) {
+  const context = {};
+  const options = normalizeSelection(config.backupOptions).advanced;
   const transient = new Set(['ETIMEOUT', 'ETIMEDOUT', 'CONNECT_TIMEOUT', 'GREETING_TIMEOUT',
     'NoConnection', 'EConnectionClosed', 'StateLogout', 'ClosedAfterConnectText', 'ClosedAfterConnectTLS',
     'ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'EAI_AGAIN']);
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try { return await backup(makeClient(), root, config, log); }
+  for (let attempt = 1; attempt <= options.retryAttempts; attempt++) {
+    try {
+      const status = await backup(makeClient(), root, config, log, context);
+      await notifyRun(config, status, options).catch(() => {});
+      return status;
+    }
     catch (error) {
-      if (attempt === 3 || error.authenticationFailed || !transient.has(error.code)) throw error;
-      const delay = attempt * 30000;
+      if (attempt === options.retryAttempts || error.authenticationFailed || !transient.has(error.code)) {
+        const status = readJson(path.join(root, 'last-run.json'), null);
+        if (status?.runId === context.runId) await notifyRun(config, status, options).catch(() => {});
+        throw error;
+      }
+      const delay = attempt * options.retryDelaySeconds * 1000;
       log('Temporary connection failure (' + error.code + '). Resuming in ' + delay / 1000 + ' seconds; completed downloads are retained.');
-      await wait(delay);
+      let remaining = delay;
+      while (remaining > 0) {
+        const requested = readControl(root, context.runId, readJson);
+        const snapshot = readJson(path.join(root, 'progress.json'), {});
+        if (requested === 'cancel' || requested === 'stop') {
+          const outcome = requested === 'cancel' ? 'cancelled' : 'stopped';
+          const status = readJson(path.join(root, 'last-run.json'), {});
+          delete status.error;
+          Object.assign(status, { success: false, outcome, finishedAt: new Date().toISOString() });
+          atomicWrite(path.join(root, 'last-run.json'), JSON.stringify(status, null, 2) + '\n');
+          atomicWrite(path.join(root, 'progress.json'), JSON.stringify({ ...snapshot, state: outcome, phase: outcome, error: null, updatedAt: new Date().toISOString() }));
+          try { recordRun(root, status, context, { readJson, atomicWrite }); } catch (error) { log('Backup history could not be updated: ' + safeError(error).message); }
+          await notifyRun(config, status, options).catch(() => {});
+          return status;
+        }
+        const state = requested === 'pause' ? 'paused' : 'retrying';
+        atomicWrite(path.join(root, 'progress.json'), JSON.stringify({ ...snapshot, state, phase: state, bytesPerSecond: 0, etaSeconds: null, updatedAt: new Date().toISOString() }));
+        const slice = Math.min(250, remaining);
+        await wait(slice);
+        if (requested === 'pause') context.pausedMs = (context.pausedMs || 0) + slice;
+        else remaining -= slice;
+      }
     }
   }
 }
 
 async function main() {
-  const config = readJson(path.join(__dirname, 'backup-config.json'));
-  const root = path.resolve(__dirname, config.backupDirectory);
+  const dataDirectory = process.env.MAIL_VAULT_DATA_DIR || __dirname;
+  const config = readJson(path.join(dataDirectory, 'backup-config.json'));
+  if (process.argv.includes('--scheduled')) {
+    const selected = scheduledSelection(config.backupOptions, readJson(path.join(dataDirectory, 'backup-schedule.json'), null));
+    if (!selected) { console.log('Scheduled backup is paused or has been removed.'); return; }
+    config.backupOptions = selected;
+  }
+  const root = path.resolve(dataDirectory, config.backupDirectory);
   if (process.argv.includes('--verify') || process.argv.includes('--organize')) {
     fs.mkdirSync(root, { recursive: true });
     const release = acquireLock(root);
@@ -287,13 +424,14 @@ async function main() {
   redactions = [credentials.password];
   if (!credentials.password || credentials.user !== config.user) throw new Error('Credentials do not match account');
   const { ImapFlow } = require('imapflow');
+  const advanced = normalizeSelection(config.backupOptions).advanced;
   const makeClient = () => {
     const client = new ImapFlow({
     host: config.host, port: config.port, secure: true,
     tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' },
     auth: { user: credentials.user, pass: credentials.password },
     logger: false, disableAutoIdle: true, disableBinary: true, disableCompression: true,
-      connectionTimeout: 30000, socketTimeout: 300000
+      connectionTimeout: advanced.connectionTimeoutSeconds * 1000, socketTimeout: advanced.socketTimeoutSeconds * 1000
     });
     client.on('error', error => {
       client.lastConnectionError = safeError(error);
@@ -301,11 +439,39 @@ async function main() {
     });
     return client;
   };
-  await backupWithRetries(makeClient, root, config);
+  if (process.argv.includes('--check-mailbox') || process.argv.includes('--list-folders')) {
+    fs.mkdirSync(root, { recursive: true });
+    const release = acquireLock(root);
+    const client = makeClient();
+    try {
+      await client.connect();
+      if (process.argv.includes('--check-mailbox')) {
+        const manifest = readJson(path.join(root, 'manifest.json'), null);
+        if (manifest && (manifest.user !== config.user || manifest.host !== config.host)) throw new Error('Backup identity does not match configuration');
+        const stats = await checkMailbox(client, root, manifest, { readJson, atomicWrite, validateRecord });
+        console.log(`Mailbox checked: ${stats.savedMessages}/${stats.totalServerMessages} saved; ${stats.missingMessages} still to back up.`);
+        return;
+      }
+      const folders = (await client.list()).filter(f => !f.flags.has('\\Noselect')).map(f => f.path);
+      atomicWrite(path.join(root, 'mailboxes.json'), JSON.stringify({ updatedAt: new Date().toISOString(), folders }));
+      console.log('Loaded ' + folders.length + ' mailbox folders.');
+    } finally { try { client.close(); } finally { release(); } }
+    return;
+  }
+  const result = await backupWithRetries(makeClient, root, config);
+  if (result?.success && advanced.checkMailboxAfterBackup) {
+    const release = acquireLock(root);
+    const client = makeClient();
+    try {
+      await client.connect();
+      await checkMailbox(client, root, readJson(path.join(root, 'manifest.json')), { readJson, atomicWrite, validateRecord });
+    } catch { console.log('Backup saved. Mailbox coverage could not refresh; use Check mailbox to try again.'); }
+    finally { try { client.close(); } finally { release(); } }
+  }
 }
 if (require.main === module) main().catch(error => {
   console.error('Backup failed. No server emails were deleted.');
-  console.error(error.authenticationFailed ? 'Authentication rejected: check your Zoho app password and IMAP policy.' : JSON.stringify(safeError(error)));
+  console.error(error.authenticationFailed ? 'Authentication rejected: check your email provider app password and IMAP access settings.' : JSON.stringify(safeError(error)));
   process.exitCode = 1;
 });
-module.exports = { backup, backupWithRetries, fetchCompleteMessage, verify, digest, readJson, messageLocation, organize };
+module.exports = { backup, backupWithRetries, fetchCompleteMessage, verify, digest, readJson, messageLocation, organize, atomicWrite, validateRecord };

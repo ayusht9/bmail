@@ -1,13 +1,16 @@
+param([ValidateSet('Backup', 'Folders', 'Stats')][string]$Mode = 'Backup', [switch]$Scheduled)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Invoke-BackupProcess.ps1')
+. (Join-Path $PSScriptRoot 'Backup-Paths.ps1')
 try {
-    $nodePath = (Get-Command node -ErrorAction Stop).Source
-    $credential = Import-Clixml -LiteralPath (Join-Path $PSScriptRoot '.private\zoho-credential.xml')
+    if ($Scheduled -and $Mode -ne 'Backup') { throw 'Scheduled mode is only available for backups.' }
+    $credential = Import-Clixml -LiteralPath (Join-Path $dataDirectory '.private\zoho-credential.xml')
     $payload = @{ user = $credential.UserName; password = $credential.GetNetworkCredential().Password } | ConvertTo-Json -Compress
-    $logDirectory = Join-Path $PSScriptRoot 'logs'
+    $logDirectory = Join-Path $dataDirectory 'logs'
     New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
     $logPath = Join-Path $logDirectory ((Get-Date -Format 'yyyy-MM-dd_HH-mm-ss') + '.log')
-    $result = Invoke-BackupProcess -NodePath $nodePath -ScriptPath (Join-Path $PSScriptRoot 'backup.cjs') -Payload $payload -LogPath $logPath
+    $engineArgument = if ($Mode -eq 'Folders') { '--list-folders' } elseif ($Mode -eq 'Stats') { '--check-mailbox' } elseif ($Scheduled) { '--scheduled' } else { '' }
+    $result = Invoke-BackupProcess -NodePath $nodePath -ScriptPath (Join-Path $PSScriptRoot 'backup.cjs') -Payload $payload -LogPath $logPath -EngineArgument $engineArgument
     $payload = $null
     $credential = $null
     exit $result
