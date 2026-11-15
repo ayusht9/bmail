@@ -6,6 +6,39 @@ a folder to narrow the tables; use Filter folders to find a folder by name.
 Mailbox-check failures remain visible with diagnostic details and Retry until
 dismissed or successfully retried. Activity log opens from the sidebar.
 
+## Per-account caching
+
+Each account keeps its own configuration and backup files. A derived summary is
+stored at `accounts/<email>/.cache/dashboard-summary.json`; it contains counts,
+recorded bytes, folder totals, and the ten most recently saved records. It is
+separate from the email files, manifest, and encrypted credentials. No database
+migration is required and credentials are never added to the cache.
+
+The app reuses the summary in memory and across restarts while the source
+manifest's path, modification time, and size match. It rebuilds when the source
+changes. Missing or invalid caches are regenerated; cache write failures do not
+block the dashboard. Deleting a manifest does not leave its cached counts visible.
+Other unchanged JSON snapshots are reused in memory. Log reads are limited to
+the last 64 KB / 120 lines instead of reading the whole log.
+
+Dashboard loading runs on a worker thread. Windows schedule status is cached
+for up to 60 seconds per account and invalidated after installing/updating a
+schedule. **Refresh** bypasses these caches. Safety checks before starting or
+controlling backups continue to use current files and process state.
+
+The dashboard polls local data every 10 seconds while idle and every 2 seconds
+during a backup. It pauses automatic calls while hidden and skips them during
+UI operations, then refreshes immediately when visible again. These are local
+desktop IPC calls, not mail-provider API calls. **Check mailbox** still performs
+a fresh read-only server inventory and local file verification; cached summaries
+are never used to claim that an unchecked server message is backed up.
+
+Run `npm.cmd run test:cache` for native cache tests, in addition to `npm.cmd test`
+and `npm.cmd run test:stats:ui`. Set `CARGO_INCREMENTAL=0` in the terminal if the
+Windows incremental-cache permission warning recurs.
+
+## Coverage and new mail
+
 The dashboard shows the active account's saved message count, recorded email
 bytes, downloads in the last run, recent saved mail, and per-folder coverage.
 Totals count each saved folder copy; Gmail labels may contain the same email in

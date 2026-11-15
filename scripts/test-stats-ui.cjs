@@ -22,6 +22,7 @@ const assert = require('node:assert/strict');
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(() => {
       window.calls = [];
+      window.dashboardForces = [];
       window.failCheck = false;
       window.data = { user: 'fixture@example.com', accounts: ['fixture@example.com'], host: 'imap.gmail.com', port: 993,
         credentialReady: true, hasManifest: true, backupRunning: false, backupOptions: { folders: [] }, folderCount: 1,
@@ -30,7 +31,7 @@ const assert = require('node:assert/strict');
         ] }, lastRun: { success: true, downloaded: 1, finishedAt: '2026-11-15T00:00:00Z' } };
       window.__TAURI_INTERNALS__ = { invoke: async (name, args) => {
         window.calls.push(name);
-        if (name === 'get_dashboard') return structuredClone(window.data);
+        if (name === 'get_dashboard') { window.dashboardForces.push(args?.force); return structuredClone(window.data); }
         if (name === 'run_action') {
           if (args.action !== 'stats') throw 'Unexpected action';
           if (window.failCheck) throw 'Connection failed';
@@ -61,7 +62,7 @@ const assert = require('node:assert/strict');
     const filter = page.getByRole('searchbox', { name: 'Filter folders' });
     await filter.fill('in');
     await filter.press('Home');
-    await page.evaluate(() => { window.data.localStats.bytes = 2097152; });
+    await page.evaluate(() => { window.data.localStats.bytes = 2097152; document.dispatchEvent(new Event('visibilitychange')); });
     await panel.getByText('2.0 MB', { exact: true }).waitFor();
     await page.keyboard.type('x');
     assert.equal(await filter.inputValue(), 'xin', 'Background refresh preserves the input caret');
@@ -80,6 +81,7 @@ const assert = require('node:assert/strict');
     await page.evaluate(() => { window.data.mailboxStatus.complete = false; window.data.mailboxStatus.missingMessages = 2; window.data.mailboxStatus.totalServerMessages = 5; });
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     await panel.getByRole('heading', { name: 'Mailbox backup is incomplete' }).waitFor();
+    assert.equal(await page.evaluate(() => window.dashboardForces.at(-1)), true, 'Manual refresh bypasses caches');
     assert.equal(await panel.getByRole('progressbar').getAttribute('value'), '60');
     await page.evaluate(() => { window.failCheck = true; });
     await page.getByRole('button', { name: 'Check mailbox', exact: true }).click();
