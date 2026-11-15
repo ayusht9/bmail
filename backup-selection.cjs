@@ -11,12 +11,46 @@ function normalizeSelection(input = {}) {
   if (dateFrom && dateTo && dateFrom > dateTo) throw new Error('The start date must be before the end date.');
   const maxMessages = input.maxMessages ?? null;
   if (maxMessages != null && (!Number.isSafeInteger(maxMessages) || maxMessages < 1 || maxMessages > 1000000)) throw new Error('Choose a message limit from 1 to 1,000,000, or leave it unlimited.');
-  return { folders: [...new Set(folders)], dateFrom, dateTo, maxMessages };
+  const raw = input.advanced ?? {};
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error('Choose valid advanced backup options.');
+  const integer = (name, fallback, min, max) => {
+    const value = raw[name] ?? fallback;
+    if (value !== null && (!Number.isSafeInteger(value) || value < min || value > max)) throw new Error(`Invalid backup option: ${name}`);
+    return value;
+  };
+  const boolean = (name, fallback) => { const value = raw[name] ?? fallback; if (typeof value !== 'boolean') throw new Error(`Invalid backup option: ${name}`); return value; };
+  const text = name => { const value = raw[name] ?? ''; if (typeof value !== 'string' || value.length > 500 || /[\r\n\0]/.test(value)) throw new Error(`Invalid backup filter: ${name}`); return value.trim(); };
+  const excludedFolders = raw.excludedFolders ?? [];
+  if (!Array.isArray(excludedFolders) || excludedFolders.length > 1000 || excludedFolders.some(f => typeof f !== 'string' || !f.trim() || f.length > 1024)) throw new Error('Choose valid excluded folders.');
+  const advanced = { excludedFolders: [...new Set(excludedFolders)], lastDays: integer('lastDays', null, 1, 36500),
+    unreadOnly: boolean('unreadOnly', false), flaggedOnly: boolean('flaggedOnly', false), sender: text('sender'), subject: text('subject'),
+    minSizeKB: integer('minSizeKB', null, 1, 1048576), maxSizeMB: integer('maxSizeMB', null, 1, 1024),
+    order: raw.order ?? 'newest', retryAttempts: integer('retryAttempts', 3, 1, 10), retryDelaySeconds: integer('retryDelaySeconds', 30, 1, 3600),
+    connectionTimeoutSeconds: integer('connectionTimeoutSeconds', 30, 5, 120), socketTimeoutSeconds: integer('socketTimeoutSeconds', 300, 30, 1800),
+    verifyAfterBackup: boolean('verifyAfterBackup', true), checkMailboxAfterBackup: boolean('checkMailboxAfterBackup', true),
+    notifyOnSuccess: boolean('notifyOnSuccess', false), notifyOnFailure: boolean('notifyOnFailure', false), notifyOnStopped: boolean('notifyOnStopped', false) };
+  if (!['newest', 'oldest'].includes(advanced.order)) throw new Error('Choose a valid download order.');
+  if (advanced.lastDays && (dateFrom || dateTo)) throw new Error('Choose a rolling date range or fixed dates, not both.');
+  if (advanced.minSizeKB && advanced.maxSizeMB && advanced.minSizeKB > advanced.maxSizeMB * 1024) throw new Error('Minimum message size must not exceed maximum size.');
+  return { folders: [...new Set(folders)], dateFrom, dateTo, maxMessages, advanced };
 }
-function searchForSelection(selection) {
+function searchForSelection(selection, now = new Date()) {
   const query = { all: true };
   if (selection.dateFrom) query.since = new Date(selection.dateFrom + 'T00:00:00Z');
   if (selection.dateTo) query.before = new Date(Date.parse(selection.dateTo + 'T00:00:00Z') + 86400000);
+  const advanced = selection.advanced || {};
+  if (advanced.lastDays) {
+    const date = new Date(now);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - advanced.lastDays + 1);
+    query.since = date;
+  }
+  if (advanced.unreadOnly) query.seen = false;
+  if (advanced.flaggedOnly) query.flagged = true;
+  if (advanced.sender) query.from = advanced.sender;
+  if (advanced.subject) query.subject = advanced.subject;
+  if (advanced.minSizeKB) query.larger = advanced.minSizeKB * 1024 - 1;
+  if (advanced.maxSizeMB) query.smaller = advanced.maxSizeMB * 1048576 + 1;
   return query;
 }
 module.exports = { normalizeSelection, searchForSelection };

@@ -1,10 +1,12 @@
 import './style.css';
 import { invoke } from '@tauri-apps/api/core';
+import { historyPane } from './history.js';
 import { createDashboardPoller } from './polling.js';
 import { statisticsPanel, coverageRows } from './statistics.js';
 import { folderNavigation, recentMailPane, mailboxFolders } from './desktop.js';
 import { progressPanel } from './progress.js';
-import { selectionSummary, selectionDialog, folderChoices } from './selection.js';
+import { schedulerDialog, scheduleFromForm, normalizeSchedule, nextRuns, calendarMarkup, scheduleSummary, localDate, updateClock } from './scheduler.js';
+import { selectionSummary, selectionDialog, folderChoices, advancedFromForm } from './selection.js';
 
 const app = document.querySelector('#app');
 let dashboard;
@@ -16,7 +18,13 @@ let folderFilter = '';
 let operationFailure = null;
 let busyAction = '';
 let activityOpen = false;
+let historyOpen = false;
+let historyFilter = 'all';
+let selectedHistoryRun = '';
 let dashboardPoller;
+let schedulerMonth = new Date();
+let schedulerFocusDate = '';
+let schedulerBusy = false;
 const providerForHost = host => host?.toLowerCase() === 'imap.gmail.com' ? 'google' : host?.toLowerCase() === 'imappro.zoho.in' ? 'zoho' : 'other';
 
 function updateProviderHelp() {
@@ -78,9 +86,9 @@ function render() {
         <nav class="folder-list" aria-label="Mailbox folders"><button class="folder-item ${!selectedFolder ? 'selected' : ''}" data-action="select-folder" data-folder="" aria-pressed="${!selectedFolder}"><span>All folders</span><small>${formatNumber(dashboard.localStats?.messages || 0)}</small></button>
           ${folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber) || `<p class="sidebar-empty">${folderFilter ? 'No matching folders.' : 'Check your mailbox to load folders.'}</p>`}</nav>
         <div class="sidebar-tools"><button data-action="setup" ${busy ? 'disabled' : ''}>${dashboard.credentialReady ? 'Account settings' : 'Set up mailbox'}</button>
-          <button data-action="schedule" ${busy || !dashboard.credentialReady ? 'disabled' : ''}>${dashboard.scheduleInstalled ? 'Update schedule' : 'Install schedule'}</button>
+          <button data-action="schedule" ${busy || !dashboard.credentialReady ? 'disabled' : ''}>Scheduler</button>
           <button data-action="verify" ${busy || dashboard.backupRunning || !dashboard.hasManifest ? 'disabled' : ''}>Verify local files</button>
-          <button data-action="toggle-activity" aria-pressed="${activityOpen}">Activity log</button></div>
+          <button data-action="toggle-history" aria-pressed="${historyOpen}">Backup history</button><button data-action="toggle-activity" aria-pressed="${activityOpen}">Activity log</button></div>
       </aside>
       <main class="mail-workspace">
         <div class="workspace-heading"><div><h1>${escapeHtml(selectedFolder || 'All folders')}</h1><p>${escapeHtml(dashboard.user)}</p></div><span class="connection-status">Read-only IMAP</span></div>
@@ -91,9 +99,11 @@ function render() {
         ${dashboard.launchError ? `<aside class="notice error">${escapeHtml(dashboard.launchError)}</aside>` : ''}
         ${dashboard.migrationNotice ? `<aside class="notice">${escapeHtml(dashboard.migrationNotice)}</aside>` : ''}
         ${dashboard.backupRunning ? progressPanel(dashboard, escapeHtml, formatNumber) : ''}
+        ${historyOpen ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber) : `
         <section class="folder-pane" aria-label="Folder coverage"><div class="pane-title"><h2>Folder coverage</h2><span>${formatNumber(mailboxFolders(dashboard).length)} folders</span></div>
           <div class="table-wrap"><table class="folder-table"><thead><tr><th>Folder</th><th>Saved locally</th><th>On server</th><th>Remaining</th></tr></thead><tbody>${folderRows || '<tr><td colspan="4" class="empty-pane">No folders to show. Check mailbox to load coverage.</td></tr>'}</tbody></table></div></section>
         ${recentMailPane(dashboard, selectedFolder, escapeHtml, formatDate)}
+        `}
         ${activityOpen ? `<section class="activity-pane" aria-label="Activity log"><div class="pane-title"><h2>Activity log</h2><button data-action="open-logs">Open log folder</button></div><pre>${escapeHtml(dashboard.latestLog?.tail || 'No activity recorded yet.')}</pre></section>` : ''}
       </main>
       <aside class="inspector" aria-label="Account overview">
@@ -102,9 +112,10 @@ function render() {
         <section class="storage-summary"><h2>Storage</h2><p>${escapeHtml(dashboard.dataDirectory || 'Available after account setup')}</p><button data-action="open-backups">Open location</button></section>
       </aside>
     </div>
-    <footer class="statusbar"><span>${busy ? busyAction === 'stats' ? 'Checking mailbox and verifying saved files...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : 'Ready'}</span><span>Schedule: ${dashboard.scheduleInstalled ? 'Monday, 11:00' : 'not installed'}</span><span>Manual app updates</span></footer>
+    <footer class="statusbar"><span>${busy ? busyAction === 'stats' ? 'Checking mailbox and verifying saved files...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : 'Ready'}</span><span>Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span><span>Manual app updates</span></footer>
     <div id="toast" role="status"></div>
     ${selectionDialog(dashboard, escapeHtml)}
+    ${schedulerDialog(dashboard, escapeHtml)}
     <dialog id="mailbox-dialog" aria-labelledby="setup-title" aria-describedby="setup-description">
       <form id="mailbox-form">
         <h2 id="setup-title">${hasAccount ? 'Update app password' : 'Set up your mailbox'}</h2>
@@ -199,6 +210,30 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (action === 'backup-preset') {
+    const form = document.querySelector('#selection-form');
+    const custom = button.dataset.preset === 'custom';
+    form.elements.allFolders.checked = !custom;
+    document.querySelector('#folder-choices').disabled = !custom;
+    if (!custom) {
+      for (const name of ['dateFrom','dateTo','maxMessages','excludedFolders','sender','subject','minSizeKB','maxSizeMB']) form.elements[name].value = '';
+      form.elements.lastDays.value = button.dataset.preset === 'recent' ? '30' : '';
+      form.elements.unreadOnly.checked = form.elements.flaggedOnly.checked = false;
+      form.elements.verifyAfterBackup.checked = form.elements.checkMailboxAfterBackup.checked = true;
+      if (button.dataset.preset === 'recent') form.querySelector('.advanced-backup').open = true;
+    }
+    document.querySelector('#selection-error').textContent = '';
+    return;
+  }
+  if (action === 'test-notification') { testNotification(button); return; }
+  if (action === 'toggle-history') { historyOpen = !historyOpen; render(); return; }
+  if (action === 'history-select') { selectedHistoryRun = button.dataset.runId; render(); return; }
+  if (action === 'schedule') { openScheduler(); return; }
+  if (action === 'cancel-schedule') { if (!schedulerBusy) document.querySelector('#scheduler-dialog').close(); return; }
+  if (action === 'schedule-read') { scheduleOperation('read'); return; }
+  if (action === 'schedule-remove') { scheduleOperation('remove'); return; }
+  if (action === 'schedule-prev' || action === 'schedule-next') { schedulerMonth = new Date(schedulerMonth.getFullYear(), schedulerMonth.getMonth() + (action === 'schedule-next' ? 1 : -1), 1); schedulerFocusDate = localDate(schedulerMonth); updateSchedulePreview(); return; }
+  if (action === 'schedule-day') { const date = button.dataset.date; document.querySelector('#schedule-date').value = date; schedulerFocusDate = date; schedulerMonth = new Date(`${date}T00:00:00`); updateSchedulePreview(); document.querySelector(`.schedule-calendar [data-date="${date}"]`)?.focus(); return; }
   if (action === 'select-folder') { selectedFolder = button.dataset.folder; render(); return; }
   if (action === 'toggle-activity') { activityOpen = !activityOpen; render(); return; }
   if (action === 'dismiss-error') { operationFailure = null; render(); return; }
@@ -221,6 +256,12 @@ app.addEventListener('click', event => {
 });
 
 app.addEventListener('input', event => {
+  if (event.target.closest('#scheduler-form')) {
+    if (event.target.id === 'schedule-date' && /^\d{4}-\d{2}-\d{2}$/.test(event.target.value)) {
+      schedulerFocusDate = event.target.value; schedulerMonth = new Date(`${event.target.value}T00:00:00`);
+    }
+    updateSchedulePreview(); return;
+  }
   if (event.target.id !== 'folder-filter') return;
   const input = event.target;
   folderFilter = input.value;
@@ -231,6 +272,8 @@ app.addEventListener('input', event => {
 });
 
 app.addEventListener('change', event => {
+  if (event.target.id === 'history-filter') { historyFilter = event.target.value; render(); return; }
+  if (event.target.closest('#scheduler-form')) { updateSchedulePreview(); return; }
   if (event.target.id === 'active-account') switchAccount(event.target.value);
   if (event.target.id === 'all-folders') {
     document.querySelector('#folder-choices').disabled = event.target.checked;
@@ -247,6 +290,7 @@ app.addEventListener('change', event => {
 });
 
 app.addEventListener('cancel', event => {
+  if (event.target.id === 'scheduler-dialog' && schedulerBusy) event.preventDefault();
   if (event.target.id === 'selection-dialog' && busy) event.preventDefault();
   if (event.target.id === 'mailbox-dialog' && !busy) {
     document.querySelector('#mail-password').value = '';
@@ -289,13 +333,114 @@ async function switchAccount(email) {
   operationFailure = null;
   selectedFolder = '';
   folderFilter = '';
+  selectedHistoryRun = '';
   render();
   try { await invoke('switch_account', { email }); }
   catch (error) { toast(String(error), true); }
   finally { busy = false; await refresh(); }
 }
 
+async function testNotification(button) {
+  if (busy) return;
+  busy = true;
+  button.disabled = true;
+  button.textContent = 'Sending test...';
+  try { document.querySelector('#notification-status').textContent = await invoke('test_notification'); }
+  catch (error) { document.querySelector('#selection-error').textContent = String(error); }
+  finally { busy = false; button.disabled = false; button.textContent = 'Send test notification'; dashboardPoller?.reschedule(); }
+}
+
+function updateScheduleStatus() {
+  const status = dashboard.schedule;
+  const element = document.querySelector('#schedule-status');
+  if (!element) return;
+  element.innerHTML = status ? `<strong>Windows: ${escapeHtml(status.state)}</strong><p>Next run: ${status.nextRunTime ? formatDate(status.nextRunTime) : 'None reported'}<br>Last run: ${status.lastRunTime ? formatDate(status.lastRunTime) : 'Never'}${status.lastResult != null ? `<br>Last task result: ${escapeHtml(status.lastResult)}` : ''}<br>Status checked: ${formatDate(status.checkedAt)}</p>` : '<p>No Windows status loaded yet.</p>';
+  document.querySelector('[data-action="schedule-remove"]').disabled = schedulerBusy || !status?.installed || dashboard.backupRunning;
+}
+
+function updateSchedulePreview() {
+  const form = document.querySelector('#scheduler-form');
+  if (!form) return;
+  const draft = scheduleFromForm(form);
+  form.querySelectorAll('[data-recurrence]').forEach(element => {
+    element.hidden = !element.dataset.recurrence.split(' ').includes(draft.frequency);
+    element.querySelectorAll('input,select').forEach(input => input.disabled = element.hidden);
+  });
+  document.querySelector('#schedule-every').max = draft.frequency === 'weekly' ? 52 : 365;
+  let schedule;
+  try { schedule = normalizeSchedule(draft); document.querySelector('#schedule-error').textContent = ''; }
+  catch (error) { document.querySelector('#schedule-error').textContent = error.message; schedule = { ...draft, enabled: false }; }
+  document.querySelector('#schedule-calendar').innerHTML = calendarMarkup(schedule, schedulerMonth, schedulerFocusDate, escapeHtml);
+  const runs = nextRuns(schedule);
+  document.querySelector('#schedule-upcoming').innerHTML = `<h3>Upcoming preview</h3>${runs.length ? `<ol>${runs.map(date => `<li>${formatDate(date)}</li>`).join('')}</ol>` : '<p>No upcoming runs for these settings.</p>'}<p class="muted">Preview only. Windows next-run status is authoritative. Dots are planned dates, not completed backups.</p>`;
+  updateClock();
+}
+
+async function openScheduler() {
+  if (busy) return;
+  const dialog = document.querySelector('#scheduler-dialog');
+  dialog.showModal();
+  schedulerFocusDate = document.querySelector('#schedule-date').value;
+  schedulerMonth = new Date(`${schedulerFocusDate}T00:00:00`);
+  updateSchedulePreview(); updateScheduleStatus();
+  await scheduleOperation('read', true);
+}
+
+async function scheduleOperation(action, loadSettings = false) {
+  if (schedulerBusy) return;
+  const dialog = document.querySelector('#scheduler-dialog');
+  const form = document.querySelector('#scheduler-form');
+  if (action !== 'read' && dashboard.backupRunning) { document.querySelector('#schedule-error').textContent = 'Finish the current backup before changing its schedule.'; return; }
+  let replaceForm = false;
+  let schedule;
+  try { if (action === 'save') schedule = normalizeSchedule(scheduleFromForm(form)); }
+  catch (error) { document.querySelector('#schedule-error').textContent = error.message; return; }
+  schedulerBusy = true; busy = true;
+  document.querySelector('#schedule-error').textContent = '';
+  const controls = [...form.querySelectorAll('button,input,select')];
+  const enabled = controls.filter(control => !control.disabled);
+  enabled.forEach(control => control.disabled = true);
+  try {
+    const result = await invoke('manage_schedule', { action, schedule: schedule || null });
+    dashboard.schedule = result; dashboard.scheduleInstalled = result.installed;
+    // Preserve draft edits on a status refresh. Save/remove replace the form
+    // only after Windows confirms the operation succeeded.
+    replaceForm = action !== 'read' || loadSettings;
+    updateScheduleStatus();
+    if (action === 'save') toast(result.enabled ? 'Schedule saved in Windows.' : 'Schedule paused.');
+    if (action === 'remove') toast('Schedule removed. Backup files are kept.');
+  } catch (error) { document.querySelector('#schedule-error').textContent = String(error); }
+  finally {
+    schedulerBusy = false; busy = false;
+    enabled.forEach(control => control.disabled = false);
+    if (replaceForm) {
+      const reopen = dialog.open;
+      dialog.close();
+      render();
+      if (reopen) document.querySelector('#scheduler-dialog').showModal();
+      schedulerFocusDate = document.querySelector('#schedule-date').value;
+      schedulerMonth = new Date(`${schedulerFocusDate}T00:00:00`);
+      updateSchedulePreview();
+    }
+    updateScheduleStatus();
+    dashboardPoller?.reschedule();
+  }
+}
+
+app.addEventListener('keydown', event => {
+  const button = event.target.closest('.schedule-calendar [data-date]');
+  if (!button || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)) return;
+  event.preventDefault();
+  const date = new Date(`${button.dataset.date}T00:00:00`);
+  const offset = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7, Home: -date.getDay(), End: 6 - date.getDay() }[event.key];
+  date.setDate(date.getDate() + offset);
+  schedulerFocusDate = localDate(date); schedulerMonth = date;
+  updateSchedulePreview();
+  document.querySelector(`.schedule-calendar [data-date="${schedulerFocusDate}"]`)?.focus();
+});
+
 app.addEventListener('submit', async event => {
+  if (event.target.id === 'scheduler-form') { event.preventDefault(); scheduleOperation('save'); return; }
   if (event.target.id === 'selection-form') {
     event.preventDefault();
     if (busy) return;
@@ -313,7 +458,7 @@ app.addEventListener('submit', async event => {
     button.disabled = true;
     button.textContent = 'Saving...';
     try {
-      const result = await invoke('save_backup_options', { options: { folders, dateFrom, dateTo, maxMessages: values.get('maxMessages') ? Number(values.get('maxMessages')) : null } });
+      const result = await invoke('save_backup_options', { options: { folders, dateFrom, dateTo, maxMessages: values.get('maxMessages') ? Number(values.get('maxMessages')) : null, advanced: advancedFromForm(values) } });
       document.querySelector('#selection-dialog').close();
       busy = false;
       await refresh();
@@ -368,3 +513,4 @@ document.addEventListener('visibilitychange', () => dashboardPoller.wake());
 window.addEventListener('pagehide', () => dashboardPoller.stop());
 render();
 refresh().finally(() => dashboardPoller.start());
+setInterval(updateClock, 1000);

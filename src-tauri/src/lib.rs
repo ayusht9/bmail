@@ -41,12 +41,15 @@ struct Dashboard {
     port: u16,
     credential_ready: bool,
     schedule_installed: bool,
+    schedule: Option<Value>,
     has_manifest: bool,
     total_messages: u64,
     folder_count: usize,
     local_stats: Value,
     mailbox_status: Option<Value>,
     last_run: Option<Value>,
+    history: Value,
+    history_error: Option<String>,
     latest_log: Option<LogSummary>,
     progress: Option<Value>,
     backup_running: bool,
@@ -232,11 +235,15 @@ fn read_dashboard(app: &tauri::AppHandle, force: bool) -> Result<Dashboard, Stri
         cache::ManifestSummary { total_messages, folder_count: folders.map_or(0, |value| value.len()), local_stats: local_statistics(Some(manifest)) }
     });
     let progress = cache.json(&backup_root.join("progress.json"), force);
+    let history_path = backup_root.join("history.json");
+    let history = cache.json(&history_path, force).filter(Value::is_array);
+    let history_error = if history_path.exists() && history.is_none() { Some("Backup history could not be read. The existing file was kept.".to_owned()) } else { None };
     Ok(Dashboard {
         host: config.get("host").and_then(Value::as_str).unwrap_or("imap.gmail.com").to_owned(),
         port: config.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).unwrap_or(993),
         credential_ready: config.get("user").and_then(Value::as_str).is_some() && root.join(".private/zoho-credential.xml").is_file(),
         schedule_installed: cache.schedule(&root, force, || schedule_exists(&user)),
+        schedule: cache.json(&root.join("backup-schedule-status.json"), force),
         has_manifest: summary.is_some(),
         total_messages: summary.as_ref().map_or(0, |summary| summary.total_messages),
         folder_count: summary.as_ref().map_or(0, |summary| summary.folder_count),
@@ -248,6 +255,7 @@ fn read_dashboard(app: &tauri::AppHandle, force: bool) -> Result<Dashboard, Stri
             status
         }),
         last_run: cache.json(&backup_root.join("last-run.json"), force),
+        history: history.unwrap_or_else(|| serde_json::json!([])), history_error,
         latest_log: latest_log(&root, &mut cache, force), user,
         progress, backup_running: launching || lock_running, launch_error,
         backup_options: config.get("backupOptions").cloned().unwrap_or_else(|| serde_json::json!({"folders": [], "dateFrom": null, "dateTo": null, "maxMessages": null})),
@@ -359,6 +367,20 @@ struct BackupOptions {
     date_from: Option<String>,
     date_to: Option<String>,
     max_messages: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    advanced: Option<AdvancedOptions>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AdvancedOptions {
+    excluded_folders: Vec<String>, last_days: Option<u32>, unread_only: bool, flagged_only: bool,
+    sender: String, subject: String, min_size_k_b: Option<u64>, max_size_m_b: Option<u64>,
+    order: String, retry_attempts: u32, retry_delay_seconds: u32, connection_timeout_seconds: u32,
+    socket_timeout_seconds: u32, verify_after_backup: bool, check_mailbox_after_backup: bool,
+    #[serde(default)] notify_on_success: bool,
+    #[serde(default)] notify_on_failure: bool,
+    #[serde(default)] notify_on_stopped: bool,
 }
 
 fn valid_date(value: &str) -> bool {
@@ -367,6 +389,52 @@ fn valid_date(value: &str) -> bool {
     let (Ok(y), Ok(m), Ok(d)) = (parts[0].parse::<u32>(), parts[1].parse::<usize>(), parts[2].parse::<u32>()) else { return false; };
     let days = [31, if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     y >= 1 && (1..=12).contains(&m) && d >= 1 && d <= days[m - 1]
+}
+
+#[tauri::command]
+async fn manage_schedule(app: tauri::AppHandle, action: String, schedule: Option<Value>) -> Result<Value, String> {
+    if !["read", "save", "remove"].contains(&action.as_str()) { return Err("Unknown schedule action.".into()); }
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = data_root(&app)?;
+        if action != "read" {
+            let process = app.state::<BackupProcess>();
+            let mut child = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
+            if child.as_mut().is_some_and(|child| child.try_wait().map_or(true, |status| status.is_none())) || active_backup(&backup_root(&root)) {
+                return Err("Finish the current backup before changing its schedule.".into());
+            }
+        }
+        let engine = engine_root(&app)?;
+        let mut child = hidden_command("powershell.exe").current_dir(&root).env("MAIL_VAULT_DATA_DIR", &root)
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"]).arg(engine.join("Manage-BackupSchedule.ps1"))
+            .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
+            .spawn().map_err(|e| format!("Could not start Windows scheduler: {e}"))?;
+        let payload = serde_json::to_vec(&serde_json::json!({"action": action, "schedule": schedule})).map_err(|e| e.to_string())?;
+        let written = child.stdin.take().ok_or("Schedule input is unavailable")?.write_all(&payload);
+        let output = child.wait_with_output().map_err(|e| e.to_string())?;
+        if !output.status.success() || written.is_err() {
+            let error = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+            return Err(if error.is_empty() { "Windows could not update the schedule. Check Task Scheduler permissions.".into() } else { error });
+        }
+        let result = serde_json::from_slice::<Value>(&output.stdout).map_err(|e| format!("Could not read schedule status: {e}"))?;
+        let cache = app.state::<cache::DashboardCache>();
+        if let Ok(mut cache) = cache.0.lock() { cache.invalidate_schedule(&root); };
+        Ok(result)
+    }).await.map_err(|e| format!("Schedule operation was interrupted: {e}"))?
+}
+
+#[tauri::command]
+async fn test_notification(app: tauri::AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let engine = engine_root(&app)?;
+        let mut child = hidden_command("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-STA", "-ExecutionPolicy", "Bypass", "-File"]).arg(engine.join("Notify-Backup.ps1"))
+            .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
+            .spawn().map_err(|e| e.to_string())?;
+        child.stdin.take().ok_or("Notification input is unavailable")?.write_all(br#"{"title":"Bmail notification test","message":"Desktop alerts are enabled. Windows notification settings control their display.","failed":false}"#).map_err(|e| e.to_string())?;
+        let output = child.wait_with_output().map_err(|e| e.to_string())?;
+        if !output.status.success() { return Err(String::from_utf8_lossy(&output.stderr).trim().to_owned()); }
+        Ok("Test notification sent. Windows settings may suppress its display.".into())
+    }).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -381,6 +449,18 @@ fn save_backup_options(app: tauri::AppHandle, options: BackupOptions, process: t
     if options.date_from.iter().chain(options.date_to.iter()).any(|v| !valid_date(v)) { return Err("Choose valid backup dates.".into()); }
     if let (Some(from), Some(to)) = (&options.date_from, &options.date_to) { if from > to { return Err("The start date must be before the end date.".into()); } }
     if options.max_messages.is_some_and(|n| n == 0 || n > 1000000) { return Err("Choose a limit from 1 to 1,000,000 new messages.".into()); }
+    if let Some(a) = &options.advanced {
+        if a.excluded_folders.len() > 1000 || a.excluded_folders.iter().any(|f| f.trim().is_empty() || f.len() > 1024)
+            || a.last_days.is_some_and(|n| n == 0 || n > 36500) || a.last_days.is_some() && (options.date_from.is_some() || options.date_to.is_some())
+            || !["newest", "oldest"].contains(&a.order.as_str()) || !(1..=10).contains(&a.retry_attempts)
+            || !(1..=3600).contains(&a.retry_delay_seconds) || !(5..=120).contains(&a.connection_timeout_seconds)
+            || !(30..=1800).contains(&a.socket_timeout_seconds) || a.min_size_k_b.is_some_and(|n| n == 0 || n > 1048576)
+            || a.max_size_m_b.is_some_and(|n| n == 0 || n > 1024)
+            || a.sender.len() > 500 || a.subject.len() > 500 || a.sender.chars().chain(a.subject.chars()).any(|c| matches!(c, '\r' | '\n' | '\0')) {
+            return Err("Choose valid advanced backup options. Rolling dates cannot be combined with fixed dates.".into());
+        }
+        if let (Some(min), Some(max)) = (a.min_size_k_b, a.max_size_m_b) { if min > max * 1024 { return Err("Minimum message size must not exceed maximum size.".into()); } }
+    }
     let config_path = root.join("backup-config.json");
     let mut config = read_json(&config_path).ok_or("Set up your mailbox first.")?;
     config["backupOptions"] = serde_json::to_value(options).map_err(|e| e.to_string())?;
@@ -481,7 +561,7 @@ pub fn run() {
         .manage(BackupProcess::default())
         .manage(cache::DashboardCache::default())
         .setup(|app| { initialize_profiles(app.handle()).map_err(std::io::Error::other)?; Ok(()) })
-        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory])
+        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }
@@ -489,6 +569,19 @@ pub fn run() {
 #[cfg(test)]
 mod dashboard_tests {
     use super::*;
+
+    #[test]
+    fn advanced_options_deserialize_the_ui_field_names() {
+        let value = serde_json::json!({
+            "excludedFolders": [], "lastDays": 30, "unreadOnly": true, "flaggedOnly": false,
+            "sender": "", "subject": "", "minSizeKB": 10, "maxSizeMB": 5, "order": "oldest",
+            "retryAttempts": 3, "retryDelaySeconds": 30, "connectionTimeoutSeconds": 30, "socketTimeoutSeconds": 300,
+            "verifyAfterBackup": true, "checkMailboxAfterBackup": true, "notifyOnSuccess": true, "notifyOnFailure": false, "notifyOnStopped": false
+        });
+        let options: AdvancedOptions = serde_json::from_value(value).unwrap();
+        assert_eq!(options.min_size_k_b, Some(10)); assert_eq!(options.max_size_m_b, Some(5));
+        assert!(options.notify_on_success);
+    }
 
     #[test]
     fn summary_counts_all_complete_records_but_only_retains_the_latest_ten() {

@@ -66,7 +66,10 @@ const assert = require('node:assert/strict');
     await page.getByRole('button', { name: 'Save selection', exact: true }).click();
     await page.locator('#selection-dialog').waitFor({ state: 'hidden' });
     const selected = JSON.parse(fs.readFileSync(path.join(accountRoot, 'backup-config.json'), 'utf8').replace(/^\uFEFF/, '')).backupOptions;
-    assert.deepEqual(selected, { folders: ['INBOX'], dateFrom: '2026-01-01', dateTo: '2026-11-15', maxMessages: 25 });
+    const { advanced, ...basicSelection } = selected;
+    assert.deepEqual(basicSelection, { folders: ['INBOX'], dateFrom: '2026-01-01', dateTo: '2026-11-15', maxMessages: 25 });
+    assert.equal(advanced.retryAttempts, 3);
+    assert.equal(advanced.verifyAfterBackup, true);
     const progress = { runId: 'isolated-progress-test', pid: process.pid, state: 'running', phase: 'downloading',
       startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), totalMessages: 100, processedMessages: 20,
       downloaded: 10, plannedDownloads: 25, savedBytes: 1000000, transferredBytes: 1000000, elapsedSeconds: 60,
