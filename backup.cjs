@@ -7,6 +7,7 @@ const { createProgress } = require('./backup-progress.cjs');
 const { normalizeSelection, searchForSelection } = require('./backup-selection.cjs');
 const { RunInterrupted, readControl, createControl } = require('./backup-control.cjs');
 const { checkMailbox } = require('./backup-stats.cjs');
+const { recordRun, notifyRun } = require('./backup-history.cjs');
 let redactions = [];
 
 function safeError(error) {
@@ -192,7 +193,7 @@ async function backup(client, root, config, log = console.log, context = {}) {
     progress.publish({ phase: 'discovering' }, true);
     const available = (await client.list()).filter(folder => !folder.flags.has('\\Noselect'));
     atomicWrite(path.join(root, 'mailboxes.json'), JSON.stringify({ updatedAt: new Date().toISOString(), folders: available.map(f => f.path) }));
-    const folders = available.filter(f => !selection.folders.length || selection.folders.includes(f.path));
+    const folders = available.filter(f => (!selection.folders.length || selection.folders.includes(f.path)) && !selection.advanced.excludedFolders.includes(f.path));
     if (selection.folders.some(f => !available.some(item => item.path === f))) throw new Error('A selected folder is unavailable. Reload folders and update your selection.');
     const plan = [];
     let budget = selection.maxMessages == null ? Infinity : Math.max(0, selection.maxMessages - context.downloaded);
@@ -211,7 +212,7 @@ async function backup(client, root, config, log = console.log, context = {}) {
         const key = digest(Buffer.from(folder.path, 'utf8')) + '-' + validity;
         const previous = manifest.folders[key]?.messages || {};
         const selected = [];
-        for (const uid of [...uids].sort((a, b) => b - a)) {
+        for (const uid of [...uids].sort((a, b) => selection.advanced.order === 'oldest' ? a - b : b - a)) {
           await controls.checkpoint();
           if (previous[uid]?.complete !== false && previous[uid] && validateRecord(root, previous[uid])) {
             selected.push(uid); alreadyVerified++;
@@ -306,11 +307,12 @@ async function backup(client, root, config, log = console.log, context = {}) {
     if (!status.folders.length) throw new Error('No accessible folders found');
     progress.publish({ phase: 'verifying', currentFolder: null }, true);
     const verified = { checked: 0, invalid: [] };
+    status.verificationSkipped = !selection.advanced.verifyAfterBackup;
     for (const folder of Object.values(manifest.folders)) {
       for (const record of Object.values(folder.messages)) {
         await controls.checkpoint();
         verified.checked++;
-        if (record.complete === false || !validateRecord(root, record)) verified.invalid.push(record.file);
+        if (selection.advanced.verifyAfterBackup && (record.complete === false || !validateRecord(root, record))) verified.invalid.push(record.file);
       }
     }
     status.totalLocalMessages = verified.checked;
@@ -319,7 +321,7 @@ async function backup(client, root, config, log = console.log, context = {}) {
     status.success = true;
     status.downloaded = context.downloaded;
     delete status.currentMessage;
-    log('Backup complete: ' + status.downloaded + ' downloaded; ' + verified.checked + ' local emails verified.');
+    log('Backup complete: ' + status.downloaded + ' downloaded; ' + verified.checked + (selection.advanced.verifyAfterBackup ? ' local emails verified.' : ' local records retained. Final archive verification was skipped.'));
     return status;
   } catch (error) {
     const requested = controls.command();
@@ -340,6 +342,8 @@ async function backup(client, root, config, log = console.log, context = {}) {
     try {
       const outcome = status.outcome || (status.success ? 'completed' : 'failed');
       progress.finish({ state: outcome, phase: outcome, error: status.error || null, currentMessageBytes: 0, currentMessageTotal: 0 });
+      try { recordRun(root, status, context, { readJson, atomicWrite }); }
+      catch (error) { status.historyError = safeError(error).message; log('Backup history could not be updated: ' + status.historyError); }
       atomicWrite(statusPath, JSON.stringify(status, null, 2) + '\n');
     }
     finally { try { client.close(); } finally { release(); } }
@@ -348,14 +352,23 @@ async function backup(client, root, config, log = console.log, context = {}) {
 
 async function backupWithRetries(makeClient, root, config, log = console.log, wait = sleep) {
   const context = {};
+  const options = normalizeSelection(config.backupOptions).advanced;
   const transient = new Set(['ETIMEOUT', 'ETIMEDOUT', 'CONNECT_TIMEOUT', 'GREETING_TIMEOUT',
     'NoConnection', 'EConnectionClosed', 'StateLogout', 'ClosedAfterConnectText', 'ClosedAfterConnectTLS',
     'ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'EAI_AGAIN']);
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try { return await backup(makeClient(), root, config, log, context); }
+  for (let attempt = 1; attempt <= options.retryAttempts; attempt++) {
+    try {
+      const status = await backup(makeClient(), root, config, log, context);
+      await notifyRun(config, status, options).catch(() => {});
+      return status;
+    }
     catch (error) {
-      if (attempt === 3 || error.authenticationFailed || !transient.has(error.code)) throw error;
-      const delay = attempt * 30000;
+      if (attempt === options.retryAttempts || error.authenticationFailed || !transient.has(error.code)) {
+        const status = readJson(path.join(root, 'last-run.json'), null);
+        if (status?.runId === context.runId) await notifyRun(config, status, options).catch(() => {});
+        throw error;
+      }
+      const delay = attempt * options.retryDelaySeconds * 1000;
       log('Temporary connection failure (' + error.code + '). Resuming in ' + delay / 1000 + ' seconds; completed downloads are retained.');
       let remaining = delay;
       while (remaining > 0) {
@@ -368,6 +381,8 @@ async function backupWithRetries(makeClient, root, config, log = console.log, wa
           Object.assign(status, { success: false, outcome, finishedAt: new Date().toISOString() });
           atomicWrite(path.join(root, 'last-run.json'), JSON.stringify(status, null, 2) + '\n');
           atomicWrite(path.join(root, 'progress.json'), JSON.stringify({ ...snapshot, state: outcome, phase: outcome, error: null, updatedAt: new Date().toISOString() }));
+          try { recordRun(root, status, context, { readJson, atomicWrite }); } catch (error) { log('Backup history could not be updated: ' + safeError(error).message); }
+          await notifyRun(config, status, options).catch(() => {});
           return status;
         }
         const state = requested === 'pause' ? 'paused' : 'retrying';
@@ -404,13 +419,14 @@ async function main() {
   redactions = [credentials.password];
   if (!credentials.password || credentials.user !== config.user) throw new Error('Credentials do not match account');
   const { ImapFlow } = require('imapflow');
+  const advanced = normalizeSelection(config.backupOptions).advanced;
   const makeClient = () => {
     const client = new ImapFlow({
     host: config.host, port: config.port, secure: true,
     tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' },
     auth: { user: credentials.user, pass: credentials.password },
     logger: false, disableAutoIdle: true, disableBinary: true, disableCompression: true,
-      connectionTimeout: 30000, socketTimeout: 300000
+      connectionTimeout: advanced.connectionTimeoutSeconds * 1000, socketTimeout: advanced.socketTimeoutSeconds * 1000
     });
     client.on('error', error => {
       client.lastConnectionError = safeError(error);
@@ -438,7 +454,7 @@ async function main() {
     return;
   }
   const result = await backupWithRetries(makeClient, root, config);
-  if (result?.success) {
+  if (result?.success && advanced.checkMailboxAfterBackup) {
     const release = acquireLock(root);
     const client = makeClient();
     try {

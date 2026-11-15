@@ -136,6 +136,43 @@ function mockMailbox(folders, onFetch = () => {}, onSearch = () => {}) {
   return client;
 }
 
+test('advanced folder exclusions and oldest-first limits are enforced and recorded in account history', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-advanced-'));
+  const message = Buffer.from('Subject: Filtered\r\n\r\nSaved mail');
+  const fetched = [];
+  try {
+    const client = () => mockMailbox({ INBOX: { 1: message, 2: message, 3: message }, Sent: { 4: message } }, (folder, uid, query) => {
+      assert.equal(folder, 'INBOX'); if (!query.source) fetched.push(uid);
+    }, (folder, query) => { assert.equal(folder, 'INBOX'); assert.equal(query.seen, false); assert.equal(query.from, 'billing@example.com'); });
+    const config = { user: 'fixture@example.com', host: 'imap.example.com', backupOptions: { maxMessages: 1,
+      advanced: { excludedFolders: ['Sent'], order: 'oldest', unreadOnly: true, sender: 'billing@example.com' } } };
+    const first = await backup(client(), root, config, () => {});
+    assert.equal(first.success, true); assert.equal(first.remainingMessages, 2); assert.deepEqual(fetched, [1]);
+    await backup(client(), root, config, () => {});
+    assert.deepEqual(fetched, [1, 2]);
+    const history = JSON.parse(fs.readFileSync(path.join(root, 'history.json')));
+    assert.equal(history.length, 2);
+    assert.equal(history[0].outcome, 'completed'); assert.equal(history[0].downloaded, 1);
+    assert.equal(history[0].scope.excludedFolderCount, 1);
+    assert.deepEqual(history[0].scope.filters, ['unreadOnly', 'sender']);
+    assert.ok(!JSON.stringify(history).includes('billing@example.com'), 'Filter values are not copied into history metadata');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('configured retry limits are applied and retries update one history entry', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-retry-options-'));
+  let attempts = 0;
+  const delays = [];
+  try {
+    const client = () => ({ connect: async () => { attempts++; throw Object.assign(new Error('Fixture reset'), { code: 'ECONNRESET' }); }, close() {} });
+    await assert.rejects(backupWithRetries(client, root, { user: 'fixture@example.com', host: 'imap.example.com',
+      backupOptions: { advanced: { retryAttempts: 2, retryDelaySeconds: 1 } } }, () => {}, async delay => { delays.push(delay); }), /Fixture reset/);
+    assert.equal(attempts, 2); assert.equal(delays.reduce((sum, delay) => sum + delay, 0), 1000);
+    const history = JSON.parse(fs.readFileSync(path.join(root, 'history.json')));
+    assert.equal(history.length, 1); assert.equal(history[0].outcome, 'failed'); assert.equal(history[0].error.code, 'ECONNRESET');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('live progress discovers the full workload and publishes verified downloads before completion', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-progress-'));
   const message = Buffer.from('Subject: Example\r\n\r\nOriginal bytes');

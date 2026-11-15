@@ -11,11 +11,11 @@ export function progressPanel(dashboard, escapeHtml, formatNumber) {
   if (!p && !dashboard.backupRunning) return '';
   const active = dashboard.backupRunning;
   const fresh = p && !['completed', 'failed', 'stopped', 'cancelled'].includes(p.state);
-  const phase = active ? fresh ? p.phase : 'starting' : fresh ? 'interrupted' : p?.state;
+  const phase = active ? fresh ? p.phase : p?.finishedAt || p?.state === 'completed' ? 'finalizing' : 'starting' : fresh ? 'interrupted' : p?.state;
   const labels = { starting: 'Starting backup', connecting: 'Connecting to your mailbox', discovering: 'Counting matching email',
     downloading: 'Backing up your email', checking: 'Checking already saved email', verifying: 'Verifying saved files', completed: 'Selected backup complete',
     failed: 'Backup needs attention', interrupted: 'Backup was interrupted', paused: 'Backup paused',
-    stopping: 'Finishing the current email', stopped: 'Backup stopped', cancelled: 'Backup cancelled', retrying: 'Waiting to reconnect' };
+    stopping: 'Finishing the current email', stopped: 'Backup stopped', cancelled: 'Backup cancelled', retrying: 'Waiting to reconnect', finalizing: 'Finishing backup tasks' };
   const known = p?.totalMessages != null && (fresh || !active);
   const percent = known ? p.state === 'completed' ? 100 : Math.min(100, Math.floor(p.processedMessages * 100 / Math.max(1, p.totalMessages))) : null;
   return `<section class="panel run-progress" aria-labelledby="progress-title">

@@ -8,6 +8,7 @@ live progress, pause/resume/stop controls, and full-mailbox coverage statistics.
 - [Windows setup and development](WINDOWS.md)
 - [Backup engine documentation](BACKUP-README.md)
 - [Backup statistics](STATS.md)
+- [Scheduler, advanced preferences, notifications and history](SCHEDULER.md)
 
 Development happens on `dev`; `main` is reserved for verified releases.
 Install application updates manually using the Windows setup executable.
