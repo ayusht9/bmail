@@ -70,6 +70,7 @@ const assert = require('node:assert/strict');
     assert.deepEqual(basicSelection, { folders: ['INBOX'], dateFrom: '2026-01-01', dateTo: '2026-11-15', maxMessages: 25 });
     assert.equal(advanced.retryAttempts, 3);
     assert.equal(advanced.verifyAfterBackup, true);
+    await page.getByRole('tab', { name: 'Mailbox', exact: true }).click();
     const progress = { runId: 'isolated-progress-test', pid: process.pid, state: 'running', phase: 'downloading',
       startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), totalMessages: 100, processedMessages: 20,
       downloaded: 10, plannedDownloads: 25, savedBytes: 1000000, transferredBytes: 1000000, elapsedSeconds: 60,
@@ -128,7 +129,7 @@ const assert = require('node:assert/strict');
     assert.equal(active.user, 'second@example.com');
     assert.equal(active.totalMessages, 0);
     assert.deepEqual(active.accounts, ['fixture@gmail.com', 'second@example.com']);
-    await page.getByLabel('Mailbox account', { exact: true }).selectOption('fixture@gmail.com');
+    await page.getByLabel('Account', { exact: true }).selectOption('fixture@gmail.com');
     await page.waitForFunction(() => document.querySelector('.workspace-heading p')?.textContent === 'fixture@gmail.com');
     active = await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('get_dashboard'));
     assert.equal(active.user, 'fixture@gmail.com');
@@ -145,4 +146,3 @@ const assert = require('node:assert/strict');
     await fs.promises.rm(webProfile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 })().catch(error => { console.error(error); process.exit(1); });
-
