@@ -6,6 +6,7 @@ const { setTimeout: sleep } = require('node:timers/promises');
 const { createProgress } = require('./backup-progress.cjs');
 const { normalizeSelection, searchForSelection } = require('./backup-selection.cjs');
 const { RunInterrupted, readControl, createControl } = require('./backup-control.cjs');
+const { checkMailbox } = require('./backup-stats.cjs');
 let redactions = [];
 
 function safeError(error) {
@@ -417,23 +418,39 @@ async function main() {
     });
     return client;
   };
-  if (process.argv.includes('--list-folders')) {
+  if (process.argv.includes('--check-mailbox') || process.argv.includes('--list-folders')) {
     fs.mkdirSync(root, { recursive: true });
     const release = acquireLock(root);
     const client = makeClient();
     try {
       await client.connect();
+      if (process.argv.includes('--check-mailbox')) {
+        const manifest = readJson(path.join(root, 'manifest.json'), null);
+        if (manifest && (manifest.user !== config.user || manifest.host !== config.host)) throw new Error('Backup identity does not match configuration');
+        const stats = await checkMailbox(client, root, manifest, { readJson, atomicWrite, validateRecord });
+        console.log(`Mailbox checked: ${stats.savedMessages}/${stats.totalServerMessages} saved; ${stats.missingMessages} still to back up.`);
+        return;
+      }
       const folders = (await client.list()).filter(f => !f.flags.has('\\Noselect')).map(f => f.path);
       atomicWrite(path.join(root, 'mailboxes.json'), JSON.stringify({ updatedAt: new Date().toISOString(), folders }));
       console.log('Loaded ' + folders.length + ' mailbox folders.');
     } finally { try { client.close(); } finally { release(); } }
     return;
   }
-  await backupWithRetries(makeClient, root, config);
+  const result = await backupWithRetries(makeClient, root, config);
+  if (result?.success) {
+    const release = acquireLock(root);
+    const client = makeClient();
+    try {
+      await client.connect();
+      await checkMailbox(client, root, readJson(path.join(root, 'manifest.json')), { readJson, atomicWrite, validateRecord });
+    } catch { console.log('Backup saved. Mailbox coverage could not refresh; use Check mailbox to try again.'); }
+    finally { try { client.close(); } finally { release(); } }
+  }
 }
 if (require.main === module) main().catch(error => {
   console.error('Backup failed. No server emails were deleted.');
   console.error(error.authenticationFailed ? 'Authentication rejected: check your email provider app password and IMAP access settings.' : JSON.stringify(safeError(error)));
   process.exitCode = 1;
 });
-module.exports = { backup, backupWithRetries, fetchCompleteMessage, verify, digest, readJson, messageLocation, organize };
+module.exports = { backup, backupWithRetries, fetchCompleteMessage, verify, digest, readJson, messageLocation, organize, atomicWrite, validateRecord };
