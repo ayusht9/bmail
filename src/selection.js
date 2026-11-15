@@ -26,26 +26,27 @@ export function folderChoices(names, selected, disabled, escapeHtml) {
     : '<p class="muted">Load your mailbox folders to choose individual folders.</p>'}</fieldset>`;
 }
 
-export function selectionDialog(dashboard, escapeHtml) {
-  const options = dashboard.backupOptions || {};
+export function backupOptionsView(dashboard, escapeHtml, draft = null) {
+  const options = draft || dashboard.backupOptions || {};
   const selected = options.folders || [];
+  const allFolders = options._uiAllFolders ?? !selected.length;
   const a = { excludedFolders: [], lastDays: null, unreadOnly: false, flaggedOnly: false, sender: '', subject: '',
     minSizeKB: null, maxSizeMB: null, order: 'newest', retryAttempts: 3, retryDelaySeconds: 30,
     connectionTimeoutSeconds: 30, socketTimeoutSeconds: 300, verifyAfterBackup: true, checkMailboxAfterBackup: true,
     notifyOnSuccess: false, notifyOnFailure: false, notifyOnStopped: false, ...options.advanced };
-  return `<dialog id="selection-dialog" class="selection-dialog" aria-labelledby="selection-title">
+  return `<section id="selection-panel" class="backup-options-page" aria-labelledby="selection-title">
     <form id="selection-form"><h2 id="selection-title">Choose what to back up</h2>
-      <p>These choices apply to manual and scheduled backups. Existing saved mail is kept when you narrow the selection.</p>
+      <p>Folder choices apply to manual backups. Scheduler has its own folder selection; other filters and limits apply to both.</p>
       <div class="backup-presets" aria-label="Backup presets"><button type="button" data-action="backup-preset" data-preset="full">Full mailbox</button><button type="button" data-action="backup-preset" data-preset="recent">Last 30 days</button><button type="button" data-action="backup-preset" data-preset="custom">Custom folders</button></div>
-      <label class="folder-choice"><input id="all-folders" name="allFolders" type="checkbox" ${selected.length ? '' : 'checked'}><span>All available folders</span></label>
+      <label class="folder-choice"><input id="all-folders" name="allFolders" type="checkbox" ${allFolders ? 'checked' : ''}><span>All available folders</span></label>
       <button type="button" class="ghost" data-action="load-folders">Load / refresh mailbox folders</button>
-      <div id="folder-options">${folderChoices(dashboard.mailboxes?.folders || [], selected, !selected.length, escapeHtml)}</div>
+      <div id="folder-options">${folderChoices(dashboard.mailboxes?.folders || [], selected, allFolders, escapeHtml)}</div>
       <p class="muted">Gmail can expose the same email under several labels. Selecting overlapping folders saves separate copies.</p>
       <div class="date-fields"><div><label for="date-from">Received from</label><input id="date-from" name="dateFrom" type="date" value="${escapeHtml(options.dateFrom || '')}"></div><div><label for="date-to">Received through</label><input id="date-to" name="dateTo" type="date" value="${escapeHtml(options.dateTo || '')}"></div></div>
       <p class="muted">Both dates are inclusive, using the date your mail server received each message.</p>
       <label for="max-messages">Maximum new emails per run</label><input id="max-messages" name="maxMessages" type="number" min="1" max="1000000" placeholder="No limit" value="${options.maxMessages || ''}">
       <p class="muted">Already saved emails do not count toward this limit. Start another run to continue with the remaining matching email.</p>
-      <details class="advanced-backup"><summary>Advanced backup options</summary>
+      <details class="advanced-backup" ${options._uiAdvancedOpen ? 'open' : ''}><summary>Advanced backup options</summary>
         <h3>Message filters</h3>
         <label for="excluded-folders">Excluded folders (one exact folder name per line)</label><textarea id="excluded-folders" name="excludedFolders" rows="3">${escapeHtml(a.excludedFolders.join('\n'))}</textarea>
         <label for="last-days">Rolling window: last N days</label><input id="last-days" name="lastDays" type="number" min="1" max="36500" value="${a.lastDays || ''}" placeholder="Use fixed dates above or leave empty">
@@ -76,6 +77,6 @@ export function selectionDialog(dashboard, escapeHtml) {
         <p class="muted">Works for manual and scheduled backups while signed in. Windows notification and Do not disturb settings may suppress alerts. Backup history is always saved independently of notifications.</p>
       </details>
       <p id="selection-error" role="alert"></p>
-      <div class="dialog-actions"><button type="button" class="ghost" data-action="cancel-selection">Cancel</button><button type="submit" class="primary">Save selection</button></div>
-    </form></dialog>`;
+      <div class="dialog-actions"><button type="button" class="ghost" data-action="reset-selection">Discard edits</button><button type="submit" class="primary" ${dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>Save selection</button></div>
+    </form></section>`;
 }

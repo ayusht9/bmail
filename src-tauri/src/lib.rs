@@ -467,7 +467,7 @@ fn save_backup_options(app: tauri::AppHandle, options: BackupOptions, process: t
     let temporary = root.join("backup-config.json.pending");
     fs::write(&temporary, serde_json::to_vec_pretty(&config).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     fs::rename(&temporary, &config_path).map_err(|e| e.to_string())?;
-    Ok("Backup selection saved. It will apply to manual and scheduled runs.".into())
+    Ok("Backup options saved. Manual folders updated; filters and limits apply to all runs.".into())
 }
 
 #[tauri::command]

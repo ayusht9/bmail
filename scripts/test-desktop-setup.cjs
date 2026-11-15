@@ -56,15 +56,15 @@ const assert = require('node:assert/strict');
     fs.mkdirSync(backupRoot, { recursive: true });
     fs.writeFileSync(path.join(backupRoot, 'mailboxes.json'), JSON.stringify({ folders: ['INBOX', 'Sent'], updatedAt: new Date().toISOString() }));
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await page.getByRole('tab', { name: 'Backup options', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('#folder-choices')?.textContent.includes('Sent'));
-    await page.getByRole('button', { name: 'Choose what to back up', exact: true }).click();
     await page.getByLabel('All available folders', { exact: true }).uncheck();
     await page.getByLabel('INBOX', { exact: true }).check();
     await page.getByLabel('Received from', { exact: true }).fill('2026-01-01');
     await page.getByLabel('Received through', { exact: true }).fill('2026-11-15');
     await page.getByLabel('Maximum new emails per run', { exact: true }).fill('25');
     await page.getByRole('button', { name: 'Save selection', exact: true }).click();
-    await page.locator('#selection-dialog').waitFor({ state: 'hidden' });
+    await page.waitForFunction(() => document.querySelector('#toast')?.textContent.includes('saved'));
     const selected = JSON.parse(fs.readFileSync(path.join(accountRoot, 'backup-config.json'), 'utf8').replace(/^\uFEFF/, '')).backupOptions;
     const { advanced, ...basicSelection } = selected;
     assert.deepEqual(basicSelection, { folders: ['INBOX'], dateFrom: '2026-01-01', dateTo: '2026-11-15', maxMessages: 25 });
@@ -145,3 +145,4 @@ const assert = require('node:assert/strict');
     await fs.promises.rm(webProfile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 })().catch(error => { console.error(error); process.exit(1); });
+

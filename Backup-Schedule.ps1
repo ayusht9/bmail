@@ -3,7 +3,7 @@ function Get-BmailScheduleDefaults {
     return [ordered]@{ enabled = $true; frequency = 'weekly'; startDate = [DateTime]::Today.ToString('yyyy-MM-dd'); time = '11:00';
         weekdays = @(1); monthDay = '1'; intervalHours = 6; every = 1; endDate = $null;
         startWhenAvailable = $true; networkRequired = $true; wakeComputer = $false; allowOnBattery = $true;
-        stopOnBattery = $false; maxRunHours = 48; restartCount = 0; restartMinutes = 15 }
+        stopOnBattery = $false; maxRunHours = 48; restartCount = 0; restartMinutes = 15; allFolders = $true; folders = @() }
 }
 
 function ConvertTo-BmailSchedule {
@@ -15,9 +15,13 @@ function ConvertTo-BmailSchedule {
         $value[$property.Name] = $property.Value
     }
     if ($value.frequency -notin @('once', 'daily', 'weekly', 'monthly', 'interval')) { throw 'Choose a valid recurrence.' }
-    foreach ($name in @('enabled','startWhenAvailable','networkRequired','wakeComputer','allowOnBattery','stopOnBattery')) {
+    foreach ($name in @('enabled','startWhenAvailable','networkRequired','wakeComputer','allowOnBattery','stopOnBattery','allFolders')) {
         if ($value[$name] -isnot [bool]) { throw ('Choose a valid value for ' + $name) }
     }
+    if ($value.folders -isnot [array] -or $value.folders.Count -gt 1000 -or @($value.folders | Where-Object { $_ -isnot [string] -or [string]::IsNullOrWhiteSpace($_) -or $_.Length -gt 1024 }).Count) { throw 'Choose valid scheduled folders.' }
+    $value.folders = @($value.folders | Select-Object -Unique)
+    if ($value.allFolders) { $value.folders = @() }
+    elseif (-not $value.folders.Count) { throw 'Choose at least one scheduled folder.' }
     foreach ($range in @(@('every',1,365), @('intervalHours',1,24), @('maxRunHours',1,168), @('restartCount',0,10), @('restartMinutes',1,1440))) {
         $number = $value[$range[0]]
         if (($number -isnot [int] -and $number -isnot [long]) -or $number -lt $range[1] -or $number -gt $range[2]) { throw ('Invalid ' + $range[0]) }
@@ -125,7 +129,7 @@ function Save-BmailSchedule {
     $launcher = Join-Path $DataDirectory 'Scheduled-Backup.ps1'
     $dataLiteral = $DataDirectory.Replace("'", "''")
     $scriptLiteral = (Join-Path $EngineDirectory 'Run-Backup.ps1').Replace("'", "''")
-    $launcherText = "`$env:MAIL_VAULT_DATA_DIR = '$dataLiteral'`r`n& '$scriptLiteral'`r`nexit `$LASTEXITCODE`r`n"
+    $launcherText = "`$env:MAIL_VAULT_DATA_DIR = '$dataLiteral'`r`n& '$scriptLiteral' -Scheduled`r`nexit `$LASTEXITCODE`r`n"
     # Fixed launcher contents do not depend on recurrence settings. Paths are quoted
     # as literals and never include a password or interpolated user expression.
     $launcherText | Set-Content -LiteralPath $launcher -Encoding UTF8

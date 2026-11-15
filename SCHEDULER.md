@@ -1,6 +1,6 @@
 # Scheduling, backup preferences and history
 
-Open **Scheduler** in the account sidebar. The live clock uses the computer's
+Open the **Scheduler** workspace tab. The live clock uses the computer's
 local time zone; it does not make server or desktop API calls. Select a start
 date on the calendar or use the date/time inputs. Arrow keys move calendar focus,
 Home/End move within a week, and Enter selects the focused date.
@@ -42,8 +42,12 @@ Changing machines or moving the app's engine requires saving the schedule again.
 
 ## Standard and advanced backup preferences
 
-Open Backup selection. Presets select the full mailbox, a rolling 30-day window,
-or custom folders. Save applies the same preferences to manual and scheduled runs.
+Open the **Backup options** tab. Presets select the full mailbox, a rolling 30-day
+window, or custom folders for manual backups. Scheduler has its own folder checklist
+and a Load / refresh scheduled folders button. Choose all folders or select specific
+folders before saving the schedule. Date filters, exclusions and advanced limits
+remain shared. Existing tasks keep their previous folder behavior until saved again.
+Draft edits remain available when switching workspace tabs.
 Advanced controls support exact folder exclusions, rolling received-date windows,
 unread/starred filters, sender/subject matching, minimum KB / maximum MB sizes,
 newest/oldest server UID order, message limits, connection attempts, increasing

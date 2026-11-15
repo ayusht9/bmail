@@ -53,4 +53,12 @@ function searchForSelection(selection, now = new Date()) {
   if (advanced.maxSizeMB) query.smaller = advanced.maxSizeMB * 1048576 + 1;
   return query;
 }
-module.exports = { normalizeSelection, searchForSelection };
+function scheduledSelection(options = {}, schedule) {
+  if (!schedule || schedule.enabled !== true) return null;
+  // Old task launchers use the manual configuration. A newly saved task opts
+  // into this explicit override without rewriting the account's manual choices.
+  if (typeof schedule.allFolders !== 'boolean' || !Array.isArray(schedule.folders)) throw new Error('Save this account schedule again to choose its folders.');
+  if (!schedule.allFolders && !schedule.folders.length) throw new Error('Choose at least one scheduled folder.');
+  return normalizeSelection({ ...options, folders: schedule.allFolders ? [] : schedule.folders });
+}
+module.exports = { normalizeSelection, searchForSelection, scheduledSelection };
