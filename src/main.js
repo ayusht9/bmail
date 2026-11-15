@@ -1,5 +1,6 @@
 import './style.css';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, Channel } from '@tauri-apps/api/core';
+import { createUpdater } from './updates.js';
 import { progressPanel } from './progress.js';
 import { selectionSummary, selectionDialog, folderChoices } from './selection.js';
 
@@ -8,6 +9,9 @@ let dashboard;
 let busy = false;
 let controlBusy = false;
 let addingAccount = false;
+const updater = createUpdater({ invoke, channel: () => new Channel(), changed: () => {
+  if (!document.querySelector('dialog[open]')) render();
+} });
 
 const providerForHost = host => host?.toLowerCase() === 'imap.gmail.com' ? 'google' : host?.toLowerCase() === 'imappro.zoho.in' ? 'zoho' : 'other';
 
@@ -57,6 +61,13 @@ function render() {
       <button class="ghost" data-action="refresh" ${busy ? 'disabled' : ''}>Refresh</button>
     </header>
     <main>
+      <section class="update-panel" aria-label="Application updates">
+        <div><strong>Bmail${updater.state.currentVersion ? ` ${escapeHtml(updater.state.currentVersion)}` : ''}</strong>
+          <p role="status" aria-live="polite">${escapeHtml(updater.state.message || 'Check for application updates.')}</p>
+          ${updater.state.version ? `<p>Installing closes and restarts Bmail. Finish all backups first.</p>${updater.state.notes ? `<details><summary>Release notes</summary><p class="release-notes">${escapeHtml(updater.state.notes)}</p></details>` : ''}` : ''}</div>
+        <div class="update-actions"><button class="ghost" data-action="check-update" ${busy || ['checking', 'installing'].includes(updater.state.phase) ? 'disabled' : ''}>Check for updates</button>
+          ${updater.state.version ? `<button class="primary" data-action="install-update" ${busy || dashboard.backupRunning || ['checking', 'installing'].includes(updater.state.phase) ? 'disabled' : ''}>Install and restart</button>` : ''}</div>
+      </section>
       ${dashboard.accounts?.length ? `<section class="account-switcher"><div><label for="active-account">Mailbox account</label><select id="active-account" ${busy || dashboard.backupRunning ? 'disabled' : ''}>${dashboard.accounts.map(email => `<option value="${escapeHtml(email)}" ${email === dashboard.user ? 'selected' : ''}>${escapeHtml(email)}</option>`).join('')}</select></div><button class="ghost" data-action="add-account" ${busy || dashboard.backupRunning ? 'disabled' : ''}>Add account</button></section>` : ''}
       <section class="hero ${state} ${dashboard.backupRunning ? 'compact-hero' : ''}">
         <div class="status-icon">${healthy ? '✓' : run ? '!' : '→'}</div>
@@ -131,6 +142,7 @@ function render() {
       </form>
     </dialog>
   `;
+  if (updater.state.phase === 'installing') app.querySelectorAll('button, input, select').forEach(element => element.disabled = true);
   updateProviderHelp();
 }
 
@@ -178,6 +190,8 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (action === 'check-update') { updater.check(); return; }
+  if (action === 'install-update') { if (!busy && !dashboard.backupRunning) updater.install(); return; }
   if (action === 'setup') document.querySelector('#mailbox-dialog').showModal();
   else if (action === 'add-account') { addingAccount = true; render(); document.querySelector('#mailbox-dialog').showModal(); }
   else if (['pause', 'resume', 'stop', 'cancel'].includes(action)) controlBackup(action, button.dataset.runId);
@@ -324,5 +338,5 @@ app.addEventListener('submit', async event => {
 });
 
 render();
-refresh();
+refresh().then(() => updater.check());
 setInterval(() => { if (!busy && !controlBusy) refresh(true); }, 2000);

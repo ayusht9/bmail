@@ -11,25 +11,58 @@
   },
   "app": {
     "appDirectoriesOverride": "$LOCALDATA/Bmail",
-    "windows": [{
-      "title": "Bmail",
-      "width": 1120,
-      "height": 780,
-      "minWidth": 760,
-      "minHeight": 620,
-      "center": true
-    }],
-    "security": { "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost" }
+    "windows": [
+      {
+        "title": "Bmail",
+        "width": 1120,
+        "height": 780,
+        "minWidth": 760,
+        "minHeight": 620,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
+    }
   },
   "bundle": {
     "active": true,
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
-    "targets": ["nsis"],
-    "resources": { "resources/engine/": "engine/" },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "targets": [
+      "nsis"
+    ],
+    "resources": {
+      "resources/engine/": "engine/"
+    },
     "shortDescription": "Local read-only email backup dashboard",
     "windows": {
-      "nsis": { "installMode": "currentUser", "languages": ["English"] },
-      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true }
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "English"
+        ]
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU0NzhEMjVBQTQxNTdDRTkKUldUcGZCV2tXdEo0NVAxZFBObkdnOUVsMDdualQxVlI0L1FrMFllSVF4TEZ5cXhXK2pTazV3bFMK",
+      "endpoints": [
+        "https://github.com/ayusht9/bmail/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      },
+      "requireSignedVersion": true
     }
   }
 }
