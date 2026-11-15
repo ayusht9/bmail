@@ -1,4 +1,5 @@
 import './style.css';
+import { themePreference, setTheme } from './theme.js';
 import { invoke } from '@tauri-apps/api/core';
 import { workspaceTabs, workspaceTabStrip } from './workspace.js';
 import { historyPane } from './history.js';
@@ -45,11 +46,10 @@ const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
 }[char]));
 
-const formatDate = value => value ? new Intl.DateTimeFormat('en-IN', {
-  dateStyle: 'medium', timeStyle: 'short'
-}).format(new Date(value)) : 'Never';
-
-const formatNumber = value => new Intl.NumberFormat('en-IN').format(value || 0);
+const dateFormatter = new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+const numberFormatter = new Intl.NumberFormat('en-IN');
+const formatDate = value => value ? dateFormatter.format(new Date(value)) : 'Never';
+const formatNumber = value => numberFormatter.format(value || 0);
 
 function render() {
   if (!dashboard) {
@@ -67,9 +67,10 @@ function render() {
   const statusTitle = dashboard.backupRunning ? dashboard.progress?.state === 'paused' ? 'Your backup is paused' : 'Your backup is running'
     : intentional ? outcome === 'stopped' ? 'Backup stopped safely' : 'Backup cancelled' : healthy ? 'Selected backup complete' : run ? 'Last run needs attention' : dashboard.hasManifest ? 'Ready to continue your backup' : 'Ready for the first backup';
   if (selectedFolder && !mailboxFolders(dashboard).includes(selectedFolder)) selectedFolder = '';
-  const folderRows = coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter);
+  const folderRows = activeTab === 'mailbox' ? coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter) : '';
   const tabTitle = activeTab === 'mailbox' ? selectedFolder || 'All folders' : workspaceTabs.find(([key]) => key === activeTab)?.[1];
   const workspaceBody = activeTab === 'overview' ? `<div class="overview-page">${statisticsPanel(dashboard, escapeHtml, formatNumber, formatDate, busy)}</div>`
+    : activeTab === 'preferences' ? `<section class="preferences-page" aria-labelledby="preferences-title"><h2 id="preferences-title">Appearance</h2><label for="theme-preference">Theme</label><select id="theme-preference" aria-describedby="theme-description">${[['auto','Auto'],['light','Light'],['dark','Dark']].map(([value,label]) => `<option value="${value}" ${themePreference() === value ? 'selected' : ''}>${label}</option>`).join('')}</select><p id="theme-description">Auto follows your Windows appearance. Your choice is saved on this device.</p></section>`
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)
     : activeTab === 'history' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
@@ -265,16 +266,16 @@ app.addEventListener('input', event => {
     updateSchedulePreview(); return;
   }
   if (event.target.id !== 'folder-filter') return;
-  const input = event.target;
-  captureTabDraft();
-  folderFilter = input.value;
-  selectedFolder = '';
-  render();
-  document.querySelector('#folder-filter').replaceWith(input);
-  input.focus({ preventScroll: true });
+  folderFilter = event.target.value;
+  const navigation = document.querySelector('.folder-list');
+  // Keep the search input, forms, clock and other workspace nodes intact.
+  navigation.querySelectorAll('[data-folder]:not([data-folder=""]), .sidebar-empty').forEach(node => node.remove());
+  navigation.insertAdjacentHTML('beforeend', folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber) || '<p class="sidebar-empty">No matching folders.</p>');
+  if (activeTab === 'mailbox') document.querySelector('.folder-table tbody').innerHTML = coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter) || '<tr><td colspan="4" class="empty-pane">No folders to show.</td></tr>';
 });
 
 app.addEventListener('change', event => {
+  if (event.target.id === 'theme-preference') { setTheme(event.target.value); return; }
   if (event.target.id === 'history-filter') { historyFilter = event.target.value; render(); return; }
   if (event.target.closest('#scheduler-form')) { updateSchedulePreview(); return; }
   if (event.target.id === 'active-account') switchAccount(event.target.value);

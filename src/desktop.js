@@ -1,6 +1,12 @@
+const folderCache = new WeakMap();
 export function mailboxFolders(dashboard) {
-  return [...new Set([...(dashboard.localStats?.folders || []).map(folder => folder.name),
+  const sources = [dashboard.localStats?.folders, dashboard.mailboxStatus?.folders, dashboard.mailboxes?.folders];
+  const cached = folderCache.get(dashboard);
+  if (cached && sources.every((source, index) => source === cached.sources[index])) return cached.folders;
+  const folders = [...new Set([...(dashboard.localStats?.folders || []).map(folder => folder.name),
     ...(dashboard.mailboxStatus?.folders || []).map(folder => folder.name), ...(dashboard.mailboxes?.folders || [])])].sort();
+  folderCache.set(dashboard, { sources, folders });
+  return folders;
 }
 
 export function folderNavigation(dashboard, selected, filter, escape, number) {
