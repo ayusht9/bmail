@@ -1,4 +1,4 @@
-param([ValidateSet('Backup', 'Folders')][string]$Mode = 'Backup')
+param([ValidateSet('Backup', 'Folders', 'Stats')][string]$Mode = 'Backup')
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Invoke-BackupProcess.ps1')
 . (Join-Path $PSScriptRoot 'Backup-Paths.ps1')
@@ -8,7 +8,7 @@ try {
     $logDirectory = Join-Path $dataDirectory 'logs'
     New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
     $logPath = Join-Path $logDirectory ((Get-Date -Format 'yyyy-MM-dd_HH-mm-ss') + '.log')
-    $engineArgument = if ($Mode -eq 'Folders') { '--list-folders' } else { '' }
+    $engineArgument = if ($Mode -eq 'Folders') { '--list-folders' } elseif ($Mode -eq 'Stats') { '--check-mailbox' } else { '' }
     $result = Invoke-BackupProcess -NodePath $nodePath -ScriptPath (Join-Path $PSScriptRoot 'backup.cjs') -Payload $payload -LogPath $logPath -EngineArgument $engineArgument
     $payload = $null
     $credential = $null

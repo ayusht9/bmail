@@ -4,7 +4,6 @@ use serde_json::Value;
 use std::{fs, path::{Path, PathBuf}, process::Command};
 use tauri::Manager;
 mod profile;
-mod updates;
 use std::sync::Mutex;
 
 #[derive(Default)]
@@ -44,6 +43,8 @@ struct Dashboard {
     has_manifest: bool,
     total_messages: u64,
     folder_count: usize,
+    local_stats: Value,
+    mailbox_status: Option<Value>,
     last_run: Option<Value>,
     latest_log: Option<LogSummary>,
     progress: Option<Value>,
@@ -164,6 +165,35 @@ fn schedule_exists(user: &str) -> bool {
     })
 }
 
+fn local_statistics(manifest: Option<&Value>) -> Value {
+    let mut bytes = 0_u64;
+    let mut messages = 0_u64;
+    let mut folders = Vec::new();
+    let mut recent = Vec::new();
+    if let Some(items) = manifest.and_then(|m| m.get("folders")).and_then(Value::as_object) {
+        for folder in items.values() {
+            let name = folder.get("name").and_then(Value::as_str).unwrap_or("Unknown");
+            let mut count = 0_u64;
+            let mut size = 0_u64;
+            if let Some(records) = folder.get("messages").and_then(Value::as_object) {
+                for record in records.values().filter(|r| r.get("complete").and_then(Value::as_bool) != Some(false)) {
+                    count += 1;
+                    size += record.get("bytes").and_then(Value::as_u64).unwrap_or(0);
+                    if record.get("backedUpAt").and_then(Value::as_str).is_some() {
+                        recent.push(serde_json::json!({"folder": name, "subject": record.get("subject"), "sender": record.get("sender"), "backedUpAt": record.get("backedUpAt")}));
+                    }
+                }
+            }
+            bytes += size;
+            messages += count;
+            folders.push(serde_json::json!({"name": name, "messages": count, "bytes": size}));
+        }
+    }
+    recent.sort_by(|a, b| b["backedUpAt"].as_str().cmp(&a["backedUpAt"].as_str()));
+    recent.truncate(10);
+    serde_json::json!({"messages": messages, "bytes": bytes, "folders": folders, "recent": recent})
+}
+
 #[tauri::command]
 fn get_dashboard(app: tauri::AppHandle, process: tauri::State<BackupProcess>) -> Result<Dashboard, String> {
     let root = data_root(&app)?;
@@ -195,6 +225,13 @@ fn get_dashboard(app: tauri::AppHandle, process: tauri::State<BackupProcess>) ->
         schedule_installed: schedule_exists(&user),
         has_manifest: manifest.is_some(), total_messages,
         folder_count: folders.map_or(0, |value| value.len()),
+        local_stats: local_statistics(manifest.as_ref()),
+        mailbox_status: read_json(&backup_root.join("mailbox-status.json")).map(|mut status| {
+            if let Some(folders) = status.get_mut("folders").and_then(Value::as_array_mut) {
+                for folder in folders { if let Some(folder) = folder.as_object_mut() { folder.remove("uids"); } }
+            }
+            status
+        }),
         last_run: read_json(&backup_root.join("last-run.json")),
         latest_log: latest_log(&root), user,
         progress, backup_running: launching || lock_running, launch_error,
@@ -217,7 +254,6 @@ struct MailboxSettings {
 
 #[tauri::command]
 async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings, process: tauri::State<'_, BackupProcess>) -> Result<String, String> {
-    updates::ensure_idle(&app)?;
     {
         let guard = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
         if guard.as_ref().is_some_and(|child| process_running(child.id() as u64)) || active_backup(&backup_root(&data_root(&app)?)) {
@@ -284,11 +320,9 @@ fn powershell(engine: &Path, data: &Path, script: &str) -> Result<std::process::
 
 #[tauri::command]
 fn start_backup(app: tauri::AppHandle, process: tauri::State<BackupProcess>) -> Result<String, String> {
-    updates::ensure_idle(&app)?;
     let root = data_root(&app)?;
     let engine = engine_root(&app)?;
     let mut child = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
-    updates::ensure_idle(&app)?;
     if let Some(active) = child.as_mut() {
         if active.try_wait().map_err(|e| e.to_string())?.is_none() { return Err("A backup is already running.".into()); }
     }
@@ -369,23 +403,22 @@ fn control_backup(app: tauri::AppHandle, command: String, run_id: String, proces
 
 #[tauri::command]
 async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, String> {
-    updates::ensure_idle(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
         let root = data_root(&app)?;
         let engine = engine_root(&app)?;
-        if ["backup", "verify", "folders"].contains(&action.as_str()) && active_backup(&backup_root(&root)) {
+        if ["backup", "verify", "folders", "stats"].contains(&action.as_str()) && active_backup(&backup_root(&root)) {
             return Err("A backup is already active. Pause, stop, or wait for it to finish first.".into());
         }
         let (program, output) = match action.as_str() {
             "backup" => ("Backup", powershell(&engine, &root, "Run-Backup.ps1")?),
             "schedule" => ("Schedule", powershell(&engine, &root, "Install-BackupSchedule.ps1")?),
-            "folders" => ("Folder discovery", {
+            "folders" | "stats" => ("Mailbox check", {
                 if active_backup(&backup_root(&root)) {
                     return Err("Wait for the current backup to finish before reloading folders.".into());
                 }
                 hidden_command("powershell.exe").current_dir(&root).env("MAIL_VAULT_DATA_DIR", &root)
                     .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
-                    .arg(engine.join("Run-Backup.ps1")).args(["-Mode", "Folders"]).output().map_err(|e| e.to_string())?
+                    .arg(engine.join("Run-Backup.ps1")).args(["-Mode", if action == "stats" { "Stats" } else { "Folders" }]).output().map_err(|e| e.to_string())?
             }),
             "verify" => ("Verification", hidden_command(engine.join("node.exe")).current_dir(&root)
                 .env("MAIL_VAULT_DATA_DIR", &root).arg(engine.join("backup.cjs")).arg("--verify")
@@ -420,11 +453,9 @@ fn open_directory(app: tauri::AppHandle, kind: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(updates::UpdateState::default())
         .manage(BackupProcess::default())
         .setup(|app| { initialize_profiles(app.handle()).map_err(std::io::Error::other)?; Ok(()) })
-        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, updates::check_update, updates::install_update])
+        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }
