@@ -428,7 +428,11 @@ async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, Str
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
         if output.status.success() { Ok(if stdout.is_empty() { format!("{program} completed") } else { stdout }) }
-        else { Err(if stderr.is_empty() { format!("{program} failed. Check the latest log.") } else { stderr }) }
+        else { Err(if stderr.is_empty() {
+            // PowerShell's launcher writes diagnostics to stdout. Preserve those
+            // details so a failed check explains what the user can fix.
+            if stdout.is_empty() { format!("{program} failed. Check the latest log.") } else { stdout }
+        } else { stderr }) }
     }).await.map_err(|e| format!("Operation was interrupted: {e}"))?
 }
 

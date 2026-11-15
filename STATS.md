@@ -1,5 +1,11 @@
 # Backup statistics
 
+The desktop workspace has an account and folder sidebar, a coverage table and
+recent saved records in the centre, and account statistics on the right. Select
+a folder to narrow the tables; use Filter folders to find a folder by name.
+Mailbox-check failures remain visible with diagnostic details and Retry until
+dismissed or successfully retried. Activity log opens from the sidebar.
+
 The dashboard shows the active account's saved message count, recorded email
 bytes, downloads in the last run, recent saved mail, and per-folder coverage.
 Totals count each saved folder copy; Gmail labels may contain the same email in
