@@ -6,6 +6,39 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const { digest } = require('./backup.cjs');
 
+test('Stats mode launches Node through the real PowerShell helper and preserves diagnostics', { skip: process.platform !== 'win32' }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-stats-launch-'));
+  const engine = path.join(root, 'Engine with spaces');
+  const data = path.join(root, 'Account data');
+  fs.mkdirSync(engine); fs.mkdirSync(data);
+  const env = { ...process.env, MAIL_VAULT_DATA_DIR: data };
+  const secret = 'fixture-only-password';
+  try {
+    for (const file of ['Run-Backup.ps1', 'Invoke-BackupProcess.ps1', 'Backup-Paths.ps1']) fs.copyFileSync(path.resolve(file), path.join(engine, file));
+    const saved = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('Save-Mailbox.ps1')],
+      { env, encoding: 'utf8', windowsHide: true, input: JSON.stringify({ user: 'fixture@example.com', host: 'imap.example.com', port: 993, password: secret }) });
+    assert.equal(saved.status, 0, saved.stderr || saved.stdout);
+    fs.writeFileSync(path.join(engine, 'backup.cjs'), `
+      (async () => {
+        let input = ''; for await (const chunk of process.stdin) input += chunk;
+        const credentials = JSON.parse(input.replace(/^\\uFEFF/, ''));
+        if (process.argv[2] !== '--check-mailbox' || credentials.user !== 'fixture@example.com' || !credentials.password) process.exit(9);
+        if (process.env.STATS_TEST_FAIL) { console.error('Fixture mailbox connection failed'); process.exit(7); }
+        console.log('Mailbox checked through native launcher');
+      })();
+    `);
+    const run = extra => spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(engine, 'Run-Backup.ps1'), '-Mode', 'Stats'],
+      { env: { ...env, ...extra }, encoding: 'utf8', windowsHide: true, timeout: 30000 });
+    const checked = run({});
+    assert.equal(checked.status, 0, checked.stderr || checked.stdout);
+    assert.match(checked.stdout, /Mailbox checked through native launcher/);
+    const failed = run({ STATS_TEST_FAIL: '1' });
+    assert.equal(failed.status, 7, failed.stderr || failed.stdout);
+    assert.match(failed.stdout, /Fixture mailbox connection failed/);
+    assert.ok(![checked.stdout, checked.stderr, failed.stdout, failed.stderr].join('').includes(secret));
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('installed engine verifies user data when launched from a different directory', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-vault-installed-'));
   try {

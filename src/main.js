@@ -1,6 +1,7 @@
 import './style.css';
 import { invoke } from '@tauri-apps/api/core';
 import { statisticsPanel, coverageRows } from './statistics.js';
+import { folderNavigation, recentMailPane, mailboxFolders } from './desktop.js';
 import { progressPanel } from './progress.js';
 import { selectionSummary, selectionDialog, folderChoices } from './selection.js';
 
@@ -9,6 +10,11 @@ let dashboard;
 let busy = false;
 let controlBusy = false;
 let addingAccount = false;
+let selectedFolder = '';
+let folderFilter = '';
+let operationFailure = null;
+let busyAction = '';
+let activityOpen = false;
 const providerForHost = host => host?.toLowerCase() === 'imap.gmail.com' ? 'google' : host?.toLowerCase() === 'imappro.zoho.in' ? 'zoho' : 'other';
 
 function updateProviderHelp() {
@@ -47,57 +53,54 @@ function render() {
   const state = healthy ? 'healthy' : run && !intentional ? 'attention' : 'empty';
   const statusTitle = dashboard.backupRunning ? dashboard.progress?.state === 'paused' ? 'Your backup is paused' : 'Your backup is running'
     : intentional ? outcome === 'stopped' ? 'Backup stopped safely' : 'Backup cancelled' : healthy ? 'Selected backup complete' : run ? 'Last run needs attention' : dashboard.hasManifest ? 'Ready to continue your backup' : 'Ready for the first backup';
-  const folderRows = coverageRows(dashboard, escapeHtml, formatNumber);
+  if (selectedFolder && !mailboxFolders(dashboard).includes(selectedFolder)) selectedFolder = '';
+  const folderRows = coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter);
 
   app.innerHTML = `
-    <header>
-      <div class="brand"><span class="brand-mark">B</span><div><strong>Bmail</strong><small>Local email backup</small></div></div>
-      <button class="ghost" data-action="refresh" ${busy ? 'disabled' : ''}>Refresh</button>
+    <header class="app-toolbar">
+      <div class="app-name"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 6l9 7 9-7"/></svg><strong>Bmail</strong></div>
+      <button class="primary" data-action="backup" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'backup' ? 'Starting...' : 'Back up now'}</button>
+      <button data-action="stats" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'stats' ? 'Checking mailbox...' : 'Check mailbox'}</button>
+      <span class="toolbar-separator"></span>
+      <button data-action="selection" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>Backup selection</button>
+      <button data-action="open-backups">Open backup folder</button>
+      <div class="toolbar-spacer"></div>
+      <button data-action="refresh" ${busy ? 'disabled' : ''}>Refresh</button>
     </header>
-    <main>
-      ${dashboard.accounts?.length ? `<section class="account-switcher"><div><label for="active-account">Mailbox account</label><select id="active-account" ${busy || dashboard.backupRunning ? 'disabled' : ''}>${dashboard.accounts.map(email => `<option value="${escapeHtml(email)}" ${email === dashboard.user ? 'selected' : ''}>${escapeHtml(email)}</option>`).join('')}</select></div><button class="ghost" data-action="add-account" ${busy || dashboard.backupRunning ? 'disabled' : ''}>Add account</button></section>` : ''}
-      <section class="hero ${state} ${dashboard.backupRunning ? 'compact-hero' : ''}">
-        <div class="status-icon">${healthy ? '✓' : run ? '!' : '→'}</div>
-        <div class="hero-copy">
-          <p class="eyebrow">${escapeHtml(dashboard.user)}</p>
-          <h1>${statusTitle}</h1>
-          <p>${dashboard.backupRunning ? 'Progress updates automatically. You can pause or stop below.' : run ? `Last finished ${formatDate(run.finishedAt)} · ${formatNumber(run.downloaded)} new messages` : dashboard.credentialReady ? 'Your mailbox is ready. Start or continue your selected backup.' : 'Set up your mailbox, then start your first backup.'}</p>
-        </div>
-        <button class="primary" data-action="backup" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>
-          ${busy ? '<span class="spinner small"></span>Working…' : 'Back up now'}
-        </button>
-      </section>
-
-      ${!dashboard.credentialReady ? `<aside class="notice"><strong>Set up your mailbox.</strong> Save your IMAP account and app password to start backing up. <button class="ghost" data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
-      ${run?.error ? `<aside class="notice error"><strong>${escapeHtml(run.error.message || 'Backup failed')}</strong><span>No server email was deleted. Completed downloads are retained.</span></aside>` : ''}
-      ${dashboard.launchError ? `<aside class="notice error">${escapeHtml(dashboard.launchError)}</aside>` : ''}
-      <section class="backup-plan"><div><strong>Your backup selection</strong><p>${escapeHtml(selectionSummary(dashboard.backupOptions))}</p></div><button class="ghost" data-action="selection" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>Choose what to back up</button></section>
-      ${dashboard.credentialReady && dashboard.dataDirectory ? `<p class="data-location">Account folder: <span>${escapeHtml(dashboard.dataDirectory)}</span></p>` : ''}
-      ${dashboard.migrationNotice ? `<aside class="notice">${escapeHtml(dashboard.migrationNotice)}</aside>` : ''}
-      ${progressPanel(dashboard, escapeHtml, formatNumber)}
-
-      ${statisticsPanel(dashboard, escapeHtml, formatNumber, formatDate, busy)}
-
-      <section class="workspace">
-        <article class="panel coverage">
-          <div class="panel-head"><div><p class="eyebrow">Coverage</p><h2>Mailbox folders</h2></div><button class="text-button" data-action="open-backups">Open backup folder</button></div>
-          ${folderRows ? `<div class="table-wrap"><table><thead><tr><th>Folder</th><th>Saved locally</th><th>On server</th><th>Still to back up</th></tr></thead><tbody>${folderRows}</tbody></table></div>` : '<p class="muted">Folder coverage appears after a backup run.</p>'}
-        </article>
-        <aside class="panel actions">
-          <p class="eyebrow">Maintenance</p><h2>Tools</h2>
-          <button data-action="setup" ${busy ? 'disabled' : ''}><span>${dashboard.credentialReady ? 'Update app password' : 'Set up mailbox'}</span><small>Encrypted for your Windows account</small></button>
-          <button data-action="verify" ${busy || dashboard.backupRunning || !dashboard.hasManifest ? 'disabled' : ''}><span>Verify local files</span><small>Check hashes without connecting</small></button>
-          <button data-action="schedule" ${busy || !dashboard.credentialReady ? 'disabled' : ''}><span>${dashboard.scheduleInstalled ? 'Update schedule' : 'Install schedule'}</span><small>Weekly, Monday at 11:00</small></button>
-          <button data-action="open-logs"><span>Open log folder</span><small>${dashboard.latestLog ? escapeHtml(dashboard.latestLog.name) : 'No logs yet'}</small></button>
-        </aside>
-      </section>
-
-      <section class="panel log-panel">
-        <div class="panel-head"><div><p class="eyebrow">Latest activity</p><h2>${dashboard.latestLog ? escapeHtml(dashboard.latestLog.name) : 'No log available'}</h2></div></div>
-        <pre>${escapeHtml(dashboard.latestLog?.tail || 'Run a backup to see activity here.')}</pre>
-      </section>
-    </main>
-    <footer>Read-only IMAP backup · Bmail never deletes server email</footer>
+    <div class="desktop-layout">
+      <aside class="folder-sidebar" aria-label="Accounts and folders">
+        <div class="account-switcher"><label for="active-account">Account</label><select id="active-account" ${busy || dashboard.backupRunning || !dashboard.accounts?.length ? 'disabled' : ''}>
+          ${dashboard.accounts?.length ? dashboard.accounts.map(email => `<option value="${escapeHtml(email)}" ${email === dashboard.user ? 'selected' : ''}>${escapeHtml(email)}</option>`).join('') : '<option>No mailbox configured</option>'}</select></div>
+        <div class="sidebar-heading"><h2>Folders</h2><button class="icon-button" data-action="add-account" aria-label="Add account" title="Add account" ${busy || dashboard.backupRunning ? 'disabled' : ''}>+</button></div>
+        <label class="filter-field"><span class="sr-only">Filter folders</span><input id="folder-filter" type="search" placeholder="Filter folders" value="${escapeHtml(folderFilter)}"></label>
+        <nav class="folder-list" aria-label="Mailbox folders"><button class="folder-item ${!selectedFolder ? 'selected' : ''}" data-action="select-folder" data-folder="" aria-pressed="${!selectedFolder}"><span>All folders</span><small>${formatNumber(dashboard.localStats?.messages || 0)}</small></button>
+          ${folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber) || `<p class="sidebar-empty">${folderFilter ? 'No matching folders.' : 'Check your mailbox to load folders.'}</p>`}</nav>
+        <div class="sidebar-tools"><button data-action="setup" ${busy ? 'disabled' : ''}>${dashboard.credentialReady ? 'Account settings' : 'Set up mailbox'}</button>
+          <button data-action="schedule" ${busy || !dashboard.credentialReady ? 'disabled' : ''}>${dashboard.scheduleInstalled ? 'Update schedule' : 'Install schedule'}</button>
+          <button data-action="verify" ${busy || dashboard.backupRunning || !dashboard.hasManifest ? 'disabled' : ''}>Verify local files</button>
+          <button data-action="toggle-activity" aria-pressed="${activityOpen}">Activity log</button></div>
+      </aside>
+      <main class="mail-workspace">
+        <div class="workspace-heading"><div><h1>${escapeHtml(selectedFolder || 'All folders')}</h1><p>${escapeHtml(dashboard.user)}</p></div><span class="connection-status">Read-only IMAP</span></div>
+        <section class="run-banner ${state}" aria-label="Backup status"><h2>${statusTitle}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span></section>
+        ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'stats' ? 'Mailbox check failed' : 'Action failed'}</strong><p>${escapeHtml(operationFailure.message)}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
+        ${!dashboard.credentialReady ? `<aside class="notice">Save an account and app password to start backing up. <button data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
+        ${run?.error ? `<aside class="notice error">${escapeHtml(run.error.message || 'Backup failed')}. Completed downloads are retained.</aside>` : ''}
+        ${dashboard.launchError ? `<aside class="notice error">${escapeHtml(dashboard.launchError)}</aside>` : ''}
+        ${dashboard.migrationNotice ? `<aside class="notice">${escapeHtml(dashboard.migrationNotice)}</aside>` : ''}
+        ${dashboard.backupRunning ? progressPanel(dashboard, escapeHtml, formatNumber) : ''}
+        <section class="folder-pane" aria-label="Folder coverage"><div class="pane-title"><h2>Folder coverage</h2><span>${formatNumber(mailboxFolders(dashboard).length)} folders</span></div>
+          <div class="table-wrap"><table class="folder-table"><thead><tr><th>Folder</th><th>Saved locally</th><th>On server</th><th>Remaining</th></tr></thead><tbody>${folderRows || '<tr><td colspan="4" class="empty-pane">No folders to show. Check mailbox to load coverage.</td></tr>'}</tbody></table></div></section>
+        ${recentMailPane(dashboard, selectedFolder, escapeHtml, formatDate)}
+        ${activityOpen ? `<section class="activity-pane" aria-label="Activity log"><div class="pane-title"><h2>Activity log</h2><button data-action="open-logs">Open log folder</button></div><pre>${escapeHtml(dashboard.latestLog?.tail || 'No activity recorded yet.')}</pre></section>` : ''}
+      </main>
+      <aside class="inspector" aria-label="Account overview">
+        ${statisticsPanel(dashboard, escapeHtml, formatNumber, formatDate, busy)}
+        <section class="selection-summary"><h2>Backup selection</h2><p>${escapeHtml(selectionSummary(dashboard.backupOptions))}</p><button data-action="selection" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>Choose what to back up</button></section>
+        <section class="storage-summary"><h2>Storage</h2><p>${escapeHtml(dashboard.dataDirectory || 'Available after account setup')}</p><button data-action="open-backups">Open location</button></section>
+      </aside>
+    </div>
+    <footer class="statusbar"><span>${busy ? busyAction === 'stats' ? 'Checking mailbox and verifying saved files...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : 'Ready'}</span><span>Schedule: ${dashboard.scheduleInstalled ? 'Monday, 11:00' : 'not installed'}</span><span>Manual app updates</span></footer>
     <div id="toast" role="status"></div>
     ${selectionDialog(dashboard, escapeHtml)}
     <dialog id="mailbox-dialog" aria-labelledby="setup-title" aria-describedby="setup-description">
@@ -141,18 +144,31 @@ async function refresh(background = false) {
   if (refreshing) return;
   refreshing = true;
   try {
-    dashboard = await invoke('get_dashboard');
-    if (background && document.querySelector('dialog[open]')) return;
+    const next = await invoke('get_dashboard');
+    const unchanged = JSON.stringify(next) === JSON.stringify(dashboard);
+    dashboard = next;
+    if (background && (unchanged || document.querySelector('dialog[open]'))) return;
     const focusAction = document.activeElement?.dataset?.action;
+    const focusFolder = document.activeElement?.dataset?.folder;
+    const filterInput = document.activeElement?.id === 'folder-filter' ? document.activeElement : null;
+    const coverageHelpOpen = document.querySelector('.coverage-help')?.open;
+    const scrollPositions = [...document.querySelectorAll('.folder-list, .mail-workspace, .inspector, .table-wrap')].map(el => el.scrollTop);
     render();
-    if (focusAction) [...document.querySelectorAll('[data-action]')].find(el => el.dataset.action === focusAction)?.focus({ preventScroll: true });
+    document.querySelectorAll('.folder-list, .mail-workspace, .inspector, .table-wrap').forEach((el, index) => el.scrollTop = scrollPositions[index] || 0);
+    if (coverageHelpOpen) document.querySelector('.coverage-help').open = true;
+    if (filterInput) { document.querySelector('#folder-filter').replaceWith(filterInput); filterInput.focus({ preventScroll: true }); }
+    if (focusAction === 'select-folder') [...document.querySelectorAll('[data-action="select-folder"]')].find(el => el.dataset.folder === focusFolder)?.focus({ preventScroll: true });
+    if (focusAction && focusAction !== 'select-folder') [...document.querySelectorAll('[data-action]')].find(el => el.dataset.action === focusAction)?.focus({ preventScroll: true });
   } catch (error) {
     if (!background) app.innerHTML = `<main class="fatal"><h1>Bmail could not start</h1><p>${escapeHtml(error)}</p></main>`;
   } finally { refreshing = false; }
 }
 
 async function run(action) {
+  if (busy) return;
   busy = true;
+  busyAction = action;
+  operationFailure = null;
   render();
   let message;
   let failed = false;
@@ -161,10 +177,12 @@ async function run(action) {
   } catch (error) {
     message = String(error);
     failed = true;
+    operationFailure = { action, message };
   } finally {
     busy = false;
+    busyAction = '';
     await refresh();
-    toast(message, failed);
+    toast(failed ? (action === 'stats' ? 'Mailbox check failed. See the error above.' : 'Action failed. See the error above.') : message, failed);
   }
 }
 
@@ -172,6 +190,9 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (action === 'select-folder') { selectedFolder = button.dataset.folder; render(); return; }
+  if (action === 'toggle-activity') { activityOpen = !activityOpen; render(); return; }
+  if (action === 'dismiss-error') { operationFailure = null; render(); return; }
   if (action === 'setup') document.querySelector('#mailbox-dialog').showModal();
   else if (action === 'add-account') { addingAccount = true; render(); document.querySelector('#mailbox-dialog').showModal(); }
   else if (['pause', 'resume', 'stop', 'cancel'].includes(action)) controlBackup(action, button.dataset.runId);
@@ -188,6 +209,16 @@ app.addEventListener('click', event => {
   else if (action === 'refresh') refresh();
   else if (action.startsWith('open-')) invoke('open_directory', { kind: action.slice(5) }).catch(error => toast(String(error), true));
   else run(action);
+});
+
+app.addEventListener('input', event => {
+  if (event.target.id !== 'folder-filter') return;
+  const input = event.target;
+  folderFilter = input.value;
+  selectedFolder = '';
+  render();
+  document.querySelector('#folder-filter').replaceWith(input);
+  input.focus({ preventScroll: true });
 });
 
 app.addEventListener('change', event => {
@@ -246,6 +277,9 @@ async function controlBackup(command, runId) {
 async function switchAccount(email) {
   if (busy || dashboard.backupRunning) return;
   busy = true;
+  operationFailure = null;
+  selectedFolder = '';
+  folderFilter = '';
   render();
   try { await invoke('switch_account', { email }); }
   catch (error) { toast(String(error), true); }
