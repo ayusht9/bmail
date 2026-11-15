@@ -1,7 +1,7 @@
 # Backup statistics
 
-The desktop workspace has an account and folder sidebar and six tabs: Mailbox,
-Overview, Backup options, Scheduler, History and Activity. Mailbox shows folder
+The desktop workspace has an account and folder sidebar and seven tabs: Mailbox,
+Overview, Backup options, Scheduler, History, Activity and Preferences. Mailbox shows folder
 coverage and recent saved records; Overview shows account statistics. Select a
 folder to open Mailbox and narrow its tables; use Filter folders to find a name.
 Mailbox-check failures remain visible with diagnostic details and Retry until
@@ -77,3 +77,15 @@ Application updates are installed manually. OTA startup checks, update commands,
 signing dependencies, and automatic release publication are disabled/removed.
 Run `npm.cmd run tauri:build` for the Windows installer. Test manual installation
 and upgrade on a clean Windows machine before distributing a public release.
+
+## Appearance and interface performance
+
+Preferences includes Light, Dark and Auto themes. Auto follows Windows appearance
+changes while the app is open. The selection is saved on this device, independently
+of mailbox settings. Changing appearance does not call the mail provider.
+
+Folder search updates folder navigation and coverage rows without rebuilding the
+workspace or discarding form edits. Folder names are cached for unchanged source
+lists, date/number formatters are reused, and folder coverage is generated only
+when the Mailbox tab is displayed. The calendar updates its date highlights only
+when the day changes or a new calendar is rendered.

@@ -1,3 +1,6 @@
+const fullDateFormatter = new Intl.DateTimeFormat('en-IN', { dateStyle: 'full' });
+const monthFormatter = new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric' });
+const clockFormatter = new Intl.DateTimeFormat('en-IN', { timeStyle: 'medium' });
 export const localDate = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const parseDate = value => new Date(`${value}T00:00:00`);
 const ordinal = date => Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000);
@@ -107,9 +110,9 @@ export function calendarMarkup(schedule, month, focusDate, escape, now = new Dat
   const tabStop = focusDate && parseDate(focusDate).getMonth() === month.getMonth() && parseDate(focusDate).getFullYear() === month.getFullYear() ? focusDate : localDate(first);
   const cells = Array.from({ length: 42 }, (_, index) => {
     const date = new Date(from); date.setDate(from.getDate() + index); const iso = localDate(date);
-    return `<td><button type="button" data-action="schedule-day" data-date="${iso}" tabindex="${iso === tabStop ? 0 : -1}" aria-label="${escape(new Intl.DateTimeFormat('en-IN', { dateStyle: 'full' }).format(date))}" aria-pressed="${iso === schedule.startDate}" class="${date.getMonth() !== month.getMonth() ? 'outside ' : ''}${iso === today ? 'today ' : ''}${dots.has(iso) ? 'scheduled ' : ''}${iso === schedule.startDate ? 'chosen' : ''}">${date.getDate()}</button></td>`;
+    return `<td><button type="button" data-action="schedule-day" data-date="${iso}" tabindex="${iso === tabStop ? 0 : -1}" aria-label="${escape(fullDateFormatter.format(date))}" aria-pressed="${iso === schedule.startDate}" class="${date.getMonth() !== month.getMonth() ? 'outside ' : ''}${iso === today ? 'today ' : ''}${dots.has(iso) ? 'scheduled ' : ''}${iso === schedule.startDate ? 'chosen' : ''}">${date.getDate()}</button></td>`;
   });
-  return `<div class="calendar-heading"><button type="button" data-action="schedule-prev" aria-label="Previous month">‹</button><strong>${escape(new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric' }).format(first))}</strong><button type="button" data-action="schedule-next" aria-label="Next month">›</button></div>
+  return `<div class="calendar-heading"><button type="button" data-action="schedule-prev" aria-label="Previous month">‹</button><strong>${escape(monthFormatter.format(first))}</strong><button type="button" data-action="schedule-next" aria-label="Next month">›</button></div>
     <table class="schedule-calendar" role="grid" aria-label="Schedule calendar"><thead><tr>${weekdayNames.map(day => `<th scope="col" abbr="${day}">${day.slice(0, 2)}</th>`).join('')}</tr></thead><tbody>${Array.from({ length: 6 }, (_, row) => `<tr>${cells.slice(row * 7, row * 7 + 7).join('')}</tr>`).join('')}</tbody></table><p class="calendar-legend">Blue dots: planned run dates. Select a date to change the start.</p>`;
 }
 
@@ -138,8 +141,13 @@ export function schedulerView(dashboard, escape, draft = null) {
 export function updateClock(now = new Date()) {
   const text = document.querySelector('#scheduler-clock');
   if (!text || document.hidden || !document.querySelector('#scheduler-panel')) return;
-  text.textContent = new Intl.DateTimeFormat('en-IN', { timeStyle: 'medium' }).format(now);
-  document.querySelector('#scheduler-zone').textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  text.textContent = clockFormatter.format(now);
+  document.querySelector('#scheduler-zone').textContent = clockFormatter.resolvedOptions().timeZone;
   for (const [id, angle] of [['hour', now.getHours() * 30 + now.getMinutes() / 2], ['minute', now.getMinutes() * 6], ['second', now.getSeconds() * 6]]) document.querySelector(`#clock-${id}`).setAttribute('transform', `rotate(${angle} 50 50)`);
-  document.querySelectorAll('.schedule-calendar [data-date]').forEach(button => button.classList.toggle('today', button.dataset.date === localDate(now)));
+  const calendar = document.querySelector('.schedule-calendar');
+  const today = localDate(now);
+  if (calendar && calendar.dataset.today !== today) {
+    calendar.dataset.today = today;
+    calendar.querySelectorAll('[data-date]').forEach(button => button.classList.toggle('today', button.dataset.date === today));
+  }
 }
