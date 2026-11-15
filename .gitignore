@@ -3,6 +3,8 @@ node_modules/
 .tools/
 .tools-rustup-init.exe
 .private/
+*.key
+*.key.pub
 backups/
 logs/
 *.zip

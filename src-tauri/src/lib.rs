@@ -4,6 +4,7 @@ use serde_json::Value;
 use std::{fs, path::{Path, PathBuf}, process::Command};
 use tauri::Manager;
 mod profile;
+mod updates;
 use std::sync::Mutex;
 
 #[derive(Default)]
@@ -216,6 +217,7 @@ struct MailboxSettings {
 
 #[tauri::command]
 async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings, process: tauri::State<'_, BackupProcess>) -> Result<String, String> {
+    updates::ensure_idle(&app)?;
     {
         let guard = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
         if guard.as_ref().is_some_and(|child| process_running(child.id() as u64)) || active_backup(&backup_root(&data_root(&app)?)) {
@@ -282,9 +284,11 @@ fn powershell(engine: &Path, data: &Path, script: &str) -> Result<std::process::
 
 #[tauri::command]
 fn start_backup(app: tauri::AppHandle, process: tauri::State<BackupProcess>) -> Result<String, String> {
+    updates::ensure_idle(&app)?;
     let root = data_root(&app)?;
     let engine = engine_root(&app)?;
     let mut child = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
+    updates::ensure_idle(&app)?;
     if let Some(active) = child.as_mut() {
         if active.try_wait().map_err(|e| e.to_string())?.is_none() { return Err("A backup is already running.".into()); }
     }
@@ -365,6 +369,7 @@ fn control_backup(app: tauri::AppHandle, command: String, run_id: String, proces
 
 #[tauri::command]
 async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, String> {
+    updates::ensure_idle(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
         let root = data_root(&app)?;
         let engine = engine_root(&app)?;
@@ -415,9 +420,11 @@ fn open_directory(app: tauri::AppHandle, kind: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updates::UpdateState::default())
         .manage(BackupProcess::default())
         .setup(|app| { initialize_profiles(app.handle()).map_err(std::io::Error::other)?; Ok(()) })
-        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory])
+        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, updates::check_update, updates::install_update])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }
