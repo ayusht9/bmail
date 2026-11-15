@@ -1,5 +1,6 @@
 import './style.css';
 import { invoke } from '@tauri-apps/api/core';
+import { createDashboardPoller } from './polling.js';
 import { statisticsPanel, coverageRows } from './statistics.js';
 import { folderNavigation, recentMailPane, mailboxFolders } from './desktop.js';
 import { progressPanel } from './progress.js';
@@ -15,6 +16,7 @@ let folderFilter = '';
 let operationFailure = null;
 let busyAction = '';
 let activityOpen = false;
+let dashboardPoller;
 const providerForHost = host => host?.toLowerCase() === 'imap.gmail.com' ? 'google' : host?.toLowerCase() === 'imappro.zoho.in' ? 'zoho' : 'other';
 
 function updateProviderHelp() {
@@ -140,11 +142,18 @@ function toast(message, isError = false) {
 }
 
 let refreshing = false;
-async function refresh(background = false) {
-  if (refreshing) return;
+let refreshFinished = Promise.resolve();
+async function refresh(background = false, force = false) {
+  if (refreshing) {
+    if (background) return;
+    await refreshFinished;
+    return refresh(false, force);
+  }
   refreshing = true;
+  let finished;
+  refreshFinished = new Promise(resolve => { finished = resolve; });
   try {
-    const next = await invoke('get_dashboard');
+    const next = await invoke('get_dashboard', { force });
     const unchanged = JSON.stringify(next) === JSON.stringify(dashboard);
     dashboard = next;
     if (background && (unchanged || document.querySelector('dialog[open]'))) return;
@@ -161,7 +170,7 @@ async function refresh(background = false) {
     if (focusAction && focusAction !== 'select-folder') [...document.querySelectorAll('[data-action]')].find(el => el.dataset.action === focusAction)?.focus({ preventScroll: true });
   } catch (error) {
     if (!background) app.innerHTML = `<main class="fatal"><h1>Bmail could not start</h1><p>${escapeHtml(error)}</p></main>`;
-  } finally { refreshing = false; }
+  } finally { refreshing = false; finished(); dashboardPoller?.reschedule(); }
 }
 
 async function run(action) {
@@ -206,7 +215,7 @@ app.addEventListener('click', event => {
     addingAccount = false;
     render();
   }
-  else if (action === 'refresh') refresh();
+  else if (action === 'refresh') refresh(false, true);
   else if (action.startsWith('open-')) invoke('open_directory', { kind: action.slice(5) }).catch(error => toast(String(error), true));
   else run(action);
 });
@@ -351,6 +360,11 @@ app.addEventListener('submit', async event => {
   }
 });
 
+dashboardPoller = createDashboardPoller({
+  refresh: () => refresh(true),
+  state: () => ({ hidden: document.hidden, busy, controlBusy, backupRunning: Boolean(dashboard?.backupRunning) }),
+});
+document.addEventListener('visibilitychange', () => dashboardPoller.wake());
+window.addEventListener('pagehide', () => dashboardPoller.stop());
 render();
-refresh();
-setInterval(() => { if (!busy && !controlBusy) refresh(true); }, 2000);
+refresh().finally(() => dashboardPoller.start());

@@ -4,6 +4,7 @@ use serde_json::Value;
 use std::{fs, path::{Path, PathBuf}, process::Command};
 use tauri::Manager;
 mod profile;
+mod cache;
 use std::sync::Mutex;
 
 #[derive(Default)]
@@ -143,13 +144,12 @@ fn active_backup(root: &Path) -> bool {
         && progress.get("pid").and_then(Value::as_u64).is_some_and(process_running)
 }
 
-fn latest_log(root: &Path) -> Option<LogSummary> {
+fn latest_log(root: &Path, cache: &mut cache::Cache, force: bool) -> Option<LogSummary> {
     let mut files: Vec<_> = fs::read_dir(root.join("logs")).ok()?.filter_map(Result::ok)
         .filter(|entry| entry.path().extension().is_some_and(|ext| ext.eq_ignore_ascii_case("log"))).collect();
     files.sort_by_key(|entry| entry.metadata().and_then(|m| m.modified()).ok());
     let entry = files.pop()?;
-    let text = fs::read_to_string(entry.path()).ok()?;
-    let tail = text.lines().rev().take(120).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
+    let tail = cache.log_tail(&entry.path(), force)?;
     Some(LogSummary { name: entry.file_name().to_string_lossy().into_owned(), tail })
 }
 
@@ -169,7 +169,7 @@ fn local_statistics(manifest: Option<&Value>) -> Value {
     let mut bytes = 0_u64;
     let mut messages = 0_u64;
     let mut folders = Vec::new();
-    let mut recent = Vec::new();
+    let mut recent: Vec<Value> = Vec::new();
     if let Some(items) = manifest.and_then(|m| m.get("folders")).and_then(Value::as_object) {
         for folder in items.values() {
             let name = folder.get("name").and_then(Value::as_str).unwrap_or("Unknown");
@@ -179,8 +179,11 @@ fn local_statistics(manifest: Option<&Value>) -> Value {
                 for record in records.values().filter(|r| r.get("complete").and_then(Value::as_bool) != Some(false)) {
                     count += 1;
                     size += record.get("bytes").and_then(Value::as_u64).unwrap_or(0);
-                    if record.get("backedUpAt").and_then(Value::as_str).is_some() {
+                    if let Some(saved_at) = record.get("backedUpAt").and_then(Value::as_str) {
+                        if recent.len() == 10 && recent.last().and_then(|item| item["backedUpAt"].as_str()).is_some_and(|oldest| saved_at <= oldest) { continue; }
                         recent.push(serde_json::json!({"folder": name, "subject": record.get("subject"), "sender": record.get("sender"), "backedUpAt": record.get("backedUpAt")}));
+                        recent.sort_by(|a, b| b["backedUpAt"].as_str().cmp(&a["backedUpAt"].as_str()));
+                        recent.truncate(10);
                     }
                 }
             }
@@ -195,15 +198,18 @@ fn local_statistics(manifest: Option<&Value>) -> Value {
 }
 
 #[tauri::command]
-fn get_dashboard(app: tauri::AppHandle, process: tauri::State<BackupProcess>) -> Result<Dashboard, String> {
-    let root = data_root(&app)?;
+async fn get_dashboard(app: tauri::AppHandle, force: Option<bool>) -> Result<Dashboard, String> {
+    tauri::async_runtime::spawn_blocking(move || read_dashboard(&app, force.unwrap_or(false)))
+        .await.map_err(|e| format!("Could not load dashboard: {e}"))?
+}
+
+fn read_dashboard(app: &tauri::AppHandle, force: bool) -> Result<Dashboard, String> {
+    let process = app.state::<BackupProcess>();
+    let root = data_root(app)?;
     let config = read_json(&root.join("backup-config.json")).unwrap_or(Value::Null);
     let user = config.get("user").and_then(Value::as_str).unwrap_or("Set up your mailbox").to_owned();
     let backup_dir = config.get("backupDirectory").and_then(Value::as_str).unwrap_or("backups");
     let backup_root = root.join(backup_dir);
-    let manifest = read_json(&backup_root.join("manifest.json"));
-    let folders = manifest.as_ref().and_then(|m| m.get("folders")).and_then(Value::as_object);
-    let total_messages = folders.map(|items| items.values().filter_map(|folder| folder.get("messages")?.as_object()).map(|m| m.len() as u64).sum()).unwrap_or(0);
     let mut child = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
     let mut launch_error = None;
     let launching = if let Some(active) = child.as_mut() {
@@ -216,28 +222,37 @@ fn get_dashboard(app: tauri::AppHandle, process: tauri::State<BackupProcess>) ->
             }
         }
     } else { false };
-    let lock_running = active_backup(&backup_root);
-    let progress = read_json(&backup_root.join("progress.json"));
+    drop(child);
+    let lock_running = !launching && active_backup(&backup_root);
+    let cache_state = app.state::<cache::DashboardCache>();
+    let mut cache = cache_state.0.lock().map_err(|_| "Dashboard cache is unavailable")?;
+    let summary = cache.manifest(&root, &backup_root.join("manifest.json"), force, |manifest| {
+        let folders = manifest.get("folders").and_then(Value::as_object);
+        let total_messages = folders.map(|items| items.values().filter_map(|folder| folder.get("messages")?.as_object()).map(|m| m.len() as u64).sum()).unwrap_or(0);
+        cache::ManifestSummary { total_messages, folder_count: folders.map_or(0, |value| value.len()), local_stats: local_statistics(Some(manifest)) }
+    });
+    let progress = cache.json(&backup_root.join("progress.json"), force);
     Ok(Dashboard {
         host: config.get("host").and_then(Value::as_str).unwrap_or("imap.gmail.com").to_owned(),
         port: config.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).unwrap_or(993),
         credential_ready: config.get("user").and_then(Value::as_str).is_some() && root.join(".private/zoho-credential.xml").is_file(),
-        schedule_installed: schedule_exists(&user),
-        has_manifest: manifest.is_some(), total_messages,
-        folder_count: folders.map_or(0, |value| value.len()),
-        local_stats: local_statistics(manifest.as_ref()),
-        mailbox_status: read_json(&backup_root.join("mailbox-status.json")).map(|mut status| {
+        schedule_installed: cache.schedule(&root, force, || schedule_exists(&user)),
+        has_manifest: summary.is_some(),
+        total_messages: summary.as_ref().map_or(0, |summary| summary.total_messages),
+        folder_count: summary.as_ref().map_or(0, |summary| summary.folder_count),
+        local_stats: summary.map_or_else(|| local_statistics(None), |summary| summary.local_stats),
+        mailbox_status: cache.project(&backup_root.join("mailbox-status.json"), force, |mut status| {
             if let Some(folders) = status.get_mut("folders").and_then(Value::as_array_mut) {
                 for folder in folders { if let Some(folder) = folder.as_object_mut() { folder.remove("uids"); } }
             }
             status
         }),
-        last_run: read_json(&backup_root.join("last-run.json")),
-        latest_log: latest_log(&root), user,
+        last_run: cache.json(&backup_root.join("last-run.json"), force),
+        latest_log: latest_log(&root, &mut cache, force), user,
         progress, backup_running: launching || lock_running, launch_error,
         backup_options: config.get("backupOptions").cloned().unwrap_or_else(|| serde_json::json!({"folders": [], "dateFrom": null, "dateTo": null, "maxMessages": null})),
-        mailboxes: read_json(&backup_root.join("mailboxes.json")),
-        control_request: read_json(&backup_root.join("control.json")),
+        mailboxes: cache.json(&backup_root.join("mailboxes.json"), force),
+        control_request: cache.json(&backup_root.join("control.json"), force),
         accounts: account_list(&base_root(&app)?),
         data_directory: root.to_string_lossy().into_owned(),
         migration_notice: fs::read_to_string(base_root(&app)?.join("migration-notice.txt")).ok(),
@@ -427,7 +442,13 @@ async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, Str
         };
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        if output.status.success() { Ok(if stdout.is_empty() { format!("{program} completed") } else { stdout }) }
+        if output.status.success() {
+            if action == "schedule" {
+                let cache = app.state::<cache::DashboardCache>();
+                if let Ok(mut cache) = cache.0.lock() { cache.invalidate_schedule(&root); };
+            }
+            Ok(if stdout.is_empty() { format!("{program} completed") } else { stdout })
+        }
         else { Err(if stderr.is_empty() {
             // PowerShell's launcher writes diagnostics to stdout. Preserve those
             // details so a failed check explains what the user can fix.
@@ -458,8 +479,34 @@ fn open_directory(app: tauri::AppHandle, kind: String) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .manage(BackupProcess::default())
+        .manage(cache::DashboardCache::default())
         .setup(|app| { initialize_profiles(app.handle()).map_err(std::io::Error::other)?; Ok(()) })
         .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
+}
+
+#[cfg(test)]
+mod dashboard_tests {
+    use super::*;
+
+    #[test]
+    fn summary_counts_all_complete_records_but_only_retains_the_latest_ten() {
+        let mut messages = serde_json::Map::new();
+        for index in 1..=30 {
+            messages.insert(index.to_string(), serde_json::json!({
+                "bytes": 10, "complete": true, "subject": format!("Message {index}"),
+                "backedUpAt": format!("2026-11-{index:02}T00:00:00Z")
+            }));
+        }
+        messages.insert("partial".into(), serde_json::json!({"bytes": 100, "complete": false}));
+        let manifest = serde_json::json!({"folders": {"inbox": {"name": "INBOX", "messages": messages}}});
+        let summary = local_statistics(Some(&manifest));
+        assert_eq!(summary["messages"], 30);
+        assert_eq!(summary["bytes"], 300);
+        let recent = summary["recent"].as_array().unwrap();
+        assert_eq!(recent.len(), 10);
+        assert_eq!(recent[0]["subject"], "Message 30");
+        assert_eq!(recent[9]["subject"], "Message 21");
+    }
 }
