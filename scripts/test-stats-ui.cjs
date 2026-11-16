@@ -30,7 +30,7 @@ const assert = require('node:assert/strict');
       window.data = { user: 'fixture@example.com', accounts: ['fixture@example.com'], host: 'imap.gmail.com', port: 993,
         credentialReady: true, hasManifest: true, backupRunning: false, backupOptions: { folders: ['INBOX'] }, folderCount: 1,
         localStats: { messages: 3, bytes: 1048576, folders: [{ name: 'INBOX', messages: 3 }], recent: [
-          { file: 'emails/INBOX/one.eml', subject: '<img src=x onerror="window.injected=true">', sender: 'fixture@example.com', folder: 'INBOX', backedUpAt: '2026-11-15T00:00:00Z' },
+          { file: 'emails/INBOX/one.eml', subject: '<img src=x onerror="window.injected=true">', sender: 'fixture@example.com', folder: 'INBOX', sentAt: '2020-01-02T00:00:00Z', bytes: 2048, backedUp: true, backedUpAt: '2026-11-15T00:00:00Z' },
         ] }, lastRun: { success: true, downloaded: 1, finishedAt: '2026-11-15T00:00:00Z' } };
       window.__TAURI_INTERNALS__ = { invoke: async (name, args) => {
         window.calls.push(name);
@@ -73,12 +73,17 @@ const assert = require('node:assert/strict');
     assert.equal(await page.locator('.folder-table').count(), 0);
     await page.locator('.mail-table tbody tr').first().waitFor();
     for (const selector of ['.mail-table']) {
-      assert.equal(await page.locator(`${selector} thead th`).count(), 4);
-      assert.equal(await page.locator(selector).getByRole('separator').count(), 4);
-      assert.equal(await page.locator(`${selector} tbody tr`).first().locator('td').count(), 4);
+      assert.equal(await page.locator(`${selector} thead th`).count(), 5);
+      assert.equal(await page.locator(selector).getByRole('separator').count(), 5);
+      assert.equal(await page.locator(`${selector} tbody tr`).first().locator('td').count(), 5);
       assert.equal(await page.locator(`${selector} td.row-actions .download-icon`).first().isVisible(), true);
     }
     assert.equal(await page.locator('.mail-pane .pane-hint').count(), 0);
+    assert.equal(await page.locator('.mail-table thead').getByRole('button', { name: 'Saved', exact: true }).count(), 0);
+    assert.match(await page.locator('.mail-table tbody td').nth(3).textContent(), /2020/);
+    assert.equal(await page.locator('.mail-table tbody td').nth(4).textContent(), '2.0 KB');
+    assert.equal(await page.locator('.mail-table tbody tr.backed-up').count(), 1);
+
     assert.equal(await page.locator('.status-message').textContent(), '');
 
     await page.getByRole('searchbox', { name: 'Filter folders' }).fill('INBOX');
@@ -361,8 +366,8 @@ const assert = require('node:assert/strict');
     await page.evaluate(() => {
       window.data.backupRunning = false;
       window.data.localStats.messages = 36;
-      window.data.localStats.recent = Array.from({ length: 35 }, (_, index) => ({ subject: `Message ${index + 1}`, sender: `Sender ${35 - index}`, folder: 'INBOX', file: `mail-${index}.eml`, backedUpAt: new Date(Date.UTC(2026, 10, index + 1)).toISOString() }));
-      window.data.localStats.recent.push({ subject: 'Sent mail', sender: 'Me', folder: 'Sent', file: 'sent.eml', backedUpAt: '2026-11-01T00:00:00Z' });
+      window.data.localStats.recent = Array.from({ length: 35 }, (_, index) => ({ subject: `Message ${index + 1}`, sender: `Sender ${35 - index}`, folder: 'INBOX', file: `mail-${index}.eml`, sentAt: new Date(Date.UTC(2026, 10, index + 1)).toISOString(), bytes: (index + 1) * 1024, backedUp: index % 2 === 0 }));
+      window.data.localStats.recent.push({ subject: 'Sent mail', sender: 'Me', folder: 'Sent', file: 'sent.eml', sentAt: '2026-11-01T00:00:00Z', bytes: 512, backedUp: true });
     });
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     await go('Mailbox');
@@ -381,10 +386,21 @@ const assert = require('node:assert/strict');
     assert.equal(await firstCell(2).textContent(), 'Sender 1');
     await sortColumn('sender').click();
     assert.equal(await firstCell(2).textContent(), 'Sender 35');
-    await sortColumn('backedUpAt').click();
+    await sortColumn('sentAt').click();
     assert.equal(await firstCell(1).textContent(), 'Message 1');
-    await sortColumn('backedUpAt').click();
+    await sortColumn('sentAt').click();
     assert.equal(await firstCell(1).textContent(), 'Message 35');
+    await sortColumn('bytes').click();
+    assert.equal(await firstCell(5).textContent(), '1.0 KB');
+    await sortColumn('bytes').click();
+    assert.equal(await firstCell(5).textContent(), '35.0 KB');
+    assert.equal(await mail.locator('tbody tr.backed-up').count(), 18);
+    assert.equal(await mail.locator('tbody tr:not(.backed-up)').count(), 17);
+    const backedBackground = await mail.locator('tbody tr.backed-up').first().evaluate(row => getComputedStyle(row).backgroundColor);
+    const otherBackground = await mail.locator('tbody tr:not(.backed-up)').first().evaluate(row => getComputedStyle(row).backgroundColor);
+    assert.notEqual(backedBackground, otherBackground, 'Backed up emails have a distinct faded background');
+
+
     await sidebar.locator('[data-action="select-folder"][data-folder=""]').click();
     await page.waitForFunction(() => document.querySelectorAll('.mail-table tbody tr').length === 36);
     await sortColumn('folder').click();
@@ -435,7 +451,7 @@ const assert = require('node:assert/strict');
     await subjectHandle.dblclick();
     const expandedWidth = await subjectWidth();
     assert.ok(expandedWidth > fittedWidth + 100, 'Auto-fit measures long content beyond the current clipped width');
-    assert.equal(await mail.locator('th[aria-sort] button').getAttribute('data-column'), 'backedUpAt', 'Auto-fit does not sort the table');
+    assert.equal(await mail.locator('th[aria-sort] button').getAttribute('data-column'), 'sentAt', 'Auto-fit does not sort the table');
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     await mail.locator('tbody tr').first().waitFor();
     assert.ok(Math.abs(await subjectWidth() - expandedWidth) < 2, 'Auto-fit persists across table refreshes');
@@ -451,7 +467,7 @@ const assert = require('node:assert/strict');
         await page.mouse.down(); await page.mouse.move(width + 500, box.y + box.height / 2, { steps: 8 }); await page.mouse.up();
         assert.equal(await table.evaluate(table => table.parentElement.scrollWidth <= table.parentElement.clientWidth + 1), true, 'Dragging cannot create horizontal overflow');
         const sizes = await table.locator('thead th').evaluateAll(cells => cells.map(cell => cell.getBoundingClientRect().width));
-        sizes.forEach((size, index) => assert.ok(size >= (index === 3 ? 112 : 72) - 2, 'Every column remains visible'));
+        sizes.forEach((size, index) => assert.ok(size >= (index >= 3 ? 112 : 72) - 2, 'Every column remains visible'));
         await handle.focus(); await page.keyboard.press('Shift+ArrowRight');
         await handle.dblclick();
         assert.equal(await table.evaluate(table => table.parentElement.scrollWidth <= table.parentElement.clientWidth + 1), true, 'Keyboard resize and auto-fit stay inside the viewport');

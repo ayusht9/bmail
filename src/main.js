@@ -78,7 +78,7 @@ function openMessage(file) {
   });
 }
 
-let mailSort = { column: 'backedUpAt', direction: 'desc' };
+let mailSort = { column: 'sentAt', direction: 'desc' };
 
 function loadSavedMail() {
   const key = JSON.stringify([dashboard.user, selectedFolder, dashboard.localStats]);
@@ -385,7 +385,7 @@ app.addEventListener('click', event => {
   if (action === 'retry-mail') { savedMail.key = ''; render(); return; }
   if (action === 'sort-mail') {
     const column = button.dataset.column;
-    if (!['subject', 'sender', 'folder', 'backedUpAt'].includes(column)) return;
+    if (!['subject', 'sender', 'folder', 'sentAt', 'bytes'].includes(column)) return;
     mailSort = { column, direction: mailSort.column === column && mailSort.direction === 'asc' ? 'desc' : 'asc' };
     document.querySelector('.mail-pane').outerHTML = mailList();
     document.querySelector(`[data-action="sort-mail"][data-column="${column}"]`)?.focus({ preventScroll: true });

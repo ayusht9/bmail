@@ -107,3 +107,5 @@ Download icons are fixed row actions inside the last data cell, with no separate
 If another backup, verification, or mail check owns the mailbox lock at startup, the new-mail check waits and retries after a short cooldown. It does not show a failure for this temporary busy state. Other startup failures show diagnostic details and a Retry button.
 
 The mailbox view opens directly on the email list, with a reading pane below for the selected saved message. Folder counts (saved, on server, remaining) appear in the status bar instead of a coverage table. Messages are decoded locally; HTML is sanitized and sandboxed, with scripts and remote resources blocked. Folder downloads remain in the sidebar.
+
+The mail list shows the original Sent date and message Size, both sortable. Dates for older backups are read from their saved Date headers and cached locally; absent dates show Unknown. Complete records whose local file still exists at the recorded size have a faded row background. Selection keeps its stronger highlight.

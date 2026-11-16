@@ -53,6 +53,7 @@ function messageLocation(folderName, key, uid, source, internalDate) {
   const sender = (/<([^<>]+)>/.exec(from)?.[1] || from).trim() || 'Unknown sender';
   const dateHeader = /^Date:[ \t]*(.*)$/im.exec(headers)?.[1];
   let date = new Date(dateHeader || NaN);
+  const sentAt = Number.isFinite(date.getTime()) ? date.toISOString() : null;
   if (!Number.isFinite(date.getTime())) date = new Date(internalDate || NaN);
   const dateText = Number.isFinite(date.getTime())
     ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
@@ -60,7 +61,7 @@ function messageLocation(folderName, key, uid, source, internalDate) {
   const month = dateText === 'Unknown-date' ? 'Unknown-month' : dateText.slice(0, 7);
   const folder = safeName(folderName, 30) + '__' + key.slice(0, 12) + '-' + key.split('-').at(-1);
   return { file: path.join('messages', folder, month,
-    dateText + '_' + safeName(sender, 45) + '_' + safeName(subject, 70) + '__' + uid + '.eml'), subject, sender };
+    dateText + '_' + safeName(sender, 45) + '_' + safeName(subject, 70) + '__' + uid + '.eml'), subject, sender, sentAt };
 }
 function organize(root, manifest) {
   let moved = 0;
@@ -283,7 +284,7 @@ async function backup(client, root, config, log = console.log, context = {}) {
           const relative = location.file;
           const record = { file: relative, bytes: message.source.length, sha256: digest(message.source),
             subject: location.subject,
-            sender: location.sender,
+            sender: location.sender, sentAt: location.sentAt,
             complete: true, downloadMode: 'partial-fetch-with-eof', reportedSize: message.reportedSize,
             internalDate: message.internalDate ? new Date(message.internalDate).toISOString() : null,
             flags: [...(message.flags || [])], backedUpAt: new Date().toISOString() };
