@@ -98,4 +98,6 @@ Saved mail loads on demand for the selected folder (or all folders) without the 
 
 The folder and mail tables begin directly with column headers. Drag a header edge to resize its column, or focus the divider and press Left/Right (Shift for larger steps). Column widths are saved on this device and survive sorting, navigation, and restarts.
 
-Tables always fill the available width, including after columns are narrowed or the window grows. Double-click a column divider to fit the widest saved value or heading; extra space is kept in the final column so the right edge remains aligned with the table container.
+Tables always fill the available width, including after columns are narrowed or the window grows. Double-click a column divider to fit the widest saved value or heading within the available space; width is redistributed among neighboring columns so every column stays inside the table container.
+
+Dragging, keyboard resizing, and auto-fit preserve the visible table width. Other columns retain a minimum usable width; a column stops expanding when no more space is available. Both tables fit the window without horizontal scrolling.

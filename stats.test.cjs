@@ -111,3 +111,19 @@ test('startup new-mail check compares folder IDs without validating files or rep
   result = await checkMailbox(client, root, null, options);
   assert.equal(result.folders[0].newMessages, 1, 'A newer manual mailbox check provides the baseline');
 });
+
+
+test('column resizing redistributes available width without hiding other columns', async () => {
+  const { fitWidths, resizeWidths } = await import('./src/columns.js');
+  for (const available of [536, 900, 1400]) {
+    const widths = fitWidths([1000, 300, 200, 250, 52], available);
+    assert.ok(Math.abs(widths.reduce((sum, width) => sum + width, 0) - available) < 0.01);
+    for (let index = 0; index < widths.length; index++) {
+      for (const desired of [1, 5000]) {
+        const resized = resizeWidths(widths, index, desired);
+        assert.ok(Math.abs(resized.reduce((sum, width) => sum + width, 0) - available) < 0.01);
+        resized.forEach((width, i) => assert.ok(width >= (i === 4 ? 52 : 72) - 0.01));
+      }
+    }
+  }
+});

@@ -406,6 +406,25 @@ const assert = require('node:assert/strict');
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     await mail.locator('tbody tr').first().waitFor();
     assert.ok(Math.abs(await subjectWidth() - expandedWidth) < 2, 'Auto-fit persists across table refreshes');
+    for (const width of [760, 1120, 1400]) {
+      await page.setViewportSize({ width, height: 780 });
+      for (const selector of ['.mail-table', '.folder-table']) {
+        const table = page.locator(selector);
+        await page.waitForFunction(selector => { const table = document.querySelector(selector); return table && table.parentElement.scrollWidth <= table.parentElement.clientWidth + 1; }, selector);
+        const handle = table.getByRole('separator').first();
+        await handle.scrollIntoViewIfNeeded();
+        const box = await handle.boundingBox();
+        await page.mouse.move(box.x + 4, box.y + box.height / 2);
+        await page.mouse.down(); await page.mouse.move(width + 500, box.y + box.height / 2, { steps: 8 }); await page.mouse.up();
+        assert.equal(await table.evaluate(table => table.parentElement.scrollWidth <= table.parentElement.clientWidth + 1), true, 'Dragging cannot create horizontal overflow');
+        const sizes = await table.locator('thead th').evaluateAll(cells => cells.map(cell => cell.getBoundingClientRect().width));
+        sizes.forEach((size, index) => assert.ok(size >= (index === 4 ? 52 : 72) - 2, 'Every column remains visible'));
+        await handle.focus(); await page.keyboard.press('Shift+ArrowRight');
+        await handle.dblclick();
+        assert.equal(await table.evaluate(table => table.parentElement.scrollWidth <= table.parentElement.clientWidth + 1), true, 'Keyboard resize and auto-fit stay inside the viewport');
+      }
+    }
+
 
     await page.evaluate(() => {
       window.data.backupRunning = false;
