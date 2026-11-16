@@ -101,3 +101,5 @@ The folder and mail tables begin directly with column headers. Drag a header edg
 Tables always fill the available width, including after columns are narrowed or the window grows. Double-click a column divider to fit the widest saved value or heading within the available space; width is redistributed among neighboring columns so every column stays inside the table container.
 
 Dragging, keyboard resizing, and auto-fit preserve the visible table width. Other columns retain a minimum usable width; a column stops expanding when no more space is available. Both tables fit the window without horizontal scrolling.
+
+Download icons are fixed row actions inside the last data cell, with no separate download column or resize handle. The idle status text and saved-mail sorting hint are hidden.

@@ -1014,3 +1014,7 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .resizable-table { width: 100%; min-width: 0; max-width: 100%; }
 .mail-pane .table-wrap, .folder-pane .table-wrap { overflow-x: hidden; }
 .mail-table th button { overflow: hidden; }
+
+.resizable-table td.row-actions { position: relative; padding-right: 48px; height: 44px; }
+.resizable-table .row-actions > .download-icon { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
+.resizable-table th:last-child { padding-right: 48px; }
