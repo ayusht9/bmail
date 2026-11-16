@@ -23,7 +23,7 @@ const assert = require('node:assert/strict');
     await page.addInitScript(() => {
       window.calls = []; window.exports = []; window.failExport = false;
       window.dashboardForces = [];
-      window.failCheck = false;
+      window.failCheck = false; window.newMailChecks = 0;
       window.failSchedule = false;
       window.scheduleState = { installed: false, enabled: false, state: 'Not installed', settings: null, checkedAt: new Date().toISOString() };
       window.data = { user: 'fixture@example.com', accounts: ['fixture@example.com'], host: 'imap.gmail.com', port: 993,
@@ -46,6 +46,7 @@ const assert = require('node:assert/strict');
         if (name === 'save_backup_options') { window.savedOptions = args.options; window.data.backupOptions = args.options; return 'Backup options saved'; }
         if (name === 'test_notification') return 'Test notification requested';
         if (name === 'run_action') {
+          if (args.action === 'new-mail') { window.newMailChecks++; return JSON.stringify({ folders: [{ name: 'INBOX', newMessages: 2 }, { name: 'Sent', newMessages: 0 }, { name: 'New folder', newMessages: 1 }] }); }
           if (args.action === 'folders') { window.data.mailboxes = { folders: ['INBOX','Sent','Archive','Drafts'] }; return 'Folders loaded'; }
           if (args.action !== 'stats') throw 'Unexpected action';
           if (window.failCheck) throw 'Connection failed';
@@ -61,6 +62,15 @@ const assert = require('node:assert/strict');
     const tab = name => page.getByRole('tab', { name, exact: true });
     const go = async name => { await tab(name).click(); await page.getByRole('tabpanel', { name, exact: true }).waitFor(); };
     const sidebar = page.getByRole('navigation', { name: 'Mailbox folders' });
+    await page.waitForFunction(() => document.querySelector('.statusbar .new-mail-dot'));
+    assert.equal(await page.evaluate(() => window.newMailChecks), 1);
+    assert.match(await page.locator('.statusbar .new-mail-dot').getAttribute('aria-label'), /3 new emails/);
+    assert.equal(await sidebar.locator('.folder-row[data-folder="INBOX"] .new-mail-dot').count(), 1);
+    assert.equal(await sidebar.locator('.folder-row[data-folder="Sent"] .new-mail-dot').count(), 0);
+    assert.equal(await page.locator('.folder-table .new-mail-dot').count(), 2);
+    await page.getByRole('searchbox', { name: 'Filter folders' }).fill('INBOX');
+    assert.equal(await sidebar.locator('.new-mail-dot').count(), 1);
+    await page.getByRole('searchbox', { name: 'Filter folders' }).fill('');
     assert.equal(await page.getByRole('tab').count(), 6);
     assert.equal(await page.getByRole('tab', { name: 'History', exact: true }).count(), 0);
     assert.equal(await page.locator('[role="tabpanel"]:not([hidden])').count(), 1);
@@ -106,7 +116,7 @@ const assert = require('node:assert/strict');
     await page.waitForFunction(() => window.exports.length === 2);
     assert.deepEqual(await page.evaluate(() => window.exports[1]), { folder: 'INBOX', file: null });
     await page.evaluate(() => { window.failExport = true; });
-    await page.locator('.folder-table [data-action="download-folder"]').click();
+    await page.locator('.folder-table [data-action="download-folder"][data-folder="INBOX"]').click();
     await page.waitForFunction(() => document.querySelector('#toast')?.textContent === 'Export failed' || [...document.querySelectorAll('[role="status"], .toast')].some(el => el.textContent === 'Export failed'));
     await page.evaluate(() => { window.failExport = false; });
     await sidebar.getByRole('button', { name: 'INBOX 3', exact: true }).click();
@@ -318,6 +328,7 @@ const assert = require('node:assert/strict');
     await page.getByRole('navigation', { name: 'Mailbox folders' }).getByRole('button', { name: 'Folder-999 0', exact: true }).waitFor();
     assert.equal(await beforeFilter.evaluate(node => node.isConnected), true);
     console.log(`1,000-folder filter completed in ${Math.round(performance.now() - started)} ms without rebuilding the workspace.`);
+    assert.equal(await page.evaluate(() => window.newMailChecks), 1, 'Polling and navigation do not repeat the startup check');
     assert.deepEqual(errors, []);
     assert.equal(await page.locator('.statusbar progress').count(), 0, 'Finished runs clear the status progress bar');
     console.log('Tabbed workspace passed: no duplicate panels, keyboard tabs, retained drafts, independent scheduled folders, calendar, retries, history, notifications and responsive layout.');

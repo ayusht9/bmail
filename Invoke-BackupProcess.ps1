@@ -4,7 +4,7 @@ function Invoke-BackupProcess {
         [Parameter(Mandatory = $true)][string]$ScriptPath,
         [Parameter(Mandatory = $true)][string]$Payload,
         [Parameter(Mandatory = $true)][string]$LogPath,
-        [ValidateSet('', '--list-folders', '--check-mailbox', '--scheduled')][string]$EngineArgument = ''
+        [ValidateSet('', '--list-folders', '--check-mailbox', '--new-mail', '--scheduled')][string]$EngineArgument = ''
     )
     $start = New-Object Diagnostics.ProcessStartInfo
     $start.FileName = $NodePath

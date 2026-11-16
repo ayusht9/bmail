@@ -6,7 +6,7 @@ import { historyPane } from './history.js';
 import { activityPane } from './activity.js';
 import { createDashboardPoller } from './polling.js';
 import { statisticsPanel, coverageRows } from './statistics.js';
-import { folderNavigation, recentMailPane, mailboxFolders } from './desktop.js';
+import { folderNavigation, recentMailPane, mailboxFolders, newMailDot } from './desktop.js';
 import { progressPanel, statusDownloadProgress } from './progress.js';
 import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, nextRuns, calendarMarkup, scheduleSummary, localDate, updateClock } from './scheduler.js';
 import { backupOptionsView, folderChoices, advancedFromForm } from './selection.js';
@@ -16,6 +16,33 @@ let dashboard;
 let busy = false;
 let controlBusy = false;
 let activeExports = 0;
+const startupMailChecked = new Set();
+const newMailByAccount = new Map();
+const mailIndicators = () => newMailByAccount.get(dashboard?.user) || new Map();
+
+function rememberNewMail(snapshot, account = dashboard.user) {
+  newMailByAccount.set(account, new Map((snapshot?.folders || []).map(folder => [folder.name, Math.max(0, Number(folder.newMessages) || 0)])));
+}
+
+async function checkStartupMail() {
+  if (!dashboard?.credentialReady || !dashboard.user.includes('@') || dashboard.backupRunning || busy || startupMailChecked.has(dashboard.user)) return;
+  const account = dashboard.user;
+  startupMailChecked.add(account);
+  busy = true; busyAction = 'new-mail';
+  captureTabDraft(); render();
+  let failed = false;
+  try {
+    const result = await invoke('run_action', { action: 'new-mail' });
+    rememberNewMail(JSON.parse(result), account);
+  } catch {
+    failed = true;
+  } finally {
+    busy = false; busyAction = '';
+    await refresh();
+    if (failed) toast('New mail check failed. Use Check mailbox to try again.', true);
+  }
+}
+
 let addingAccount = false;
 let selectedFolder = '';
 let folderFilter = '';
@@ -87,7 +114,7 @@ const formatDate = value => value ? dateFormatter.format(new Date(value)) : 'Nev
 const formatNumber = value => numberFormatter.format(value || 0);
 
 function statusBarContents() {
-  return `<span class="status-message">${busy ? busyAction === 'stats' ? 'Checking mailbox...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : 'Ready'}</span>${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span><span class="status-updates">Manual app updates</span>`;
+  return `<span class="status-message">${busy ? busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Checking mailbox...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : 'Ready'}</span>${newMailDot([...mailIndicators().values()].reduce((sum, count) => sum + count, 0), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span><span class="status-updates">Manual app updates</span>`;
 }
 
 function updateStatusBar() {
@@ -116,7 +143,7 @@ function render() {
   const statusTitle = dashboard.backupRunning ? dashboard.progress?.state === 'paused' ? 'Your backup is paused' : 'Your backup is running'
     : intentional ? outcome === 'stopped' ? 'Backup stopped safely' : 'Backup cancelled' : healthy ? 'Selected backup complete' : run ? 'Last run needs attention' : dashboard.hasManifest ? 'Ready to continue your backup' : 'Ready for the first backup';
   if (selectedFolder && !mailboxFolders(dashboard).includes(selectedFolder)) selectedFolder = '';
-  const folderRows = activeTab === 'mailbox' ? coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter) : '';
+  const folderRows = activeTab === 'mailbox' ? coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter, mailIndicators()) : '';
   const tabTitle = activeTab === 'mailbox' ? selectedFolder || 'All folders' : workspaceTabs.find(([key]) => key === activeTab)?.[1];
   const workspaceBody = activeTab === 'overview' ? `<div class="overview-page">${statisticsPanel(dashboard, escapeHtml, formatNumber, formatDate, busy)}</div>`
     : activeTab === 'preferences' ? `<section class="preferences-page" aria-labelledby="preferences-title"><h2 id="preferences-title">Appearance</h2><label for="theme-preference">Theme</label><select id="theme-preference" aria-describedby="theme-description">${[['auto','Auto'],['light','Light'],['dark','Dark']].map(([value,label]) => `<option value="${value}" ${themePreference() === value ? 'selected' : ''}>${label}</option>`).join('')}</select><p id="theme-description">Auto follows your Windows appearance. Your choice is saved on this device.</p></section>`
@@ -143,7 +170,7 @@ function render() {
         <div class="sidebar-heading"><h2>Folders</h2><button class="icon-button" data-action="add-account" aria-label="Add account" title="Add account" ${busy || dashboard.backupRunning ? 'disabled' : ''}>+</button></div>
         <label class="filter-field"><span class="sr-only">Filter folders</span><input id="folder-filter" type="search" placeholder="Filter folders" value="${escapeHtml(folderFilter)}"></label>
         <nav class="folder-list" aria-label="Mailbox folders"><button class="folder-item ${!selectedFolder ? 'selected' : ''}" data-action="select-folder" data-folder="" aria-pressed="${!selectedFolder}"><span>All folders</span><small>${formatNumber(dashboard.localStats?.messages || 0)}</small></button>
-          ${folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber) || `<p class="sidebar-empty">${folderFilter ? 'No matching folders.' : 'Check your mailbox to load folders.'}</p>`}</nav>
+          ${folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber, mailIndicators()) || `<p class="sidebar-empty">${folderFilter ? 'No matching folders.' : 'Check your mailbox to load folders.'}</p>`}</nav>
         <div class="sidebar-tools"><button data-action="setup" ${busy ? 'disabled' : ''}>${dashboard.credentialReady ? 'Account settings' : 'Set up mailbox'}</button>
         </div>
       </aside>
@@ -215,6 +242,7 @@ async function refresh(background = false, force = false) {
   refreshFinished = new Promise(resolve => { finished = resolve; });
   try {
     const next = await invoke('get_dashboard', { force });
+    next.newMailFolders = [...(newMailByAccount.get(next.user)?.keys() || [])];
     const unchanged = JSON.stringify(next) === JSON.stringify(dashboard);
     dashboard = next;
     updateStatusBar();
@@ -235,7 +263,7 @@ async function refresh(background = false, force = false) {
     if (focusAction && !['select-folder','select-tab'].includes(focusAction)) [...document.querySelectorAll('[data-action]')].find(el => el.dataset.action === focusAction)?.focus({ preventScroll: true });
   } catch (error) {
     if (!background) app.innerHTML = `<main class="fatal"><h1>Bmail could not start</h1><p>${escapeHtml(error)}</p></main>`;
-  } finally { refreshing = false; finished(); dashboardPoller?.reschedule(); }
+  } finally { refreshing = false; finished(); dashboardPoller?.reschedule(); void checkStartupMail(); }
 }
 
 async function run(action) {
@@ -257,6 +285,7 @@ async function run(action) {
     busy = false;
     busyAction = '';
     await refresh();
+    if (!failed && action === 'stats') { rememberNewMail(dashboard.mailboxStatus); render(); }
     toast(failed ? (action === 'stats' ? 'Mailbox check failed. See the error above.' : 'Action failed. See the error above.') : message, failed);
   }
 }
@@ -334,8 +363,8 @@ app.addEventListener('input', event => {
   const navigation = document.querySelector('.folder-list');
   // Keep the search input, forms, clock and other workspace nodes intact.
   navigation.querySelectorAll('[data-folder]:not([data-folder=""]), .sidebar-empty').forEach(node => node.remove());
-  navigation.insertAdjacentHTML('beforeend', folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber) || '<p class="sidebar-empty">No matching folders.</p>');
-  if (activeTab === 'mailbox') document.querySelector('.folder-table tbody').innerHTML = coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter) || '<tr><td colspan="5" class="empty-pane">No folders to show.</td></tr>';
+  navigation.insertAdjacentHTML('beforeend', folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber, mailIndicators()) || '<p class="sidebar-empty">No matching folders.</p>');
+  if (activeTab === 'mailbox') document.querySelector('.folder-table tbody').innerHTML = coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter, mailIndicators()) || '<tr><td colspan="5" class="empty-pane">No folders to show.</td></tr>';
 });
 
 app.addEventListener('toggle', event => {

@@ -502,19 +502,19 @@ async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, Str
     tauri::async_runtime::spawn_blocking(move || {
         let root = data_root(&app)?;
         let engine = engine_root(&app)?;
-        if ["backup", "verify", "folders", "stats"].contains(&action.as_str()) && active_backup(&backup_root(&root)) {
+        if ["backup", "verify", "folders", "stats", "new-mail"].contains(&action.as_str()) && active_backup(&backup_root(&root)) {
             return Err("A backup is already active. Pause, stop, or wait for it to finish first.".into());
         }
         let (program, output) = match action.as_str() {
             "backup" => ("Backup", powershell(&engine, &root, "Run-Backup.ps1")?),
             "schedule" => ("Schedule", powershell(&engine, &root, "Install-BackupSchedule.ps1")?),
-            "folders" | "stats" => ("Mailbox check", {
+            "folders" | "stats" | "new-mail" => ("Mailbox check", {
                 if active_backup(&backup_root(&root)) {
                     return Err("Wait for the current backup to finish before reloading folders.".into());
                 }
                 hidden_command("powershell.exe").current_dir(&root).env("MAIL_VAULT_DATA_DIR", &root)
                     .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
-                    .arg(engine.join("Run-Backup.ps1")).args(["-Mode", if action == "stats" { "Stats" } else { "Folders" }]).output().map_err(|e| e.to_string())?
+                    .arg(engine.join("Run-Backup.ps1")).args(["-Mode", if action == "new-mail" { "NewMail" } else if action == "stats" { "Stats" } else { "Folders" }]).output().map_err(|e| e.to_string())?
             }),
             "verify" => ("Verification", hidden_command(engine.join("node.exe")).current_dir(&root)
                 .env("MAIL_VAULT_DATA_DIR", &root).arg(engine.join("backup.cjs")).arg("--verify")
@@ -524,6 +524,10 @@ async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, Str
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
         if output.status.success() {
+            if action == "new-mail" {
+                let snapshot = read_json(&backup_root(&root).join("new-mail-status.json")).ok_or("Mailbox check produced no result.")?;
+                return Ok(serde_json::json!({"checkedAt": snapshot["checkedAt"], "folders": snapshot["folders"].as_array().map(|folders| folders.iter().map(|folder| serde_json::json!({"name": folder["name"], "newMessages": folder["newMessages"]})).collect::<Vec<_>>()).unwrap_or_default()}).to_string());
+            }
             if action == "schedule" {
                 let cache = app.state::<cache::DashboardCache>();
                 if let Ok(mut cache) = cache.0.lock() { cache.invalidate_schedule(&root); };
