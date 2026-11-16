@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::{collections::HashMap, fs, io::{Read, Seek, SeekFrom}, path::{Path, PathBuf}, sync::Mutex, time::{Duration, Instant, UNIX_EPOCH}};
 
 // Bump this when the derived summary's shape or meaning changes.
-const CACHE_VERSION: u32 = 1;
+const CACHE_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Stamp { bytes: u64, seconds: u64, nanos: u32 }
