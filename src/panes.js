@@ -5,9 +5,9 @@ let drag = null;
 export const paneResizeActive = () => Boolean(drag);
 const bound = (value, min, max) => Math.max(min, Math.min(max, value));
 
-export function paneDivider(kind) {
+export function paneDivider(kind, label) {
   const sidebar = kind === 'sidebar';
-  return `<div class="pane-divider ${sidebar ? 'sidebar-divider' : 'mail-divider'}" role="separator" tabindex="0" aria-label="${sidebar ? 'Resize folder sidebar' : 'Resize mail list and reading pane'}" aria-orientation="${sidebar ? 'vertical' : 'horizontal'}" data-pane-divider="${kind}" title="Drag or use arrow keys to resize; double-click to reset"></div>`;
+  return `<div class="pane-divider ${sidebar ? 'sidebar-divider' : 'mail-divider'}" role="separator" tabindex="0" aria-label="${label || (sidebar ? 'Resize folder sidebar' : 'Resize mail list and reading pane')}" aria-orientation="${sidebar ? 'vertical' : 'horizontal'}" data-pane-divider="${kind}" title="Drag or use arrow keys to resize; double-click to reset"></div>`;
 }
 
 function save() { try { localStorage.setItem(storageKey, JSON.stringify(preferences)); } catch {} }

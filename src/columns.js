@@ -1,4 +1,4 @@
-const defaults = { mail: [280, 200, 150, 190, 112], folders: [260, 130, 130, 170] };
+const defaults = { mail: [280, 200, 150, 190, 112], folders: [260, 130, 130, 170], history: [230, 140, 120, 150] };
 const layouts = new Map();
 const minimum = index => index >= 3 ? 112 : 72;
 const clamp = (width, index) => Math.round(Math.min(1200, Math.max(minimum(index), width)));
