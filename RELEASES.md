@@ -1,3 +1,36 @@
+# Bmail 0.4.0
+
+Released 17 November 2026 for Windows x64.
+
+## Changes
+
+- Home now lists every saved email in the selected folder, with original sent dates, sortable sizes, individual downloads, and a reading pane below the list.
+- Email HTML is sanitized and displayed in an isolated reading frame. Complete local backups have a faded background.
+- Resizable sidebar, list/reader split, and table columns retain their sizes. Double-click column dividers to fit contents; columns stay within the window.
+- Folder downloads export saved mail as ZIP archives. Folder counts and live download progress appear in the status bar.
+- Startup new-mail checks show dots beside affected folders and in the status bar. Busy mailbox checks defer and retry automatically.
+- Workspace tabs are Home, Backup, Scheduler, Activity, and Preferences, with back/forward navigation.
+- Start, Pause/Resume, Stop, Cancel, and detailed progress are in Backup. Activity shows full-width backup history with selected run details below.
+- Windows development builds exclude Cargo outputs from the Vite watcher, fixing locked-DLL watcher failures.
+
+## Installation and updates
+
+Download `Bmail_0.4.0_x64-setup.exe` and run it for the current Windows user. The installer includes the Node.js backup runtime; WebView2 can be downloaded if missing. Keep existing application data when upgrading. Re-save schedules after an upgrade to refresh their engine paths.
+
+This EXE release is unsigned. Windows SmartScreen, Smart App Control, or organizational policies may warn or block installation. MSI/MSIX signing and Store distribution are deferred. A SHA-256 checksum is included for download integrity.
+
+## Verification
+
+- 30 engine, installer, metadata, mailbox statistics, polling, and scheduler tests passed.
+- 12 Rust tests and four profile migration checks passed.
+- Browser checks passed for message rendering, sorting, constrained resizing, history details, backup controls, themes, scheduling, notifications, and startup-check retries.
+- Bundled runtime smoke checks passed for saved-mail metadata and message rendering inputs with Node absent from PATH; runtime files match release source and exclude personal data.
+- Windows x64 EXE installer built successfully.
+
+Clean-machine installation and upgrade/uninstall checks have not been performed for this release. Automated mailbox checks use local fixtures rather than live provider accounts.
+
+---
+
 # Bmail 0.3.0
 
 Released 16 November 2026 for Windows x64.
