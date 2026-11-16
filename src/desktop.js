@@ -1,3 +1,5 @@
+import { tableStart, columnHandle } from './columns.js';
+
 export function newMailDot(count, escape, folder = '') {
   if (!(count > 0)) return '';
   const label = `${count} new email${count === 1 ? '' : 's'}${folder ? ` in ${folder}` : ''} since the previous mailbox check`;
@@ -39,9 +41,9 @@ export function sortMail(messages, sort) {
 export function savedMailPane(state, selected, sort, escape, date) {
   const messages = sortMail(state.rows, sort);
   const headings = [['subject', 'Subject'], ['sender', 'From'], ['folder', 'Folder'], ['backedUpAt', 'Saved']];
-  const header = headings.map(([key, label]) => `<th ${sort.column === key ? `aria-sort="${sort.direction === 'asc' ? 'ascending' : 'descending'}"` : ''}><button type="button" data-action="sort-mail" data-column="${key}" title="Sort by ${label.toLowerCase()} ${sort.column === key && sort.direction === 'asc' ? 'descending' : 'ascending'}">${label}<span aria-hidden="true">${sort.column === key ? sort.direction === 'asc' ? '&#8593;' : '&#8595;' : '&#8597;'}</span></button></th>`).join('');
+  const header = headings.map(([key, label], index) => `<th ${sort.column === key ? `aria-sort="${sort.direction === 'asc' ? 'ascending' : 'descending'}"` : ''}><button type="button" data-action="sort-mail" data-column="${key}" title="Sort by ${label.toLowerCase()} ${sort.column === key && sort.direction === 'asc' ? 'descending' : 'ascending'}">${label}<span aria-hidden="true">${sort.column === key ? sort.direction === 'asc' ? '&#8593;' : '&#8595;' : '&#8597;'}</span></button>${columnHandle('mail', index, label)}</th>`).join('');
   const rows = messages.map(message => `<tr><td>${escape(message.subject || 'No subject')}</td><td>${escape(message.sender || 'Unknown sender')}</td><td>${escape(message.folder)}</td><td>${date(message.backedUpAt)}</td><td>${downloadButton('download-email', `data-file="${escape(message.file || '')}"`, `Download ${message.subject || 'email'} (.eml)`, escape, !message.file)}</td></tr>`).join('');
-  return `<section class="mail-pane" aria-label="Saved mail" aria-busy="${state.loading}"><div class="pane-title"><h2>Saved mail</h2><span>${state.loading ? 'Loading...' : `${messages.length.toLocaleString()} emails`}${selected ? ` in ${escape(selected)}` : ' across all folders'}</span></div>
-    ${state.loading ? '<p class="empty-pane">Loading saved emails...</p>' : state.error ? `<p class="empty-pane" role="alert">${escape(state.error)} <button data-action="retry-mail">Retry</button></p>` : rows ? `<div class="table-wrap"><table class="mail-table"><thead><tr>${header}<th><span class="sr-only">Download</span></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty-pane">No saved emails in this folder yet.</p>'}
+  return `<section class="mail-pane" aria-label="Saved mail" aria-busy="${state.loading}">
+    ${state.loading ? '<p class="empty-pane">Loading saved emails...</p>' : state.error ? `<p class="empty-pane" role="alert">${escape(state.error)} <button data-action="retry-mail">Retry</button></p>` : rows ? `<div class="table-wrap">${tableStart('mail', 'mail-table')}<thead><tr>${header}<th><span class="sr-only">Download</span>${columnHandle('mail', 4, 'Download')}</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty-pane">No saved emails in this folder yet.</p>'}
     <p class="pane-hint">All saved emails are shown. Click a column heading to change the sort order.</p></section>`;
 }

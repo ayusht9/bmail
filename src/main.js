@@ -1,4 +1,5 @@
 import './style.css';
+import { tableStart, columnHandle, installColumnResizing, columnResizeActive } from './columns.js';
 import { themePreference, setTheme } from './theme.js';
 import { invoke } from '@tauri-apps/api/core';
 import { workspaceTabs, workspaceTabStrip } from './workspace.js';
@@ -171,7 +172,7 @@ function render() {
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)
     : activeTab === 'activity' ? `<div class="activity-page">${historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)}${activityPane(dashboard, activityFilter, activityRawOpen, escapeHtml, formatNumber)}</div>`
-    : `<section class="folder-pane" aria-label="Folder coverage"><div class="pane-title"><h2>Folder coverage</h2><span>${formatNumber(mailboxFolders(dashboard).length)} folders</span></div><div class="table-wrap"><table class="folder-table"><thead><tr><th>Folder</th><th>Saved locally</th><th>On server</th><th>Remaining</th><th><span class="sr-only">Download</span></th></tr></thead><tbody>${folderRows || '<tr><td colspan="5" class="empty-pane">No folders to show. Check mailbox to load coverage.</td></tr>'}</tbody></table></div></section>${savedMailPane(savedMail, selectedFolder, mailSort, escapeHtml, formatDate)}`;
+    : `<section class="folder-pane" aria-label="Folder coverage"><div class="table-wrap">${tableStart('folders', 'folder-table')}<thead><tr>${['Folder', 'Saved locally', 'On server', 'Remaining', 'Download'].map((label, index) => `<th>${index === 4 ? `<span class="sr-only">${label}</span>` : label}${columnHandle('folders', index, label)}</th>`).join('')}</tr></thead><tbody>${folderRows || '<tr><td colspan="5" class="empty-pane">No folders to show. Check mailbox to load coverage.</td></tr>'}</tbody></table></div></section>${savedMailPane(savedMail, selectedFolder, mailSort, escapeHtml, formatDate)}`;
 
 
   app.innerHTML = `
@@ -268,7 +269,7 @@ async function refresh(background = false, force = false) {
     const unchanged = JSON.stringify(next) === JSON.stringify(dashboard);
     dashboard = next;
     updateStatusBar();
-    if (background && (unchanged || ['options','scheduler'].includes(activeTab) || document.querySelector('dialog[open]'))) return;
+    if (background && (columnResizeActive() || unchanged || ['options','scheduler'].includes(activeTab) || document.querySelector('dialog[open]'))) return;
     captureTabDraft();
     const focusAction = document.activeElement?.dataset?.action;
     const focusFolder = document.activeElement?.dataset?.folder;
@@ -690,6 +691,7 @@ dashboardPoller = createDashboardPoller({
 });
 document.addEventListener('visibilitychange', () => dashboardPoller.wake());
 window.addEventListener('pagehide', () => dashboardPoller.stop());
+installColumnResizing(app);
 render();
 refresh().finally(() => dashboardPoller.start());
 setInterval(updateClock, 1000);

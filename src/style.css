@@ -1003,3 +1003,10 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .mail-table th[aria-sort] button, .mail-table th[aria-sort] button span { color: var(--link); }
 
 .mail-table { min-width: 620px; }
+
+.resizable-table th { position: relative; padding-right: 15px; width: auto; }
+.resizable-table.mail-table th:first-child, .resizable-table.mail-table th:nth-child(2), .resizable-table.folder-table th:first-child { width: auto; }
+.column-resize { position: absolute; top: 0; right: 0; bottom: 0; width: 9px; cursor: col-resize; touch-action: none; z-index: 2; }
+.column-resize::after { content: ''; position: absolute; top: 20%; bottom: 20%; right: 3px; width: 2px; background: var(--line); }
+.column-resize:hover::after, .column-resize:focus-visible::after { background: var(--accent); }
+.resizing-columns, .resizing-columns * { cursor: col-resize !important; user-select: none !important; }
