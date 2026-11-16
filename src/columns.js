@@ -1,6 +1,6 @@
 const defaults = { mail: [280, 200, 150, 190, 52], folders: [260, 130, 130, 130, 52] };
 const layouts = new Map();
-const minimum = index => index === 4 ? 44 : 72;
+const minimum = index => index === 4 ? 52 : 72;
 const clamp = (width, index) => Math.round(Math.min(1200, Math.max(minimum(index), width)));
 let dragging = null;
 export const columnResizeActive = () => Boolean(dragging);
@@ -14,11 +14,38 @@ function widthsFor(id) {
   return layouts.get(id);
 }
 
+// Preserve the table width while reserving usable space for every column.
+export function fitWidths(widths, available) {
+  const budget = Math.max(1, available);
+  const minimumTotal = widths.reduce((sum, _, index) => sum + minimum(index), 0);
+  const mins = widths.map((_, index) => minimum(index) * Math.min(1, budget / minimumTotal));
+  const slack = widths.map((width, index) => Math.max(0, width - mins[index]));
+  const totalSlack = slack.reduce((sum, width) => sum + width, 0);
+  const spare = Math.max(0, budget - mins.reduce((sum, width) => sum + width, 0));
+  return mins.map((width, index) => width + spare * (totalSlack ? slack[index] / totalSlack : 1 / widths.length));
+}
+
+export function resizeWidths(widths, index, desired) {
+  const result = [...widths];
+  const neighbors = widths.map((_, i) => i).filter(i => i !== index).sort((a, b) => Math.abs(a - index) - Math.abs(b - index) || b - a);
+  const capacity = neighbors.reduce((sum, i) => sum + Math.max(0, widths[i] - minimum(i)), 0);
+  const delta = Math.min(capacity, Math.max(minimum(index) - widths[index], desired - widths[index]));
+  result[index] += delta;
+  if (delta < 0) result[neighbors[0]] -= delta;
+  else {
+    let remaining = delta;
+    for (const i of neighbors) {
+      const taken = Math.min(remaining, Math.max(0, widths[i] - minimum(i)));
+      result[i] -= taken; remaining -= taken;
+    }
+  }
+  return result;
+}
+
 export function tableStart(id, className) {
-  const saved = widthsFor(id);
-  const widths = saved || defaults[id];
+  const widths = widthsFor(id) || defaults[id];
   const sum = widths.reduce((total, width) => total + width, 0);
-  return `<table class="${className} resizable-table" data-resize-table="${id}" ${saved ? `style="width:${sum}px;min-width:100%"` : ''}><colgroup>${widths.map((width, index) => `<col style="width:${saved ? index === 4 ? 'auto' : `${width}px` : `${width / sum * 100}%`}">`).join('')}</colgroup>`;
+  return `<table class="${className} resizable-table" data-resize-table="${id}"><colgroup>${widths.map(width => `<col style="width:${width / sum * 100}%">`).join('')}</colgroup>`;
 }
 
 export function columnHandle(id, index, label) {
@@ -27,10 +54,17 @@ export function columnHandle(id, index, label) {
 }
 
 function applyWidths(table, widths) {
-  table.style.width = `${widths.reduce((sum, width) => sum + width, 0)}px`;
-  table.style.minWidth = '100%';
-  table.querySelectorAll('col').forEach((col, index) => col.style.width = index === widths.length - 1 ? 'auto' : `${widths[index]}px`);
-  table.querySelectorAll('[data-resize-column]').forEach((handle, index) => handle.setAttribute('aria-valuenow', widths[index]));
+  const available = table.parentElement.clientWidth;
+  const fitted = fitWidths(widths, available);
+  table.style.width = '100%'; table.style.minWidth = '0';
+  table.querySelectorAll('col').forEach((col, index) => col.style.width = `${fitted[index] / available * 100}%`);
+  table.querySelectorAll('[data-resize-column]').forEach((handle, index) => {
+    handle.setAttribute('aria-valuenow', Math.round(fitted[index]));
+    handle.setAttribute('aria-valuemax', Math.floor(available - fitted.reduce((sum, _, i) => sum + (i === index ? 0 : minimum(i)), 0)));
+  });
+}
+function currentWidths(table) {
+  return fitWidths([...table.querySelectorAll('thead th')].map(th => th.getBoundingClientRect().width), table.parentElement.clientWidth);
 }
 function saveWidths(table, widths) {
   const id = table.dataset.resizeTable;
@@ -59,13 +93,28 @@ function fitColumn(table, index) {
     const extra = buttonStyle ? parseFloat(buttonStyle.paddingLeft) + parseFloat(buttonStyle.paddingRight) + (parseFloat(buttonStyle.columnGap) || 0) : 0;
     widest = Math.max(widest, Math.ceil(textWidth + icons + extra + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + 4));
   }
-  const widths = [...table.querySelectorAll('thead th')].map((th, i) => clamp(th.getBoundingClientRect().width, i));
-  widths[index] = clamp(widest, index);
+  const widths = resizeWidths(currentWidths(table), index, widest);
   applyWidths(table, widths);
   saveWidths(table, widths);
 }
 
 export function installColumnResizing(root) {
+  const observed = new Map();
+  const observer = new ResizeObserver(entries => {
+    for (const entry of entries) {
+      const table = observed.get(entry.target);
+      if (table?.isConnected && entry.target.clientWidth && !dragging) applyWidths(table, widthsFor(table.dataset.resizeTable) || defaults[table.dataset.resizeTable]);
+    }
+  });
+  const observeTables = () => {
+    for (const [wrapper, table] of observed) if (!table.isConnected) { observer.unobserve(wrapper); observed.delete(wrapper); }
+    root.querySelectorAll('[data-resize-table]').forEach(table => {
+      const wrapper = table.parentElement;
+      if (!observed.has(wrapper)) { observed.set(wrapper, table); observer.observe(wrapper); }
+    });
+  };
+  new MutationObserver(observeTables).observe(root, { childList: true, subtree: true });
+  observeTables();
   root.addEventListener('dblclick', event => {
     const handle = event.target.closest('[data-resize-column]');
     if (!handle) return;
@@ -76,9 +125,9 @@ export function installColumnResizing(root) {
     const handle = event.target.closest('[data-resize-column]');
     if (!handle || event.button !== 0) return;
     const table = handle.closest('[data-resize-table]');
-    const widths = [...table.querySelectorAll('thead th')].map((th, index) => clamp(th.getBoundingClientRect().width, index));
+    const widths = currentWidths(table);
     const index = Number(handle.dataset.resizeColumn);
-    dragging = { table, widths, index, startX: event.clientX, startWidth: widths[index], pointerId: event.pointerId };
+    dragging = { table, widths, initialWidths: [...widths], index, startX: event.clientX, startWidth: widths[index], pointerId: event.pointerId };
     applyWidths(table, widths);
     handle.setPointerCapture(event.pointerId);
     document.body.classList.add('resizing-columns');
@@ -86,7 +135,7 @@ export function installColumnResizing(root) {
   });
   root.addEventListener('pointermove', event => {
     if (!dragging || event.pointerId !== dragging.pointerId) return;
-    dragging.widths[dragging.index] = clamp(dragging.startWidth + event.clientX - dragging.startX, dragging.index);
+    dragging.widths = resizeWidths(dragging.initialWidths, dragging.index, dragging.startWidth + event.clientX - dragging.startX);
     applyWidths(dragging.table, dragging.widths);
   });
   const finish = event => {
@@ -105,8 +154,8 @@ export function installColumnResizing(root) {
     event.preventDefault();
     const table = handle.closest('[data-resize-table]');
     const index = Number(handle.dataset.resizeColumn);
-    const widths = [...table.querySelectorAll('thead th')].map((th, i) => clamp(th.getBoundingClientRect().width, i));
-    widths[index] = clamp(widths[index] + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 40 : 10), index);
+    const current = currentWidths(table);
+    const widths = resizeWidths(current, index, current[index] + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 40 : 10));
     applyWidths(table, widths); saveWidths(table, widths);
   });
 }
