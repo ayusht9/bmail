@@ -61,7 +61,8 @@ const assert = require('node:assert/strict');
     const tab = name => page.getByRole('tab', { name, exact: true });
     const go = async name => { await tab(name).click(); await page.getByRole('tabpanel', { name, exact: true }).waitFor(); };
     const sidebar = page.getByRole('navigation', { name: 'Mailbox folders' });
-    assert.equal(await page.getByRole('tab').count(), 7);
+    assert.equal(await page.getByRole('tab').count(), 6);
+    assert.equal(await page.getByRole('tab', { name: 'History', exact: true }).count(), 0);
     assert.equal(await page.locator('[role="tabpanel"]:not([hidden])').count(), 1);
     assert.equal(await page.locator('.selection-summary,.storage-summary,.inspector').count(), 0);
     assert.equal(await page.getByRole('button', { name: 'Open backup folder', exact: true }).count(), 1);
@@ -195,7 +196,7 @@ const assert = require('node:assert/strict');
     const callsBeforeClockTick = await page.evaluate(() => window.calls.length);
     await page.waitForFunction(previous => document.querySelector('#scheduler-clock')?.textContent !== previous, clock);
     assert.equal(await page.evaluate(() => window.calls.length), callsBeforeClockTick);
-    await go('History'); await go('Scheduler');
+    await go('Activity'); await go('Scheduler');
     assert.equal(await scheduler.getByLabel('Start date', { exact: true }).inputValue(), '2035-01-01');
     assert.equal(await folders.getByLabel('Sent', { exact: true }).isChecked(), true, 'Scheduler drafts survive tab changes');
     const calendarButton = scheduler.locator('.schedule-calendar [tabindex="0"]');
@@ -234,7 +235,7 @@ const assert = require('node:assert/strict');
       { runId: 'history-complete', outcome: 'completed', downloaded: 3, startedAt: '2032-01-01T10:00:00Z', finishedAt: '2032-01-01T10:02:00Z', durationSeconds: 120 },
       { runId: 'history-failed', outcome: 'failed', downloaded: 0, startedAt: '2031-12-31T10:00:00Z', finishedAt: '2031-12-31T10:01:00Z', durationSeconds: 60, error: { message: '<script>historyInjection</script>', code: 'FIXTURE_ERROR' } },
     ]; });
-    await page.getByRole('button', { name: 'Refresh', exact: true }).click(); await go('History');
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click(); await go('Activity');
     const history = page.getByRole('region', { name: 'Backup history' });
     assert.equal(await history.locator('tbody tr').count(), 2);
     await history.locator('#history-filter').selectOption('failed');
@@ -252,6 +253,9 @@ const assert = require('node:assert/strict');
     assert.equal(await page.evaluate(() => window.activityInjected), undefined);
     await activity.getByLabel('Show', { exact: true }).selectOption('problems');
     assert.equal(await activity.locator('.activity-entry').count(), 2);
+    assert.equal(await history.locator('tbody tr').count(), 1, 'The event filter preserves the selected run filter');
+    await history.locator('tbody button').first().click();
+    assert.equal(await activity.getByLabel('Show', { exact: true }).inputValue(), 'problems', 'Selecting a run preserves the event filter');
     await activity.getByLabel('Show', { exact: true }).selectOption('all');
     await activity.getByText('View raw log', { exact: true }).click();
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
@@ -268,7 +272,7 @@ const assert = require('node:assert/strict');
     await go('Preferences'); await page.getByLabel('Theme', { exact: true }).selectOption('light');
     await go('Activity');
 
-    assert.equal(await page.locator('.history-pane').count(), 0);
+    assert.equal(await page.locator('.history-pane').count(), 1, 'Run history and the activity log share the Activity tab');
     await page.evaluate(() => { window.data.backupRunning = true; window.data.progress = { state: 'running', phase: 'downloading', downloaded: 2, plannedDownloads: 8, processedMessages: 2, totalMessages: 8 }; });
     await page.getByRole('button', { name: 'Refresh', exact: true }).click(); await go('Overview');
     await panel.getByRole('heading', { name: 'Backup in progress' }).waitFor();
@@ -298,7 +302,7 @@ const assert = require('node:assert/strict');
     }
     await go('Preferences');
     await page.getByLabel('Theme', { exact: true }).selectOption('dark');
-    for (const tab of ['Mailbox', 'Overview', 'Backup options', 'Scheduler', 'History', 'Activity', 'Preferences']) {
+    for (const tab of ['Mailbox', 'Overview', 'Backup options', 'Scheduler', 'Activity', 'Preferences']) {
       await go(tab);
       assert.notEqual(await page.locator('.mail-workspace').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(255, 255, 255)');
     }

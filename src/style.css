@@ -985,3 +985,13 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .activity-empty h3 { color: var(--text); margin: 14px 0 6px; font-size: 16px; font-weight: 600; }
 .activity-empty p { margin: 0; }
 @media (max-width: 1050px) { .activity-pane { margin: 12px; }.activity-header, .activity-toolbar { padding: 16px; }.activity-feed { padding-inline: 16px; }.activity-feed-heading { padding-inline: 16px; } }
+
+.activity-page { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; gap: 18px; padding: 18px; }
+.activity-page > .activity-pane { margin: 0; min-width: 0; }
+.activity-page > .history-pane { min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; }
+.activity-page .history-pane > .pane-title { padding: 22px 20px 18px; gap: 12px; flex-wrap: wrap; }
+.activity-page .history-pane > .pane-title h2 { font-size: 18px; font-weight: 600; }
+.activity-page .history-pane > .pane-hint { padding-inline: 20px; }
+.activity-page .history-details { padding: 20px; }
+.activity-page .history-pane .table-wrap { max-height: 280px; }
+@media (max-width: 1250px) { .activity-page { grid-template-columns: minmax(0, 1fr); padding: 12px; gap: 16px; } }

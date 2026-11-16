@@ -1,6 +1,6 @@
 export const workspaceTabs = [
   ['mailbox', 'Mailbox'], ['overview', 'Overview'], ['options', 'Backup options'],
-  ['scheduler', 'Scheduler'], ['history', 'History'], ['activity', 'Activity'], ['preferences', 'Preferences'],
+  ['scheduler', 'Scheduler'], ['activity', 'Activity'], ['preferences', 'Preferences'],
 ];
 
 export function workspaceTabStrip(active, busy) {
