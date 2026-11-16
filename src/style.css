@@ -416,16 +416,8 @@ progress {
 .check-dates dd {
   margin:2px 0 0;
 }
-.coverage-help {
-  padding:6px 12px 12px;
-  font-size:11px;
-  color:var(--muted);
-}
 summary {
   cursor:pointer;
-}
-.coverage-help p {
-  margin-bottom:0;
 }
 .selection-summary,.storage-summary {
   padding:12px;
@@ -798,7 +790,7 @@ dialog input[readonly] {
 .scheduler-page .schedule-weekdays label { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-weight: 400; }
 .overview-page { max-width: 900px; margin: 20px; }
 .overview-page .backup-statistics { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); }
-.overview-page .pane-title, .overview-page .coverage-status, .overview-page .coverage-help { grid-column: 1 / -1; }
+.overview-page .pane-title, .overview-page .coverage-status { grid-column: 1 / -1; }
 .overview-page .stats-list { border-right: 1px solid var(--soft); }
 .overview-page .check-dates { border-top: 0; }
 

@@ -318,14 +318,12 @@ async function refresh(background = false, force = false) {
     const focusTab = document.activeElement?.dataset?.tab;
     const focusColumn = document.activeElement?.dataset?.column;
     const filterInput = document.activeElement?.id === 'folder-filter' ? document.activeElement : null;
-    const coverageHelpOpen = document.querySelector('.coverage-help')?.open;
     const previousReader = document.querySelector('.reading-pane');
     const previousMessage = selectedMessage;
     const scrollPositions = [...document.querySelectorAll('.folder-list, .mail-workspace, .inspector, .table-wrap')].map(el => el.scrollTop);
     render();
     if (previousReader && selectedMessage === previousMessage) document.querySelector('.reading-pane')?.replaceWith(previousReader);
     document.querySelectorAll('.folder-list, .mail-workspace, .inspector, .table-wrap').forEach((el, index) => el.scrollTop = scrollPositions[index] || 0);
-    if (coverageHelpOpen) document.querySelector('.coverage-help').open = true;
     if (filterInput) { document.querySelector('#folder-filter').replaceWith(filterInput); filterInput.focus({ preventScroll: true }); }
     if (focusAction === 'select-folder') [...document.querySelectorAll('[data-action="select-folder"]')].find(el => el.dataset.folder === focusFolder)?.focus({ preventScroll: true });
     if (focusAction === 'select-tab') document.querySelector(`#tab-${focusTab}`)?.focus({ preventScroll: true });
