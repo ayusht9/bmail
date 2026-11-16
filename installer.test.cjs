@@ -170,3 +170,24 @@ test('new-mail checks report a busy mailbox lock before connecting to the server
     assert.equal(fs.existsSync(path.join(root, 'backups', '.backup.lock')), true, 'The other process retains its lock');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+
+test('email reader decodes multipart saved mail and rejects unsaved or external paths', async () => {
+  const { readSavedMail } = require('./read-mail.cjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-reader-'));
+  const outside = root + '.eml';
+  try {
+    const source = 'From: =?UTF-8?B?U2VuZGVy?= <sender@example.com>\r\nTo: reader@example.com\r\nSubject: =?UTF-8?B?SGVsbG8gw6k=?=\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary="parts"\r\n\r\n--parts\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\nHello =C3=A9\r\n--parts\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\nPHA+SGVsbG8gw6k8L3A+\r\n--parts--\r\n';
+    fs.writeFileSync(path.join(root, 'saved.eml'), source);
+    const manifest = { folders: { inbox: { messages: { 1: { file: 'saved.eml', complete: true }, 2: { file: 'partial.eml', complete: false }, 3: { file: outside } } } } };
+    fs.writeFileSync(path.join(root, 'manifest.json'), JSON.stringify(manifest));
+    const mail = await readSavedMail(root, 'saved.eml');
+    assert.equal(mail.subject, 'Hello \u00e9');
+    assert.match(mail.text, /Hello \u00e9/);
+    assert.match(mail.html, /<p>Hello \u00e9<\/p>/);
+    await assert.rejects(readSavedMail(root, 'partial.eml'), /not in the saved mailbox/);
+    await assert.rejects(readSavedMail(root, 'unknown.eml'), /not in the saved mailbox/);
+    fs.writeFileSync(outside, 'Private data');
+    await assert.rejects(readSavedMail(root, outside), /Invalid saved email path/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); fs.rmSync(outside, { force: true }); }
+});

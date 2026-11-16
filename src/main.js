@@ -1,12 +1,13 @@
 import './style.css';
-import { tableStart, columnHandle, installColumnResizing, columnResizeActive } from './columns.js';
+import { installColumnResizing, columnResizeActive } from './columns.js';
 import { themePreference, setTheme } from './theme.js';
 import { invoke } from '@tauri-apps/api/core';
 import { workspaceTabs, workspaceTabStrip } from './workspace.js';
 import { historyPane } from './history.js';
 import { activityPane } from './activity.js';
+import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
-import { statisticsPanel, coverageRows } from './statistics.js';
+import { statisticsPanel } from './statistics.js';
 import { folderNavigation, savedMailPane, mailboxFolders, newMailDot } from './desktop.js';
 import { progressPanel, statusDownloadProgress } from './progress.js';
 import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, nextRuns, calendarMarkup, scheduleSummary, localDate, updateClock } from './scheduler.js';
@@ -57,6 +58,26 @@ let addingAccount = false;
 let selectedFolder = '';
 let folderFilter = '';
 let savedMail = { key: '', rows: [], loading: false, error: '' };
+let selectedMessage = { file: '', message: null, loading: false, error: '' };
+let messageFolderKey = '';
+
+function mailList() { return savedMailPane(savedMail, selectedFolder, mailSort, escapeHtml, formatDate, selectedMessage.file); }
+function updateReader() {
+  const pane = document.querySelector('.reading-pane');
+  if (pane && activeTab === 'mailbox') pane.outerHTML = readingPane(selectedMessage, escapeHtml, formatDate);
+}
+function openMessage(file) {
+  if (!file) return;
+  const request = { file, message: null, loading: true, error: '' };
+  selectedMessage = request;
+  updateReader();
+  document.querySelectorAll('.mail-table tbody tr').forEach(row => row.classList.toggle('selected', row.dataset.file === file));
+  invoke('get_saved_message', { file }).then(message => { request.message = message; }).catch(error => { request.error = String(error); }).finally(() => {
+    request.loading = false;
+    if (selectedMessage === request) updateReader();
+  });
+}
+
 let mailSort = { column: 'backedUpAt', direction: 'desc' };
 
 function loadSavedMail() {
@@ -71,7 +92,7 @@ function loadSavedMail() {
       request.loading = false;
       if (savedMail === request && activeTab === 'mailbox' && !document.querySelector('dialog[open]')) {
         const pane = document.querySelector('.mail-pane');
-        if (pane) pane.outerHTML = savedMailPane(request, selectedFolder, mailSort, escapeHtml, formatDate);
+        if (pane) pane.outerHTML = mailList();
       }
     });
 }
@@ -143,8 +164,17 @@ const numberFormatter = new Intl.NumberFormat('en-IN');
 const formatDate = value => value ? dateFormatter.format(new Date(value)) : 'Never';
 const formatNumber = value => numberFormatter.format(value || 0);
 
+function folderStatus() {
+  const local = (dashboard.localStats?.folders || []).filter(folder => !selectedFolder || folder.name === selectedFolder).reduce((sum, folder) => sum + folder.messages, 0);
+  const server = (dashboard.mailboxStatus?.folders || []).filter(folder => !selectedFolder || folder.name === selectedFolder);
+  const checked = dashboard.mailboxStatus && (!selectedFolder || server.length);
+  const onServer = checked ? formatNumber(selectedFolder ? server.reduce((sum, folder) => sum + folder.serverMessages, 0) : dashboard.mailboxStatus.totalServerMessages) : 'Not checked';
+  const remaining = checked ? formatNumber(selectedFolder ? server.reduce((sum, folder) => sum + folder.missingMessages, 0) : dashboard.mailboxStatus.missingMessages) : 'Not checked';
+  return `${selectedFolder || 'All folders'}: ${formatNumber(local)} saved | ${onServer} on server | ${remaining} remaining`;
+}
+
 function statusBarContents() {
-  return `<span class="status-message">${busy ? busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Checking mailbox...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailDot([...mailIndicators().values()].reduce((sum, count) => sum + count, 0), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>`;
+  return `<span class="status-message">${busy ? busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Checking mailbox...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailDot([...mailIndicators().values()].reduce((sum, count) => sum + count, 0), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>`;
 }
 
 function updateStatusBar() {
@@ -174,14 +204,15 @@ function render() {
     : intentional ? outcome === 'stopped' ? 'Backup stopped safely' : 'Backup cancelled' : healthy ? 'Selected backup complete' : run ? 'Last run needs attention' : dashboard.hasManifest ? 'Ready to continue your backup' : 'Ready for the first backup';
   if (selectedFolder && !mailboxFolders(dashboard).includes(selectedFolder)) selectedFolder = '';
   if (activeTab === 'mailbox') loadSavedMail();
-  const folderRows = activeTab === 'mailbox' ? coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter, mailIndicators()) : '';
+  const folderKey = JSON.stringify([dashboard.user, selectedFolder]);
+  if (messageFolderKey !== folderKey) { messageFolderKey = folderKey; selectedMessage = { file: '', message: null, loading: false, error: '' }; }
   const tabTitle = activeTab === 'mailbox' ? selectedFolder || 'All folders' : workspaceTabs.find(([key]) => key === activeTab)?.[1];
   const workspaceBody = activeTab === 'overview' ? `<div class="overview-page">${statisticsPanel(dashboard, escapeHtml, formatNumber, formatDate, busy)}</div>`
     : activeTab === 'preferences' ? `<section class="preferences-page" aria-labelledby="preferences-title"><h2 id="preferences-title">Appearance</h2><label for="theme-preference">Theme</label><select id="theme-preference" aria-describedby="theme-description">${[['auto','Auto'],['light','Light'],['dark','Dark']].map(([value,label]) => `<option value="${value}" ${themePreference() === value ? 'selected' : ''}>${label}</option>`).join('')}</select><p id="theme-description">Auto follows your Windows appearance. Your choice is saved on this device.</p></section>`
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)
     : activeTab === 'activity' ? `<div class="activity-page">${historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)}${activityPane(dashboard, activityFilter, activityRawOpen, escapeHtml, formatNumber)}</div>`
-    : `<section class="folder-pane" aria-label="Folder coverage"><div class="table-wrap">${tableStart('folders', 'folder-table')}<thead><tr>${['Folder', 'Saved locally', 'On server', 'Remaining'].map((label, index) => `<th>${label}${columnHandle('folders', index, label)}</th>`).join('')}</tr></thead><tbody>${folderRows || '<tr><td colspan="4" class="empty-pane">No folders to show. Check mailbox to load coverage.</td></tr>'}</tbody></table></div></section>${savedMailPane(savedMail, selectedFolder, mailSort, escapeHtml, formatDate)}`;
+    : `<div class="mailbox-panes">${mailList()}${readingPane(selectedMessage, escapeHtml, formatDate)}</div>`;
 
 
   app.innerHTML = `
@@ -210,8 +241,8 @@ function render() {
           <button type="button" data-action="navigate-back" aria-label="Back" title="Back" ${busy || navigationIndex === 0 ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m9 4-6 6 6 6M3 10h14"/></svg></button>
           <button type="button" data-action="navigate-forward" aria-label="Forward" title="Forward" ${busy || navigationIndex === navigationHistory.length - 1 ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m11 4 6 6-6 6M3 10h14"/></svg></button>
         </nav>${workspaceTabStrip(activeTab, busy)}</div>
-        <div class="workspace-heading"><div><h1>${escapeHtml(tabTitle)}</h1><p>${escapeHtml(dashboard.user)}</p></div></div>
-        <section class="run-banner ${state}" aria-label="Backup status"><h2>${statusTitle}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span></section>
+        ${activeTab !== 'mailbox' ? `<div class="workspace-heading"><div><h1>${escapeHtml(tabTitle)}</h1><p>${escapeHtml(dashboard.user)}</p></div></div>` : ''}
+        ${activeTab !== 'mailbox' ? `<section class="run-banner ${state}" aria-label="Backup status"><h2>${statusTitle}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span></section>` : ''}
         ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'new-mail' ? 'New mail check failed' : operationFailure.action === 'stats' ? 'Mailbox check failed' : 'Action failed'}</strong><p>${escapeHtml(operationFailure.message)}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
         ${!dashboard.credentialReady ? `<aside class="notice">Save an account and app password to start backing up. <button data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
         ${run?.error ? `<aside class="notice error">${escapeHtml(run.error.message || 'Backup failed')}. Completed downloads are retained.</aside>` : ''}
@@ -286,8 +317,11 @@ async function refresh(background = false, force = false) {
     const focusColumn = document.activeElement?.dataset?.column;
     const filterInput = document.activeElement?.id === 'folder-filter' ? document.activeElement : null;
     const coverageHelpOpen = document.querySelector('.coverage-help')?.open;
+    const previousReader = document.querySelector('.reading-pane');
+    const previousMessage = selectedMessage;
     const scrollPositions = [...document.querySelectorAll('.folder-list, .mail-workspace, .inspector, .table-wrap')].map(el => el.scrollTop);
     render();
+    if (previousReader && selectedMessage === previousMessage) document.querySelector('.reading-pane')?.replaceWith(previousReader);
     document.querySelectorAll('.folder-list, .mail-workspace, .inspector, .table-wrap').forEach((el, index) => el.scrollTop = scrollPositions[index] || 0);
     if (coverageHelpOpen) document.querySelector('.coverage-help').open = true;
     if (filterInput) { document.querySelector('#folder-filter').replaceWith(filterInput); filterInput.focus({ preventScroll: true }); }
@@ -346,12 +380,14 @@ app.addEventListener('click', event => {
   if (busy && ['select-tab','select-folder','selection','schedule','reset-selection','schedule-day','schedule-prev','schedule-next'].includes(action)) return;
   if (action === 'navigate-back' || action === 'navigate-forward') { moveNavigation(action === 'navigate-back' ? -1 : 1); return; }
   if (action === 'new-mail') { startupMailChecked.delete(dashboard.user); newMailRetryAfter.delete(dashboard.user); checkStartupMail(); return; }
+  if (action === 'select-message') { openMessage(button.dataset.file); return; }
+  if (action === 'retry-message') { openMessage(selectedMessage.file); return; }
   if (action === 'retry-mail') { savedMail.key = ''; render(); return; }
   if (action === 'sort-mail') {
     const column = button.dataset.column;
     if (!['subject', 'sender', 'folder', 'backedUpAt'].includes(column)) return;
     mailSort = { column, direction: mailSort.column === column && mailSort.direction === 'asc' ? 'desc' : 'asc' };
-    document.querySelector('.mail-pane').outerHTML = savedMailPane(savedMail, selectedFolder, mailSort, escapeHtml, formatDate);
+    document.querySelector('.mail-pane').outerHTML = mailList();
     document.querySelector(`[data-action="sort-mail"][data-column="${column}"]`)?.focus({ preventScroll: true });
     return;
   }
@@ -408,7 +444,7 @@ app.addEventListener('input', event => {
   // Keep the search input, forms, clock and other workspace nodes intact.
   navigation.querySelectorAll('[data-folder]:not([data-folder=""]), .sidebar-empty').forEach(node => node.remove());
   navigation.insertAdjacentHTML('beforeend', folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber, mailIndicators()) || '<p class="sidebar-empty">No matching folders.</p>');
-  if (activeTab === 'mailbox') document.querySelector('.folder-table tbody').innerHTML = coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter, mailIndicators()) || '<tr><td colspan="4" class="empty-pane">No folders to show.</td></tr>';
+
 });
 
 app.addEventListener('toggle', event => {

@@ -1017,3 +1017,27 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .resizable-table td.row-actions { position: relative; padding-right: 48px; height: 44px; }
 .resizable-table .row-actions > .download-icon { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
 .resizable-table th:last-child { padding-right: 48px; }
+
+.mailbox-panes { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.mailbox-panes .mail-pane { flex: 0 0 42%; min-height: 150px; overflow: hidden; }
+.mailbox-panes .mail-pane .table-wrap { height: 100%; max-height: none; }
+.mailbox-panes .reading-pane { flex: 1; min-height: 160px; border-top: 1px solid var(--line); overflow: auto; }
+#view-mailbox:not([hidden]) { flex: 1; min-height: 0; }
+.mail-workspace:has(#view-mailbox:not([hidden])) { display: flex; flex-direction: column; overflow: hidden; }
+.mail-subject { border: 0; background: transparent; padding: 0; color: inherit; text-align: left; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mail-table tbody tr { cursor: pointer; }
+.reading-empty { display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--muted); }
+.reading-empty h2 { font-size: 16px; font-weight: 500; margin: 0 0 5px; }
+.reading-empty p { margin: 0; }
+.reading-header { padding: 18px 24px; border-bottom: 1px solid var(--line); }
+.reading-header h2 { margin: 0 0 14px; font-size: 20px; overflow-wrap: anywhere; }
+.reading-header dl { margin: 0; font-size: 12px; }
+.reading-header dl > div { display: flex; gap: 12px; margin-top: 4px; }
+.reading-header dt { min-width: 34px; color: var(--muted); }
+.reading-header dd { margin: 0; overflow-wrap: anywhere; }
+.reading-attachments { color: var(--muted); margin-bottom: 0; font-size: 12px; }
+.email-body { display: block; width: 100%; height: 420px; border: 0; background: white; }
+.email-text { white-space: pre-wrap; overflow-wrap: anywhere; padding: 20px 24px; margin: 0; font: 14px/1.7 'Segoe UI', sans-serif; }
+.status-folder { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.statusbar { gap: 12px; }
+@media(max-width: 1050px) { .statusbar:has(.status-download) .status-schedule { display: none; } }
