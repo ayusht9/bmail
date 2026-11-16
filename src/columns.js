@@ -18,18 +18,18 @@ export function tableStart(id, className) {
   const saved = widthsFor(id);
   const widths = saved || defaults[id];
   const sum = widths.reduce((total, width) => total + width, 0);
-  return `<table class="${className} resizable-table" data-resize-table="${id}" ${saved ? `style="width:${sum}px;min-width:0"` : ''}><colgroup>${widths.map(width => `<col style="width:${saved ? `${width}px` : `${width / sum * 100}%`}">`).join('')}</colgroup>`;
+  return `<table class="${className} resizable-table" data-resize-table="${id}" ${saved ? `style="width:${sum}px;min-width:100%"` : ''}><colgroup>${widths.map((width, index) => `<col style="width:${saved ? index === 4 ? 'auto' : `${width}px` : `${width / sum * 100}%`}">`).join('')}</colgroup>`;
 }
 
 export function columnHandle(id, index, label) {
   const width = widthsFor(id)?.[index] || defaults[id][index];
-  return `<span class="column-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Resize ${label} column" aria-valuemin="${minimum(index)}" aria-valuemax="1200" aria-valuenow="${width}" data-resize-column="${index}" title="Drag to resize; use left and right arrow keys"></span>`;
+  return `<span class="column-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Resize ${label} column" aria-valuemin="${minimum(index)}" aria-valuemax="1200" aria-valuenow="${width}" data-resize-column="${index}" title="Drag to resize; double-click to fit contents; use left and right arrow keys"></span>`;
 }
 
 function applyWidths(table, widths) {
   table.style.width = `${widths.reduce((sum, width) => sum + width, 0)}px`;
-  table.style.minWidth = '0';
-  table.querySelectorAll('col').forEach((col, index) => col.style.width = `${widths[index]}px`);
+  table.style.minWidth = '100%';
+  table.querySelectorAll('col').forEach((col, index) => col.style.width = index === widths.length - 1 ? 'auto' : `${widths[index]}px`);
   table.querySelectorAll('[data-resize-column]').forEach((handle, index) => handle.setAttribute('aria-valuenow', widths[index]));
 }
 function saveWidths(table, widths) {
@@ -38,7 +38,40 @@ function saveWidths(table, widths) {
   try { localStorage.setItem(`bmail-columns-${id}`, JSON.stringify(widths)); } catch { /* Keep this session's widths. */ }
 }
 
+function fitColumn(table, index) {
+  const context = document.createElement('canvas').getContext('2d');
+  if (!context) return;
+  let widest = minimum(index);
+  for (const row of table.rows) {
+    const cell = row.cells[index];
+    if (!cell || cell.colSpan > 1) continue;
+    const style = getComputedStyle(cell);
+    const button = cell.querySelector('button');
+    const textStyle = button ? getComputedStyle(button) : style;
+    context.font = textStyle.font;
+    const clone = cell.cloneNode(true);
+    clone.querySelectorAll('.column-resize, .sr-only').forEach(element => element.remove());
+    const text = clone.textContent.trim();
+    const lines = text.split(/\r?\n/);
+    const textWidth = Math.max(...lines.map(line => context.measureText(line).width));
+    const icons = [...cell.querySelectorAll('svg')].reduce((sum, svg) => sum + svg.getBoundingClientRect().width, 0);
+    const buttonStyle = button ? getComputedStyle(button) : null;
+    const extra = buttonStyle ? parseFloat(buttonStyle.paddingLeft) + parseFloat(buttonStyle.paddingRight) + (parseFloat(buttonStyle.columnGap) || 0) : 0;
+    widest = Math.max(widest, Math.ceil(textWidth + icons + extra + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + 4));
+  }
+  const widths = [...table.querySelectorAll('thead th')].map((th, i) => clamp(th.getBoundingClientRect().width, i));
+  widths[index] = clamp(widest, index);
+  applyWidths(table, widths);
+  saveWidths(table, widths);
+}
+
 export function installColumnResizing(root) {
+  root.addEventListener('dblclick', event => {
+    const handle = event.target.closest('[data-resize-column]');
+    if (!handle) return;
+    event.preventDefault();
+    fitColumn(handle.closest('[data-resize-table]'), Number(handle.dataset.resizeColumn));
+  });
   root.addEventListener('pointerdown', event => {
     const handle = event.target.closest('[data-resize-column]');
     if (!handle || event.button !== 0) return;
@@ -47,7 +80,7 @@ export function installColumnResizing(root) {
     const index = Number(handle.dataset.resizeColumn);
     dragging = { table, widths, index, startX: event.clientX, startWidth: widths[index], pointerId: event.pointerId };
     applyWidths(table, widths);
-    root.setPointerCapture(event.pointerId);
+    handle.setPointerCapture(event.pointerId);
     document.body.classList.add('resizing-columns');
     event.preventDefault();
   });

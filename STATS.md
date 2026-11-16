@@ -97,3 +97,5 @@ On startup, Bmail checks each configured account once when opened, after any act
 Saved mail loads on demand for the selected folder (or all folders) without the dashboard summary's ten-record limit. Subject, From, Folder, and Saved column headings toggle ascending/descending sorting; the active column shows an arrow. The list includes complete saved records from every UID generation and retains individual email downloads.
 
 The folder and mail tables begin directly with column headers. Drag a header edge to resize its column, or focus the divider and press Left/Right (Shift for larger steps). Column widths are saved on this device and survive sorting, navigation, and restarts.
+
+Tables always fill the available width, including after columns are narrowed or the window grows. Double-click a column divider to fit the widest saved value or heading; extra space is kept in the final column so the right edge remains aligned with the table container.
