@@ -455,7 +455,7 @@ summary {
   font-size:11px;
   color:var(--tone-526070);
 }
-.statusbar span:first-child {
+.statusbar > .status-message {
   margin-right:auto;
 }
 .operation-error {
@@ -950,3 +950,14 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .navigation-buttons { display: flex; gap: 4px; flex-shrink: 0; }
 .navigation-buttons button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 6px; }
 .navigation-buttons svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+.status-download { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.status-download span { white-space: nowrap; }
+.status-download progress { width: 110px; height: 7px; flex-shrink: 0; margin: 0; accent-color: var(--accent); }
+.status-schedule { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.status-message, .status-updates { flex-shrink: 0; }
+@media (max-width: 1050px) {
+  .statusbar { gap: 12px; }
+  .statusbar:has(.status-download) .status-updates { display: none; }
+  .status-download progress { width: 80px; }
+}

@@ -33,7 +33,7 @@ const assert = require('node:assert/strict');
         ] }, lastRun: { success: true, downloaded: 1, finishedAt: '2026-11-15T00:00:00Z' } };
       window.__TAURI_INTERNALS__ = { invoke: async (name, args) => {
         window.calls.push(name);
-        if (name === 'export_mail') { window.exports.push(args); if (window.failExport) throw 'Export failed'; return 'Download saved.'; }
+        if (name === 'export_mail') { window.exports.push(args); if (window.holdExport) await new Promise(resolve => { window.finishExport = resolve; }); if (window.failExport) throw 'Export failed'; return 'Download saved.'; }
         if (name === 'get_dashboard') { window.dashboardForces.push(args?.force); return structuredClone(window.data); }
         if (name === 'manage_schedule') {
           if (window.failSchedule) throw 'Windows scheduler unavailable';
@@ -92,7 +92,13 @@ const assert = require('node:assert/strict');
 
     assert.match(await recent.textContent(), /<img/);
     assert.equal(await page.evaluate(() => window.injected), undefined);
+    assert.equal(await page.locator('.statusbar progress').count(), 0);
+    await page.evaluate(() => { window.holdExport = true; });
     await recent.locator('[data-action="download-email"]').click();
+    await page.locator('.statusbar').getByRole('progressbar', { name: 'Saving downloads', exact: true }).waitFor();
+    assert.equal(await page.locator('.statusbar progress').getAttribute('value'), null);
+    await page.evaluate(() => { window.holdExport = false; window.finishExport(); });
+    await page.locator('.statusbar progress').waitFor({ state: 'detached' });
     await page.waitForFunction(() => window.exports.length === 1);
     assert.deepEqual(await page.evaluate(() => window.exports[0]), { folder: null, file: 'emails/INBOX/one.eml' });
     await sidebar.getByRole('button', { name: 'Download INBOX (.zip)', exact: true }).click();
@@ -237,10 +243,28 @@ const assert = require('node:assert/strict');
     assert.equal(await history.locator('script').count(), 0);
     await go('Activity'); await page.getByRole('region', { name: 'Activity log' }).waitFor();
     assert.equal(await page.locator('.history-pane').count(), 0);
-    await page.evaluate(() => { window.data.backupRunning = true; });
+    await page.evaluate(() => { window.data.backupRunning = true; window.data.progress = { state: 'running', phase: 'downloading', downloaded: 2, plannedDownloads: 8, processedMessages: 2, totalMessages: 8 }; });
     await page.getByRole('button', { name: 'Refresh', exact: true }).click(); await go('Overview');
     await panel.getByRole('heading', { name: 'Backup in progress' }).waitFor();
     assert.equal(await page.getByRole('button', { name: 'Check mailbox', exact: true }).isDisabled(), true);
+    const statusProgress = page.locator('.statusbar').getByRole('progressbar', { name: 'Download progress', exact: true });
+    assert.equal(await statusProgress.getAttribute('value'), '25');
+    assert.match(await page.locator('.statusbar').textContent(), /2 \/ 8 \(25%\)/);
+    await go('Backup options');
+    await preferences.getByLabel('Sender contains', { exact: true }).fill('live-draft@example.com');
+    await page.evaluate(() => { window.data.progress.downloaded = 4; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForFunction(() => document.querySelector('.statusbar progress')?.value === 50);
+    assert.equal(await preferences.getByLabel('Sender contains', { exact: true }).inputValue(), 'live-draft@example.com');
+    await page.evaluate(() => { window.data.progress.state = 'paused'; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.locator('.statusbar').getByText('Download paused: 4 / 8 (50%)', { exact: true }).waitFor();
+    await page.evaluate(() => { window.data.progress = { state: 'running', phase: 'discovering' }; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForFunction(() => document.querySelector('.statusbar progress') && !document.querySelector('.statusbar progress').hasAttribute('value'));
+    await page.locator('.statusbar').getByText('Counting emails...', { exact: true }).waitFor();
+    await page.evaluate(() => { window.data.progress = { state: 'completed', downloaded: 8, plannedDownloads: 8 }; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.locator('.statusbar').getByText('Finishing backup...', { exact: true }).waitFor();
+    assert.equal(await statusProgress.getAttribute('value'), null, 'A previous completed snapshot does not imply progress for an active run');
+    await go('Overview');
+
     for (const size of [{ width: 1120, height: 780 }, { width: 760, height: 620 }]) {
       await page.setViewportSize(size);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'No horizontal window overflow');
@@ -265,6 +289,7 @@ const assert = require('node:assert/strict');
     assert.equal(await beforeFilter.evaluate(node => node.isConnected), true);
     console.log(`1,000-folder filter completed in ${Math.round(performance.now() - started)} ms without rebuilding the workspace.`);
     assert.deepEqual(errors, []);
+    assert.equal(await page.locator('.statusbar progress').count(), 0, 'Finished runs clear the status progress bar');
     console.log('Tabbed workspace passed: no duplicate panels, keyboard tabs, retained drafts, independent scheduled folders, calendar, retries, history, notifications and responsive layout.');
   } finally {
     await browser?.close();
