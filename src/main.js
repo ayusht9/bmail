@@ -135,7 +135,7 @@ const formatDate = value => value ? dateFormatter.format(new Date(value)) : 'Nev
 const formatNumber = value => numberFormatter.format(value || 0);
 
 function statusBarContents() {
-  return `<span class="status-message">${busy ? busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Checking mailbox...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : 'Ready'}</span>${newMailDot([...mailIndicators().values()].reduce((sum, count) => sum + count, 0), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span><span class="status-updates">Manual app updates</span>`;
+  return `<span class="status-message">${busy ? busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Checking mailbox...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailDot([...mailIndicators().values()].reduce((sum, count) => sum + count, 0), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span><span class="status-updates">Manual app updates</span>`;
 }
 
 function updateStatusBar() {
@@ -172,7 +172,7 @@ function render() {
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)
     : activeTab === 'activity' ? `<div class="activity-page">${historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)}${activityPane(dashboard, activityFilter, activityRawOpen, escapeHtml, formatNumber)}</div>`
-    : `<section class="folder-pane" aria-label="Folder coverage"><div class="table-wrap">${tableStart('folders', 'folder-table')}<thead><tr>${['Folder', 'Saved locally', 'On server', 'Remaining', 'Download'].map((label, index) => `<th>${index === 4 ? `<span class="sr-only">${label}</span>` : label}${columnHandle('folders', index, label)}</th>`).join('')}</tr></thead><tbody>${folderRows || '<tr><td colspan="5" class="empty-pane">No folders to show. Check mailbox to load coverage.</td></tr>'}</tbody></table></div></section>${savedMailPane(savedMail, selectedFolder, mailSort, escapeHtml, formatDate)}`;
+    : `<section class="folder-pane" aria-label="Folder coverage"><div class="table-wrap">${tableStart('folders', 'folder-table')}<thead><tr>${['Folder', 'Saved locally', 'On server', 'Remaining'].map((label, index) => `<th>${label}${columnHandle('folders', index, label)}</th>`).join('')}</tr></thead><tbody>${folderRows || '<tr><td colspan="4" class="empty-pane">No folders to show. Check mailbox to load coverage.</td></tr>'}</tbody></table></div></section>${savedMailPane(savedMail, selectedFolder, mailSort, escapeHtml, formatDate)}`;
 
 
   app.innerHTML = `
@@ -398,7 +398,7 @@ app.addEventListener('input', event => {
   // Keep the search input, forms, clock and other workspace nodes intact.
   navigation.querySelectorAll('[data-folder]:not([data-folder=""]), .sidebar-empty').forEach(node => node.remove());
   navigation.insertAdjacentHTML('beforeend', folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber, mailIndicators()) || '<p class="sidebar-empty">No matching folders.</p>');
-  if (activeTab === 'mailbox') document.querySelector('.folder-table tbody').innerHTML = coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter, mailIndicators()) || '<tr><td colspan="5" class="empty-pane">No folders to show.</td></tr>';
+  if (activeTab === 'mailbox') document.querySelector('.folder-table tbody').innerHTML = coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter, mailIndicators()) || '<tr><td colspan="4" class="empty-pane">No folders to show.</td></tr>';
 });
 
 app.addEventListener('toggle', event => {

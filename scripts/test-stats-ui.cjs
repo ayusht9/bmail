@@ -69,6 +69,16 @@ const assert = require('node:assert/strict');
     assert.equal(await sidebar.locator('.folder-row[data-folder="INBOX"] .new-mail-dot').count(), 1);
     assert.equal(await sidebar.locator('.folder-row[data-folder="Sent"] .new-mail-dot').count(), 0);
     assert.equal(await page.locator('.folder-table .new-mail-dot').count(), 2);
+    await page.locator('.mail-table tbody tr').first().waitFor();
+    for (const selector of ['.mail-table', '.folder-table']) {
+      assert.equal(await page.locator(`${selector} thead th`).count(), 4);
+      assert.equal(await page.locator(selector).getByRole('separator').count(), 4);
+      assert.equal(await page.locator(`${selector} tbody tr`).first().locator('td').count(), 4);
+      assert.equal(await page.locator(`${selector} td.row-actions .download-icon`).first().isVisible(), true);
+    }
+    assert.equal(await page.locator('.mail-pane .pane-hint').count(), 0);
+    assert.equal(await page.locator('.status-message').textContent(), '');
+
     await page.getByRole('searchbox', { name: 'Filter folders' }).fill('INBOX');
     assert.equal(await sidebar.locator('.new-mail-dot').count(), 1);
     await page.getByRole('searchbox', { name: 'Filter folders' }).fill('');
@@ -418,7 +428,7 @@ const assert = require('node:assert/strict');
         await page.mouse.down(); await page.mouse.move(width + 500, box.y + box.height / 2, { steps: 8 }); await page.mouse.up();
         assert.equal(await table.evaluate(table => table.parentElement.scrollWidth <= table.parentElement.clientWidth + 1), true, 'Dragging cannot create horizontal overflow');
         const sizes = await table.locator('thead th').evaluateAll(cells => cells.map(cell => cell.getBoundingClientRect().width));
-        sizes.forEach((size, index) => assert.ok(size >= (index === 4 ? 52 : 72) - 2, 'Every column remains visible'));
+        sizes.forEach((size, index) => assert.ok(size >= (index === 3 ? 112 : 72) - 2, 'Every column remains visible'));
         await handle.focus(); await page.keyboard.press('Shift+ArrowRight');
         await handle.dblclick();
         assert.equal(await table.evaluate(table => table.parentElement.scrollWidth <= table.parentElement.clientWidth + 1), true, 'Keyboard resize and auto-fit stay inside the viewport');
