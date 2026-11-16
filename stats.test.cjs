@@ -81,3 +81,33 @@ test('coverage UI keeps unknown, partial, full and active backups distinct and e
   assert.match(folderNavigation(dashboard, '<Inbox>', '', escape, String), /aria-pressed="true"/);
   assert.equal(folderNavigation(dashboard, '', 'Sent', escape, String), '');
 });
+
+
+test('startup new-mail check compares folder IDs without validating files or replacing coverage', async () => {
+  const files = new Map();
+  let inbox = [1, 2];
+  let validity = 1;
+  const client = {
+    mailbox: { get uidValidity() { return validity; } },
+    list: async () => [{ path: 'INBOX', flags: new Set() }, { path: 'Sent', flags: new Set() }],
+    getMailboxLock: async (folder, options) => { assert.equal(options.readOnly, true); client.folder = folder; return { release() {} }; },
+    search: async () => client.folder === 'INBOX' ? inbox : [1],
+  };
+  const root = path.join(os.tmpdir(), 'bmail-new-mail-test');
+  const options = { readJson: (name, fallback) => files.get(name) || fallback, atomicWrite: (name, data) => files.set(name, JSON.parse(data)),
+    validateRecord: () => { throw new Error('Startup must not read saved emails'); }, newMailOnly: true };
+  let result = await checkMailbox(client, root, null, options);
+  assert.equal(result.folders[0].newMessages, null);
+  inbox = [1, 2, 3];
+  result = await checkMailbox(client, root, null, options);
+  assert.equal(result.folders[0].newMessages, 1);
+  assert.equal(result.folders[1].newMessages, 0);
+  assert.equal(files.has(path.join(root, 'mailbox-status.json')), false);
+  validity = 2;
+  result = await checkMailbox(client, root, null, options);
+  assert.equal(result.folders[0].newMessages, null, 'A changed UID validity establishes a fresh baseline');
+  assert.equal(result.folders[1].newMessages, null);
+  files.set(path.join(root, 'mailbox-status.json'), { checkedAt: '9999-01-01', folders: [{ name: 'INBOX', uidValidity: '2', uids: [1, 2] }, { name: 'Sent', uidValidity: '2', uids: [1] }] });
+  result = await checkMailbox(client, root, null, options);
+  assert.equal(result.folders[0].newMessages, 1, 'A newer manual mailbox check provides the baseline');
+});

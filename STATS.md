@@ -91,3 +91,5 @@ when the Mailbox tab is displayed. The calendar updates its date highlights only
 when the day changes or a new calendar is rendered.
 
 Activity combines backup run history and details with the latest activity log. The latest log is independent of the selected historical run. Each section keeps its own filter.
+
+On startup, Bmail checks each configured account once when opened, after any active backup finishes. A small dot in the status bar and beside affected folders indicates new emails since the previous check. Hover over a dot for the count. The first check establishes a baseline; reset folder identifiers also establish a fresh baseline. Startup checks compare server message IDs without downloading mail or verifying local files. Use Check mailbox to refresh the indicators manually.

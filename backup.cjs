@@ -439,12 +439,17 @@ async function main() {
     });
     return client;
   };
-  if (process.argv.includes('--check-mailbox') || process.argv.includes('--list-folders')) {
+  if (process.argv.includes('--check-mailbox') || process.argv.includes('--new-mail') || process.argv.includes('--list-folders')) {
     fs.mkdirSync(root, { recursive: true });
     const release = acquireLock(root);
     const client = makeClient();
     try {
       await client.connect();
+      if (process.argv.includes('--new-mail')) {
+        await checkMailbox(client, root, null, { readJson, atomicWrite, newMailOnly: true });
+        console.log('New mail check complete.');
+        return;
+      }
       if (process.argv.includes('--check-mailbox')) {
         const manifest = readJson(path.join(root, 'manifest.json'), null);
         if (manifest && (manifest.user !== config.user || manifest.host !== config.host)) throw new Error('Backup identity does not match configuration');
