@@ -1045,3 +1045,14 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .mail-table tbody tr.backed-up { background: var(--sidebar); }
 .mail-table tbody tr.backed-up:hover { background: var(--hover); }
 .mail-table tbody tr.selected, .mail-table tbody tr.selected:hover { background: var(--selected); }
+
+.desktop-layout { grid-template-columns: var(--sidebar-width, 224px) minmax(0, 1fr); }
+.folder-sidebar { position: relative; }
+.pane-divider { touch-action: none; flex-shrink: 0; z-index: 5; }
+.sidebar-divider { position: absolute; top: 0; bottom: 0; right: -3px; width: 6px; cursor: col-resize; }
+.mail-divider { height: 6px; cursor: row-resize; background: var(--sidebar); border-block: 1px solid var(--line); }
+.pane-divider:hover, .pane-divider:focus-visible { background: var(--accent); }
+.mailbox-panes .mail-pane { flex: 0 0 var(--mail-list-height, 42%); min-height: 0; }
+.mailbox-panes .reading-pane { min-height: 0; border-top: 0; }
+.resizing-sidebar, .resizing-sidebar * { cursor: col-resize !important; user-select: none !important; }
+.resizing-mail, .resizing-mail * { cursor: row-resize !important; user-select: none !important; }

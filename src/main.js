@@ -1,4 +1,5 @@
 import './style.css';
+import { paneDivider, installPaneResizing, paneResizeActive } from './panes.js';
 import { installColumnResizing, columnResizeActive } from './columns.js';
 import { themePreference, setTheme } from './theme.js';
 import { invoke } from '@tauri-apps/api/core';
@@ -212,7 +213,7 @@ function render() {
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)
     : activeTab === 'activity' ? `<div class="activity-page">${historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)}${activityPane(dashboard, activityFilter, activityRawOpen, escapeHtml, formatNumber)}</div>`
-    : `<div class="mailbox-panes">${mailList()}${readingPane(selectedMessage, escapeHtml, formatDate)}</div>`;
+    : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readingPane(selectedMessage, escapeHtml, formatDate)}</div>`;
 
 
   app.innerHTML = `
@@ -235,6 +236,7 @@ function render() {
           ${folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber, mailIndicators()) || `<p class="sidebar-empty">${folderFilter ? 'No matching folders.' : 'Check your mailbox to load folders.'}</p>`}</nav>
         <div class="sidebar-tools"><button data-action="setup" ${busy ? 'disabled' : ''}>${dashboard.credentialReady ? 'Account settings' : 'Set up mailbox'}</button>
         </div>
+        ${paneDivider('sidebar')}
       </aside>
       <main class="mail-workspace">
         <div class="workspace-navigation"><nav class="navigation-buttons" aria-label="Navigation history">
@@ -309,7 +311,7 @@ async function refresh(background = false, force = false) {
     const unchanged = JSON.stringify(next) === JSON.stringify(dashboard);
     dashboard = next;
     updateStatusBar();
-    if (background && (columnResizeActive() || unchanged || ['options','scheduler'].includes(activeTab) || document.querySelector('dialog[open]'))) return;
+    if (background && (columnResizeActive() || paneResizeActive() || unchanged || ['options','scheduler'].includes(activeTab) || document.querySelector('dialog[open]'))) return;
     captureTabDraft();
     const focusAction = document.activeElement?.dataset?.action;
     const focusFolder = document.activeElement?.dataset?.folder;
@@ -738,6 +740,7 @@ dashboardPoller = createDashboardPoller({
 document.addEventListener('visibilitychange', () => dashboardPoller.wake());
 window.addEventListener('pagehide', () => dashboardPoller.stop());
 installColumnResizing(app);
+installPaneResizing(app);
 render();
 refresh().finally(() => dashboardPoller.start());
 setInterval(updateClock, 1000);
