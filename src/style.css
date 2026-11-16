@@ -944,3 +944,9 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .folder-row { display: flex; align-items: center; padding-right: 6px; }
 .folder-row .folder-item { flex: 1; min-width: 0; }
 .folder-row .download-icon { flex-shrink: 0; }
+
+.workspace-navigation { display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 3; background: var(--sidebar); border-bottom: 1px solid var(--line); padding-left: 8px; }
+.workspace-navigation .workspace-tabs { flex: 1; min-width: 0; position: static; border-bottom: 0; }
+.navigation-buttons { display: flex; gap: 4px; flex-shrink: 0; }
+.navigation-buttons button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 6px; }
+.navigation-buttons svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }

@@ -20,6 +20,37 @@ let folderFilter = '';
 let operationFailure = null;
 let busyAction = '';
 let activeTab = 'mailbox';
+let navigationHistory = [{ tab: 'mailbox', folder: '', filter: '' }];
+let navigationIndex = 0;
+let navigationAccount;
+
+function rememberNavigation(tab, folder = selectedFolder) {
+  const current = navigationHistory[navigationIndex];
+  current.filter = folderFilter;
+  if (current.tab === tab && current.folder === folder) return;
+  navigationHistory = navigationHistory.slice(0, navigationIndex + 1);
+  navigationHistory.push({ tab, folder, filter: folderFilter });
+  if (navigationHistory.length > 100) navigationHistory.shift();
+  navigationIndex = navigationHistory.length - 1;
+}
+
+function resetNavigation() {
+  navigationHistory = [{ tab: activeTab, folder: selectedFolder, filter: folderFilter }];
+  navigationIndex = 0;
+}
+
+async function moveNavigation(direction) {
+  const next = navigationIndex + direction;
+  if (busy || next < 0 || next >= navigationHistory.length) return;
+  captureTabDraft();
+  navigationHistory[navigationIndex].filter = folderFilter;
+  navigationIndex = next;
+  const destination = navigationHistory[next];
+  selectedFolder = destination.folder;
+  folderFilter = destination.filter;
+  await selectTab(destination.tab, false);
+}
+
 let backupOptionsDraft = null;
 let schedulerDraft = null;
 let schedulerLoaded = false;
@@ -55,6 +86,10 @@ function render() {
   if (!dashboard) {
     app.innerHTML = '<main class="loading"><span class="spinner"></span>Reading your backup…</main>';
     return;
+  }
+  if (navigationAccount !== dashboard.user) {
+    navigationAccount = dashboard.user;
+    resetNavigation();
   }
   const run = dashboard.lastRun;
   const hasAccount = !addingAccount && dashboard.user.includes('@');
@@ -100,7 +135,10 @@ function render() {
           <button data-action="verify" ${busy || dashboard.backupRunning || !dashboard.hasManifest ? 'disabled' : ''}>Verify local files</button></div>
       </aside>
       <main class="mail-workspace">
-        ${workspaceTabStrip(activeTab, busy)}
+        <div class="workspace-navigation"><nav class="navigation-buttons" aria-label="Navigation history">
+          <button type="button" data-action="navigate-back" aria-label="Back" title="Back" ${busy || navigationIndex === 0 ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m9 4-6 6 6 6M3 10h14"/></svg></button>
+          <button type="button" data-action="navigate-forward" aria-label="Forward" title="Forward" ${busy || navigationIndex === navigationHistory.length - 1 ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m11 4 6 6-6 6M3 10h14"/></svg></button>
+        </nav>${workspaceTabStrip(activeTab, busy)}</div>
         <div class="workspace-heading"><div><h1>${escapeHtml(tabTitle)}</h1><p>${escapeHtml(dashboard.user)}</p></div><span class="connection-status">Read-only IMAP</span></div>
         <section class="run-banner ${state}" aria-label="Backup status"><h2>${statusTitle}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span></section>
         ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'stats' ? 'Mailbox check failed' : 'Action failed'}</strong><p>${escapeHtml(operationFailure.message)}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
@@ -229,6 +267,7 @@ app.addEventListener('click', event => {
     return;
   }
   if (busy && ['select-tab','select-folder','selection','schedule','reset-selection','schedule-day','schedule-prev','schedule-next'].includes(action)) return;
+  if (action === 'navigate-back' || action === 'navigate-forward') { moveNavigation(action === 'navigate-back' ? -1 : 1); return; }
   if (action === 'select-tab') { selectTab(button.dataset.tab); return; }
   if (action === 'reset-selection') { backupOptionsDraft = null; render(); return; }
   if (action === 'schedule-load-folders') { loadScheduledFolders(button); return; }
@@ -248,7 +287,7 @@ app.addEventListener('click', event => {
       .finally(() => { button.disabled = false; });
     return;
   }
-  if (action === 'select-folder') { captureTabDraft(); selectedFolder = button.dataset.folder; activeTab = 'mailbox'; render(); return; }
+  if (action === 'select-folder') { captureTabDraft(); rememberNavigation('mailbox', button.dataset.folder); selectedFolder = button.dataset.folder; activeTab = 'mailbox'; render(); return; }
   if (action === 'dismiss-error') { operationFailure = null; render(); return; }
   if (action === 'setup') { captureTabDraft(); document.querySelector('#mailbox-dialog').showModal(); }
   else if (action === 'add-account') { captureTabDraft(); addingAccount = true; render(); document.querySelector('#mailbox-dialog').showModal(); }
@@ -346,6 +385,7 @@ async function switchAccount(email) {
   folderFilter = '';
   selectedHistoryRun = '';
   activeTab = 'mailbox'; backupOptionsDraft = schedulerDraft = null; schedulerLoaded = false; schedulerFocusDate = '';
+  resetNavigation();
   render();
   try { await invoke('switch_account', { email }); }
   catch (error) { toast(String(error), true); }
@@ -409,9 +449,10 @@ function initializeSchedulerView() {
   updateSchedulePreview(); updateScheduleStatus();
 }
 
-async function selectTab(tab) {
+async function selectTab(tab, remember = true) {
   if (busy || !workspaceTabs.some(([key]) => key === tab)) return;
   captureTabDraft();
+  if (remember) rememberNavigation(tab);
   activeTab = tab;
   render();
   document.querySelector(`#tab-${tab}`)?.focus({ preventScroll: true });
@@ -541,6 +582,7 @@ app.addEventListener('submit', async event => {
     const result = await invoke('configure_mailbox', { settings });
     addingAccount = false;
     activeTab = 'mailbox'; backupOptionsDraft = schedulerDraft = null; schedulerLoaded = false; schedulerFocusDate = '';
+    selectedFolder = ''; folderFilter = ''; resetNavigation();
     busy = false;
     dialog.close();
     await refresh();
