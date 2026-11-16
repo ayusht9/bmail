@@ -1013,3 +1013,10 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .history-table tbody tr { cursor: pointer; }
 .history-table tbody tr.selected { background: var(--selected); }
 .history-table th:last-child { padding-right: 15px; }
+
+.backup-controls { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.backup-controls button { white-space: nowrap; }
+.cancel-backup { display: inline-flex; align-items: center; justify-content: center; width: 29px; padding: 5px; }
+.cancel-backup svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.5; fill: none; }
+
+.backup-page-actions { position: sticky; top: 39px; z-index: 2; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }

@@ -8,7 +8,7 @@ import { historyPane } from './history.js';
 import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
 import { folderNavigation, savedMailPane, mailboxFolders, newMailDot } from './desktop.js';
-import { progressPanel, statusDownloadProgress } from './progress.js';
+import { progressPanel, statusDownloadProgress, backupControls } from './progress.js';
 import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, nextRuns, calendarMarkup, scheduleSummary, localDate, updateClock } from './scheduler.js';
 import { backupOptionsView, folderChoices, advancedFromForm } from './selection.js';
 
@@ -174,6 +174,21 @@ function statusBarContents() {
   return `<span class="status-message">${busy ? busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Checking mailbox...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailDot([...mailIndicators().values()].reduce((sum, count) => sum + count, 0), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>`;
 }
 
+function updateBackupControls() {
+  const controls = document.querySelector('.backup-controls');
+  if (controls && dashboard) controls.outerHTML = backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml);
+}
+
+function updateBackupProgress() {
+  const page = document.querySelector('.backup-page');
+  if (!page) return;
+  const progress = page.querySelector('.run-progress');
+  if (!dashboard.backupRunning) { progress?.remove(); return; }
+  const html = progressPanel(dashboard, escapeHtml, formatNumber);
+  if (progress) progress.outerHTML = html;
+  else page.querySelector('.backup-page-actions')?.insertAdjacentHTML('afterend', html);
+}
+
 function updateStatusBar() {
   const footer = document.querySelector('.statusbar');
   if (footer && dashboard) footer.innerHTML = statusBarContents();
@@ -205,7 +220,7 @@ function render() {
   if (messageFolderKey !== folderKey) { messageFolderKey = folderKey; selectedMessage = { file: '', message: null, loading: false, error: '' }; }
   const workspaceBody = activeTab === 'preferences' ? `<section class="preferences-page" aria-labelledby="preferences-title"><h2 id="preferences-title">Appearance</h2><label for="theme-preference">Theme</label><select id="theme-preference" aria-describedby="theme-description">${[['auto','Auto'],['light','Light'],['dark','Dark']].map(([value,label]) => `<option value="${value}" ${themePreference() === value ? 'selected' : ''}>${label}</option>`).join('')}</select><p id="theme-description">Auto follows your Windows appearance. Your choice is saved on this device.</p></section>`
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
-    : activeTab === 'options' ? backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)
+    : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions">${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}</div>${dashboard.backupRunning ? progressPanel(dashboard, escapeHtml, formatNumber) : ''}${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
     : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
     : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readingPane(selectedMessage, escapeHtml, formatDate)}</div>`;
 
@@ -213,7 +228,6 @@ function render() {
   app.innerHTML = `
     <header class="app-toolbar">
       <div class="app-name"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 6l9 7 9-7"/></svg><strong>Bmail</strong></div>
-      <button class="primary" data-action="backup" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'backup' ? 'Starting...' : 'Back up now'}</button>
       <button data-action="stats" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'stats' ? 'Checking mailbox...' : 'Check mailbox'}</button>
       <span class="toolbar-separator"></span>
       <button data-action="open-backups">Open backup folder</button>
@@ -243,7 +257,6 @@ function render() {
         ${run?.error ? `<aside class="notice error">${escapeHtml(run.error.message || 'Backup failed')}. Completed downloads are retained.</aside>` : ''}
         ${dashboard.launchError ? `<aside class="notice error">${escapeHtml(dashboard.launchError)}</aside>` : ''}
         ${dashboard.migrationNotice ? `<aside class="notice">${escapeHtml(dashboard.migrationNotice)}</aside>` : ''}
-        ${dashboard.backupRunning ? progressPanel(dashboard, escapeHtml, formatNumber) : ''}
         ${workspaceTabs.map(([key]) => `<section id="view-${key}" role="tabpanel" aria-labelledby="tab-${key}" ${activeTab === key ? 'tabindex="0"' : 'hidden'}>${activeTab === key ? workspaceBody : ''}</section>`).join('')}
       </main>
     </div>
@@ -303,6 +316,8 @@ async function refresh(background = false, force = false) {
     next.newMailFolders = [...(newMailByAccount.get(next.user)?.keys() || [])];
     const unchanged = JSON.stringify(next) === JSON.stringify(dashboard);
     dashboard = next;
+    updateBackupControls();
+    updateBackupProgress();
     updateStatusBar();
     if (background && (columnResizeActive() || paneResizeActive() || unchanged || ['options','scheduler'].includes(activeTab) || document.querySelector('dialog[open]'))) return;
     captureTabDraft();
@@ -486,13 +501,13 @@ async function loadFolders() {
 async function controlBackup(command, runId) {
   if (controlBusy) return;
   controlBusy = true;
-  document.querySelectorAll('.progress-actions button').forEach(el => el.disabled = true);
+  updateBackupControls();
   try {
     const result = await invoke('control_backup', { command, runId });
     await refresh();
     toast(result);
   } catch (error) { toast(String(error), true); await refresh(); }
-  finally { controlBusy = false; }
+  finally { controlBusy = false; updateBackupControls(); }
 }
 
 async function switchAccount(email) {

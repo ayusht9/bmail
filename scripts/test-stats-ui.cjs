@@ -35,6 +35,19 @@ const assert = require('node:assert/strict');
       window.__TAURI_INTERNALS__ = { invoke: async (name, args) => {
         window.calls.push(name);
         if (name === 'export_mail') { window.exports.push(args); if (window.holdExport) await new Promise(resolve => { window.finishExport = resolve; }); if (window.failExport) throw 'Export failed'; return 'Download saved.'; }
+        if (name === 'start_backup') {
+          window.data.backupRunning = true;
+          window.data.progress = { runId: 'fixture-backup-controls', state: 'running', phase: 'downloading', totalMessages: 4, processedMessages: 1, plannedDownloads: 4, downloaded: 1 };
+          return 'Backup started';
+        }
+        if (name === 'control_backup') {
+          (window.controlCommands ||= []).push(args);
+          if (window.holdControl) await new Promise(resolve => { window.finishControl = resolve; });
+          if (args.command === 'pause') window.data.progress.state = 'paused';
+          if (args.command === 'resume') window.data.progress.state = 'running';
+          if (['stop', 'cancel'].includes(args.command)) { window.data.backupRunning = false; window.data.progress.state = args.command === 'stop' ? 'stopped' : 'cancelled'; }
+          return 'Control applied';
+        }
         if (name === 'get_saved_message') { if (window.failReader) throw 'Saved email is unavailable'; window.lastReadFile = args.file; return { subject: 'Preview subject', from: 'Sender <sender@example.com>', to: 'reader@example.com', date: '2026-11-16T09:00:00Z', html: '<p>Hello from the selected email</p><script>window.previewInjected=true</script><img src="https://tracking.invalid/pixel"><a href="javascript:alert(1)">link</a>', text: '', attachments: [] }; }
         if (name === 'get_saved_mail') return structuredClone(window.data.localStats.recent.filter(mail => !args.folder || mail.folder === args.folder));
         if (name === 'get_dashboard') { window.dashboardForces.push(args?.force); return structuredClone(window.data); }
@@ -227,6 +240,33 @@ const assert = require('node:assert/strict');
     await page.keyboard.press('Enter'); await page.getByRole('tabpanel', { name: 'Backup', exact: true }).waitFor();
     await go('Backup');
     const preferences = page.locator('#selection-panel');
+    const controls = page.getByRole('group', { name: 'Backup controls', exact: true });
+    assert.equal(await page.locator('.app-toolbar [data-action="backup"]').count(), 0);
+    assert.equal(await controls.getByRole('button', { name: 'Pause backup', exact: true }).isDisabled(), true);
+    assert.equal(await controls.getByRole('button', { name: 'Stop backup', exact: true }).isDisabled(), true);
+    await controls.getByRole('button', { name: 'Start backup', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.backup-controls [data-action="pause"]')?.disabled === false);
+    await page.evaluate(() => { window.data.progress.downloaded = 2; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForFunction(() => document.querySelector('.backup-page .run-stats dd')?.textContent === '2 / 4');
+    await page.evaluate(() => { window.holdControl = true; });
+    await controls.getByRole('button', { name: 'Pause backup', exact: true }).click();
+    assert.equal(await controls.getByRole('button', { name: 'Stop backup', exact: true }).isDisabled(), true, 'A pending control prevents duplicate commands');
+    await page.evaluate(() => { window.holdControl = false; window.finishControl(); });
+    await controls.getByRole('button', { name: 'Resume backup', exact: true }).waitFor();
+    await controls.getByRole('button', { name: 'Resume backup', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.backup-controls [data-action="pause"]')?.disabled === false);
+    await go('Home');
+    assert.equal(await page.getByRole('group', { name: 'Backup controls', exact: true }).count(), 0);
+    assert.equal(await page.locator('.run-progress').count(), 0, 'Home keeps only compact status-bar progress');
+    await go('Backup');
+    await controls.getByRole('button', { name: 'Stop backup', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.backup-controls [data-action="backup"]')?.disabled === false);
+    assert.deepEqual(await page.evaluate(() => window.controlCommands.map(item => [item.command, item.runId])), [['pause', 'fixture-backup-controls'], ['resume', 'fixture-backup-controls'], ['stop', 'fixture-backup-controls']]);
+    await controls.getByRole('button', { name: 'Start backup', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.backup-controls [data-action="cancel"]')?.disabled === false);
+    await controls.getByRole('button', { name: 'Cancel backup', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.backup-controls [data-action="backup"]')?.disabled === false);
+
     await preferences.getByText('Advanced backup options', { exact: true }).click();
     await preferences.getByLabel('Sender contains', { exact: true }).fill('draft@example.com');
     await go('Activity');
