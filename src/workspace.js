@@ -1,5 +1,5 @@
 export const workspaceTabs = [
-  ['mailbox', 'Home'], ['options', 'Backup'], ['overview', 'Overview'],
+  ['mailbox', 'Home'], ['options', 'Backup'],
   ['scheduler', 'Scheduler'], ['activity', 'Activity'], ['preferences', 'Preferences'],
 ];
 

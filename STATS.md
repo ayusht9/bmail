@@ -1,8 +1,8 @@
 # Backup statistics
 
-The desktop workspace has an account and folder sidebar and six tabs: Home,
-Backup, Overview, Scheduler, Activity and Preferences. Home shows
-every saved email in the selected folder above a reading pane; Overview shows account statistics. Select a
+The desktop workspace has an account and folder sidebar and five tabs: Home,
+Backup, Scheduler, Activity and Preferences. Home shows
+every saved email in the selected folder above a reading pane. Select a
 folder to open Home and narrow its tables; use Filter folders to find a name.
 Mailbox-check failures remain visible with diagnostic details and Retry until
 dismissed or successfully retried. Activity contains backup history and the latest activity log.
