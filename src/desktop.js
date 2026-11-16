@@ -38,11 +38,11 @@ export function sortMail(messages, sort) {
   });
 }
 
-export function savedMailPane(state, selected, sort, escape, date) {
+export function savedMailPane(state, selected, sort, escape, date, selectedFile = '') {
   const messages = sortMail(state.rows, sort);
   const headings = [['subject', 'Subject'], ['sender', 'From'], ['folder', 'Folder'], ['backedUpAt', 'Saved']];
   const header = headings.map(([key, label], index) => `<th ${sort.column === key ? `aria-sort="${sort.direction === 'asc' ? 'ascending' : 'descending'}"` : ''}><button type="button" data-action="sort-mail" data-column="${key}" title="Sort by ${label.toLowerCase()} ${sort.column === key && sort.direction === 'asc' ? 'descending' : 'ascending'}">${label}<span aria-hidden="true">${sort.column === key ? sort.direction === 'asc' ? '&#8593;' : '&#8595;' : '&#8597;'}</span></button>${columnHandle('mail', index, label)}</th>`).join('');
-  const rows = messages.map(message => `<tr><td>${escape(message.subject || 'No subject')}</td><td>${escape(message.sender || 'Unknown sender')}</td><td>${escape(message.folder)}</td><td class="row-actions"><span>${date(message.backedUpAt)}</span>${downloadButton('download-email', `data-file="${escape(message.file || '')}"`, `Download ${message.subject || 'email'} (.eml)`, escape, !message.file)}</td></tr>`).join('');
+  const rows = messages.map(message => `<tr class="${message.file === selectedFile ? 'selected' : ''}" data-action="select-message" data-file="${escape(message.file || '')}"><td><button class="mail-subject" data-action="select-message" data-file="${escape(message.file || '')}" title="${escape(message.subject || 'No subject')}">${escape(message.subject || 'No subject')}</button></td><td>${escape(message.sender || 'Unknown sender')}</td><td>${escape(message.folder)}</td><td class="row-actions"><span>${date(message.backedUpAt)}</span>${downloadButton('download-email', `data-file="${escape(message.file || '')}"`, `Download ${message.subject || 'email'} (.eml)`, escape, !message.file)}</td></tr>`).join('');
   return `<section class="mail-pane" aria-label="Saved mail" aria-busy="${state.loading}">
     ${state.loading ? '<p class="empty-pane">Loading saved emails...</p>' : state.error ? `<p class="empty-pane" role="alert">${escape(state.error)} <button data-action="retry-mail">Retry</button></p>` : rows ? `<div class="table-wrap">${tableStart('mail', 'mail-table')}<thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty-pane">No saved emails in this folder yet.</p>'}
 </section>`;

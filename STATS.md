@@ -1,8 +1,8 @@
 # Backup statistics
 
 The desktop workspace has an account and folder sidebar and six tabs: Mailbox,
-Overview, Backup options, Scheduler, Activity and Preferences. Mailbox shows folder
-coverage and every saved email in the selected folder; Overview shows account statistics. Select a
+Overview, Backup options, Scheduler, Activity and Preferences. Mailbox shows
+every saved email in the selected folder above a reading pane; Overview shows account statistics. Select a
 folder to open Mailbox and narrow its tables; use Filter folders to find a name.
 Mailbox-check failures remain visible with diagnostic details and Retry until
 dismissed or successfully retried. Activity contains backup history and the latest activity log.
@@ -105,3 +105,5 @@ Dragging, keyboard resizing, and auto-fit preserve the visible table width. Othe
 Download icons are fixed row actions inside the last data cell, with no separate download column or resize handle. The idle status text and saved-mail sorting hint are hidden.
 
 If another backup, verification, or mail check owns the mailbox lock at startup, the new-mail check waits and retries after a short cooldown. It does not show a failure for this temporary busy state. Other startup failures show diagnostic details and a Retry button.
+
+The mailbox view opens directly on the email list, with a reading pane below for the selected saved message. Folder counts (saved, on server, remaining) appear in the status bar instead of a coverage table. Messages are decoded locally; HTML is sanitized and sandboxed, with scripts and remote resources blocked. Folder downloads remain in the sidebar.

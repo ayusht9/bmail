@@ -43,3 +43,21 @@ mod tests {
         assert!(folder_messages(&manifest, Some("Empty")).is_empty());
     }
 }
+
+
+#[tauri::command]
+pub async fn get_saved_message(app: tauri::AppHandle, file: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::{io::Write, process::Stdio};
+        let root = super::data_root(&app)?;
+        let engine = super::engine_root(&app)?;
+        let mut child = super::hidden_command(engine.join("node.exe"))
+            .arg(engine.join("read-mail.cjs")).env("MAIL_VAULT_DATA_DIR", root)
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
+            .spawn().map_err(|e| format!("Could not open saved email: {e}"))?;
+        child.stdin.take().ok_or("Email reader input is unavailable")?.write_all(json!({"file": file}).to_string().as_bytes()).map_err(|e| e.to_string())?;
+        let output = child.wait_with_output().map_err(|e| e.to_string())?;
+        if !output.status.success() { return Err(String::from_utf8_lossy(&output.stderr).trim().to_owned()); }
+        serde_json::from_slice(&output.stdout).map_err(|_| "Could not read the email content.".into())
+    }).await.map_err(|e| e.to_string())?
+}
