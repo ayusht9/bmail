@@ -5,7 +5,6 @@ import { themePreference, setTheme } from './theme.js';
 import { invoke } from '@tauri-apps/api/core';
 import { workspaceTabs, workspaceTabStrip } from './workspace.js';
 import { historyPane } from './history.js';
-import { activityPane } from './activity.js';
 import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
 import { folderNavigation, savedMailPane, mailboxFolders, newMailDot } from './desktop.js';
@@ -135,8 +134,6 @@ let backupOptionsDraft = null;
 let schedulerDraft = null;
 let schedulerLoaded = false;
 let historyFilter = 'all';
-let activityFilter = 'all';
-let activityRawOpen = false;
 let selectedHistoryRun = '';
 let dashboardPoller;
 let schedulerMonth = new Date();
@@ -189,7 +186,7 @@ function render() {
   }
   if (navigationAccount !== dashboard.user) {
     navigationAccount = dashboard.user;
-    activityFilter = historyFilter = 'all'; activityRawOpen = false; selectedHistoryRun = '';
+    historyFilter = 'all'; selectedHistoryRun = '';
     resetNavigation();
   }
   const run = dashboard.lastRun;
@@ -206,11 +203,10 @@ function render() {
   if (activeTab === 'mailbox') loadSavedMail();
   const folderKey = JSON.stringify([dashboard.user, selectedFolder]);
   if (messageFolderKey !== folderKey) { messageFolderKey = folderKey; selectedMessage = { file: '', message: null, loading: false, error: '' }; }
-  const tabTitle = activeTab === 'mailbox' ? selectedFolder || 'All folders' : workspaceTabs.find(([key]) => key === activeTab)?.[1];
   const workspaceBody = activeTab === 'preferences' ? `<section class="preferences-page" aria-labelledby="preferences-title"><h2 id="preferences-title">Appearance</h2><label for="theme-preference">Theme</label><select id="theme-preference" aria-describedby="theme-description">${[['auto','Auto'],['light','Light'],['dark','Dark']].map(([value,label]) => `<option value="${value}" ${themePreference() === value ? 'selected' : ''}>${label}</option>`).join('')}</select><p id="theme-description">Auto follows your Windows appearance. Your choice is saved on this device.</p></section>`
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)
-    : activeTab === 'activity' ? `<div class="activity-page">${historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)}${activityPane(dashboard, activityFilter, activityRawOpen, escapeHtml, formatNumber)}</div>`
+    : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
     : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readingPane(selectedMessage, escapeHtml, formatDate)}</div>`;
 
 
@@ -241,8 +237,7 @@ function render() {
           <button type="button" data-action="navigate-back" aria-label="Back" title="Back" ${busy || navigationIndex === 0 ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m9 4-6 6 6 6M3 10h14"/></svg></button>
           <button type="button" data-action="navigate-forward" aria-label="Forward" title="Forward" ${busy || navigationIndex === navigationHistory.length - 1 ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m11 4 6 6-6 6M3 10h14"/></svg></button>
         </nav>${workspaceTabStrip(activeTab, busy)}</div>
-        ${activeTab !== 'mailbox' ? `<div class="workspace-heading"><div><h1>${escapeHtml(tabTitle)}</h1><p>${escapeHtml(dashboard.user)}</p></div></div>` : ''}
-        ${activeTab !== 'mailbox' ? `<section class="run-banner ${state}" aria-label="Backup status"><h2>${statusTitle}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span></section>` : ''}
+        ${!['mailbox', 'activity'].includes(activeTab) ? `<section class="run-banner ${state}" aria-label="Backup status"><h2>${statusTitle}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span></section>` : ''}
         ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'new-mail' ? 'New mail check failed' : operationFailure.action === 'stats' ? 'Mailbox check failed' : 'Action failed'}</strong><p>${escapeHtml(operationFailure.message)}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
         ${!dashboard.credentialReady ? `<aside class="notice">Save an account and app password to start backing up. <button data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
         ${run?.error ? `<aside class="notice error">${escapeHtml(run.error.message || 'Backup failed')}. Completed downloads are retained.</aside>` : ''}
@@ -316,7 +311,7 @@ async function refresh(background = false, force = false) {
     const focusTab = document.activeElement?.dataset?.tab;
     const focusColumn = document.activeElement?.dataset?.column;
     const filterInput = document.activeElement?.id === 'folder-filter' ? document.activeElement : null;
-    const previousReader = document.querySelector('.reading-pane');
+    const previousReader = document.querySelector('#view-mailbox .reading-pane');
     const previousMessage = selectedMessage;
     const scrollPositions = [...document.querySelectorAll('.folder-list, .mail-workspace, .inspector, .table-wrap')].map(el => el.scrollTop);
     render();
@@ -393,7 +388,7 @@ app.addEventListener('click', event => {
   if (action === 'reset-selection') { backupOptionsDraft = null; render(); return; }
   if (action === 'schedule-load-folders') { loadScheduledFolders(button); return; }
   if (action === 'test-notification') { testNotification(button); return; }
-  if (action === 'history-select') { selectedHistoryRun = button.dataset.runId; render(); return; }
+  if (action === 'history-select') { selectedHistoryRun = button.dataset.runId; render(); [...document.querySelectorAll('.history-table button[data-action="history-select"]')].find(element => element.dataset.runId === selectedHistoryRun)?.focus({ preventScroll: true }); return; }
   if (action === 'schedule') { selectTab('scheduler'); return; }
   if (action === 'schedule-read') { scheduleOperation('read'); return; }
   if (action === 'schedule-remove') { scheduleOperation('remove'); return; }
@@ -445,13 +440,8 @@ app.addEventListener('input', event => {
 
 });
 
-app.addEventListener('toggle', event => {
-  if (event.target.matches('.activity-raw')) activityRawOpen = event.target.open;
-}, true);
-
 app.addEventListener('change', event => {
   if (event.target.id === 'theme-preference') { setTheme(event.target.value); return; }
-  if (event.target.id === 'activity-filter') { activityFilter = event.target.value; render(); return; }
   if (event.target.id === 'history-filter') { historyFilter = event.target.value; render(); return; }
   if (event.target.closest('#scheduler-form')) { updateSchedulePreview(); return; }
   if (event.target.id === 'active-account') switchAccount(event.target.value);

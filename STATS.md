@@ -5,7 +5,7 @@ Backup, Scheduler, Activity and Preferences. Home shows
 every saved email in the selected folder above a reading pane. Select a
 folder to open Home and narrow its tables; use Filter folders to find a name.
 Mailbox-check failures remain visible with diagnostic details and Retry until
-dismissed or successfully retried. Activity contains backup history and the latest activity log.
+dismissed or successfully retried. Activity contains backup history and selected run details.
 
 ## Per-account caching
 
@@ -90,7 +90,7 @@ lists, date/number formatters are reused, and folder coverage is generated only
 when the Home tab is displayed. The calendar updates its date highlights only
 when the day changes or a new calendar is rendered.
 
-Activity combines backup run history and details with the latest activity log. The latest log is independent of the selected historical run. Each section keeps its own filter.
+Activity shows backup run history as a table with selected run details below it. Use the result filter to narrow the table.
 
 On startup, Bmail checks each configured account once when opened, after any active backup finishes. A small dot in the status bar and beside affected folders indicates new emails since the previous check. Hover over a dot for the count. The first check establishes a baseline; reset folder identifiers also establish a fresh baseline. Startup checks compare server message IDs without downloading mail or verifying local files. Use Check mailbox to refresh the indicators manually.
 
@@ -111,3 +111,5 @@ The mailbox view opens directly on the email list, with a reading pane below for
 The mail list shows the original Sent date and message Size, both sortable. Dates for older backups are read from their saved Date headers and cached locally; absent dates show Unknown. Complete records whose local file still exists at the recorded size have a faded row background. Selection keeps its stronger highlight.
 
 Drag the divider at the sidebar edge to change the navigation width. Drag the horizontal divider between the mail list and reading pane to change their heights. Both support arrow keys (Shift for larger steps), double-click to reset, and persist on this device. Resize limits keep the mail area and reader usable in smaller windows.
+
+Tab title/account headers are hidden. Activity now contains only the full-width backup history table, with a resizable details pane underneath. Select a run by clicking its row or activating its date button with the keyboard; selection and result filters persist when switching tabs. The separate activity-log feed has been removed.
