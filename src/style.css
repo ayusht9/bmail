@@ -941,10 +941,9 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .status-download span { white-space: nowrap; }
 .status-download progress { width: 110px; height: 7px; flex-shrink: 0; margin: 0; accent-color: var(--accent); }
 .status-schedule { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.status-message, .status-updates { flex-shrink: 0; }
+.status-message { flex-shrink: 0; }
 @media (max-width: 1050px) {
   .statusbar { gap: 12px; }
-  .statusbar:has(.status-download) .status-updates { display: none; }
   .status-download progress { width: 80px; }
 }
 
