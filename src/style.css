@@ -929,3 +929,18 @@ button.primary:hover:not(:disabled) { background: #145caf; }
 .preferences-page p { color: var(--muted); }
 input::placeholder { color: var(--muted); opacity: 1; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+
+/* Small, consistently visible download actions with keyboard-accessible targets. */
+button.download-icon, .folder-table td button.download-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 6px; border: 1px solid transparent;
+  border-radius: 6px; color: inherit; background: transparent;
+}
+.download-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+button.download-icon:hover:not(:disabled) { background: var(--surface); border-color: currentColor; }
+button.download-icon:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+button.download-icon:disabled { opacity: .35; cursor: default; }
+
+.folder-row { display: flex; align-items: center; padding-right: 6px; }
+.folder-row .folder-item { flex: 1; min-width: 0; }
+.folder-row .download-icon { flex-shrink: 0; }

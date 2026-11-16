@@ -1,3 +1,5 @@
+import { downloadButton } from './desktop.js';
+
 export function backupCoverage(dashboard) {
   const snapshot = dashboard.mailboxStatus;
   if (dashboard.backupRunning) return { title: 'Backup in progress', complete: false };
@@ -17,7 +19,7 @@ export function coverageRows(dashboard, escape, number, selected = '', filter = 
   const server = new Map((dashboard.mailboxStatus?.folders || []).map(folder => [folder.name, folder]));
   const names = [...new Set([...local.keys(), ...server.keys(), ...(dashboard.mailboxes?.folders || [])])].sort()
     .filter(name => (!selected || name === selected) && name.toLowerCase().includes(filter.toLowerCase()));
-  return names.map(name => `<tr class="${selected === name ? 'selected' : ''}"><td><button data-action="select-folder" data-folder="${escape(name)}" title="${escape(name)}">${escape(name)}</button></td><td>${number(local.get(name) || 0)}</td><td>${server.has(name) ? number(server.get(name).serverMessages) : dashboard.mailboxStatus ? 'Not on server' : 'Not checked'}</td><td>${server.has(name) ? number(server.get(name).missingMessages) : dashboard.mailboxStatus ? '—' : 'Not checked'}</td></tr>`).join('');
+  return names.map(name => `<tr class="${selected === name ? 'selected' : ''}"><td><button data-action="select-folder" data-folder="${escape(name)}" title="${escape(name)}">${escape(name)}</button></td><td>${number(local.get(name) || 0)}</td><td>${server.has(name) ? number(server.get(name).serverMessages) : dashboard.mailboxStatus ? 'Not on server' : 'Not checked'}</td><td>${server.has(name) ? number(server.get(name).missingMessages) : dashboard.mailboxStatus ? '—' : 'Not checked'}</td><td>${downloadButton('download-folder', `data-folder="${escape(name)}"`, `Download ${name} (.zip)`, escape, !local.get(name))}</td></tr>`).join('');
 }
 
 export function statisticsPanel(dashboard, escape, number, date) {

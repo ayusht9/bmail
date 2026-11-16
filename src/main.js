@@ -75,7 +75,7 @@ function render() {
     : activeTab === 'options' ? backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)
     : activeTab === 'history' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
     : activeTab === 'activity' ? `<section class="activity-pane" aria-label="Activity log"><div class="pane-title"><h2>Activity log</h2><button data-action="open-logs">Open log folder</button></div><pre>${escapeHtml(dashboard.latestLog?.tail || 'No activity recorded yet.')}</pre></section>`
-    : `<section class="folder-pane" aria-label="Folder coverage"><div class="pane-title"><h2>Folder coverage</h2><span>${formatNumber(mailboxFolders(dashboard).length)} folders</span></div><div class="table-wrap"><table class="folder-table"><thead><tr><th>Folder</th><th>Saved locally</th><th>On server</th><th>Remaining</th></tr></thead><tbody>${folderRows || '<tr><td colspan="4" class="empty-pane">No folders to show. Check mailbox to load coverage.</td></tr>'}</tbody></table></div></section>${recentMailPane(dashboard, selectedFolder, escapeHtml, formatDate)}`;
+    : `<section class="folder-pane" aria-label="Folder coverage"><div class="pane-title"><h2>Folder coverage</h2><span>${formatNumber(mailboxFolders(dashboard).length)} folders</span></div><div class="table-wrap"><table class="folder-table"><thead><tr><th>Folder</th><th>Saved locally</th><th>On server</th><th>Remaining</th><th><span class="sr-only">Download</span></th></tr></thead><tbody>${folderRows || '<tr><td colspan="5" class="empty-pane">No folders to show. Check mailbox to load coverage.</td></tr>'}</tbody></table></div></section>${recentMailPane(dashboard, selectedFolder, escapeHtml, formatDate)}`;
 
 
   app.innerHTML = `
@@ -239,6 +239,15 @@ app.addEventListener('click', event => {
   if (action === 'schedule-remove') { scheduleOperation('remove'); return; }
   if (action === 'schedule-prev' || action === 'schedule-next') { schedulerMonth = new Date(schedulerMonth.getFullYear(), schedulerMonth.getMonth() + (action === 'schedule-next' ? 1 : -1), 1); schedulerFocusDate = localDate(schedulerMonth); updateSchedulePreview(); return; }
   if (action === 'schedule-day') { const date = button.dataset.date; document.querySelector('#schedule-date').value = date; schedulerFocusDate = date; schedulerMonth = new Date(`${date}T00:00:00`); updateSchedulePreview(); document.querySelector(`.schedule-calendar [data-date="${date}"]`)?.focus(); return; }
+  if (action === 'download-email' || action === 'download-folder') {
+    if (button.disabled) return;
+    button.disabled = true;
+    invoke('export_mail', { folder: button.dataset.folder || null, file: button.dataset.file || null })
+      .then(message => { if (message) toast(message); })
+      .catch(error => toast(String(error), true))
+      .finally(() => { button.disabled = false; });
+    return;
+  }
   if (action === 'select-folder') { captureTabDraft(); selectedFolder = button.dataset.folder; activeTab = 'mailbox'; render(); return; }
   if (action === 'dismiss-error') { operationFailure = null; render(); return; }
   if (action === 'setup') { captureTabDraft(); document.querySelector('#mailbox-dialog').showModal(); }
@@ -271,7 +280,7 @@ app.addEventListener('input', event => {
   // Keep the search input, forms, clock and other workspace nodes intact.
   navigation.querySelectorAll('[data-folder]:not([data-folder=""]), .sidebar-empty').forEach(node => node.remove());
   navigation.insertAdjacentHTML('beforeend', folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber) || '<p class="sidebar-empty">No matching folders.</p>');
-  if (activeTab === 'mailbox') document.querySelector('.folder-table tbody').innerHTML = coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter) || '<tr><td colspan="4" class="empty-pane">No folders to show.</td></tr>';
+  if (activeTab === 'mailbox') document.querySelector('.folder-table tbody').innerHTML = coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter) || '<tr><td colspan="5" class="empty-pane">No folders to show.</td></tr>';
 });
 
 app.addEventListener('change', event => {

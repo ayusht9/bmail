@@ -5,6 +5,7 @@ use std::{fs, path::{Path, PathBuf}, process::Command};
 use tauri::Manager;
 mod profile;
 mod cache;
+mod export;
 use std::sync::Mutex;
 
 #[derive(Default)]
@@ -184,7 +185,7 @@ fn local_statistics(manifest: Option<&Value>) -> Value {
                     size += record.get("bytes").and_then(Value::as_u64).unwrap_or(0);
                     if let Some(saved_at) = record.get("backedUpAt").and_then(Value::as_str) {
                         if recent.len() == 10 && recent.last().and_then(|item| item["backedUpAt"].as_str()).is_some_and(|oldest| saved_at <= oldest) { continue; }
-                        recent.push(serde_json::json!({"folder": name, "subject": record.get("subject"), "sender": record.get("sender"), "backedUpAt": record.get("backedUpAt")}));
+                        recent.push(serde_json::json!({"folder": name, "file": record.get("file"), "subject": record.get("subject"), "sender": record.get("sender"), "backedUpAt": record.get("backedUpAt")}));
                         recent.sort_by(|a, b| b["backedUpAt"].as_str().cmp(&a["backedUpAt"].as_str()));
                         recent.truncate(10);
                     }
@@ -561,7 +562,7 @@ pub fn run() {
         .manage(BackupProcess::default())
         .manage(cache::DashboardCache::default())
         .setup(|app| { initialize_profiles(app.handle()).map_err(std::io::Error::other)?; Ok(()) })
-        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
+        .invoke_handler(tauri::generate_handler![export::export_mail, get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }

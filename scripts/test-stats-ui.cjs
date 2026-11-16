@@ -21,7 +21,7 @@ const assert = require('node:assert/strict');
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(() => {
-      window.calls = [];
+      window.calls = []; window.exports = []; window.failExport = false;
       window.dashboardForces = [];
       window.failCheck = false;
       window.failSchedule = false;
@@ -29,10 +29,11 @@ const assert = require('node:assert/strict');
       window.data = { user: 'fixture@example.com', accounts: ['fixture@example.com'], host: 'imap.gmail.com', port: 993,
         credentialReady: true, hasManifest: true, backupRunning: false, backupOptions: { folders: ['INBOX'] }, folderCount: 1,
         localStats: { messages: 3, bytes: 1048576, folders: [{ name: 'INBOX', messages: 3 }], recent: [
-          { subject: '<img src=x onerror="window.injected=true">', sender: 'fixture@example.com', folder: 'INBOX', backedUpAt: '2026-11-15T00:00:00Z' },
+          { file: 'emails/INBOX/one.eml', subject: '<img src=x onerror="window.injected=true">', sender: 'fixture@example.com', folder: 'INBOX', backedUpAt: '2026-11-15T00:00:00Z' },
         ] }, lastRun: { success: true, downloaded: 1, finishedAt: '2026-11-15T00:00:00Z' } };
       window.__TAURI_INTERNALS__ = { invoke: async (name, args) => {
         window.calls.push(name);
+        if (name === 'export_mail') { window.exports.push(args); if (window.failExport) throw 'Export failed'; return 'Download saved.'; }
         if (name === 'get_dashboard') { window.dashboardForces.push(args?.force); return structuredClone(window.data); }
         if (name === 'manage_schedule') {
           if (window.failSchedule) throw 'Windows scheduler unavailable';
@@ -69,6 +70,16 @@ const assert = require('node:assert/strict');
     await recent.waitFor();
     assert.match(await recent.textContent(), /<img/);
     assert.equal(await page.evaluate(() => window.injected), undefined);
+    await recent.locator('[data-action="download-email"]').click();
+    await page.waitForFunction(() => window.exports.length === 1);
+    assert.deepEqual(await page.evaluate(() => window.exports[0]), { folder: null, file: 'emails/INBOX/one.eml' });
+    await sidebar.getByRole('button', { name: 'Download INBOX (.zip)', exact: true }).click();
+    await page.waitForFunction(() => window.exports.length === 2);
+    assert.deepEqual(await page.evaluate(() => window.exports[1]), { folder: 'INBOX', file: null });
+    await page.evaluate(() => { window.failExport = true; });
+    await page.locator('.folder-table [data-action="download-folder"]').click();
+    await page.waitForFunction(() => document.querySelector('#toast')?.textContent === 'Export failed' || [...document.querySelectorAll('[role="status"], .toast')].some(el => el.textContent === 'Export failed'));
+    await page.evaluate(() => { window.failExport = false; });
     await sidebar.getByRole('button', { name: 'INBOX 3', exact: true }).click();
     await page.getByRole('heading', { name: 'INBOX', level: 1 }).waitFor();
     const filter = page.getByRole('searchbox', { name: 'Filter folders' });
