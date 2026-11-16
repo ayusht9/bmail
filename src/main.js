@@ -3,6 +3,7 @@ import { themePreference, setTheme } from './theme.js';
 import { invoke } from '@tauri-apps/api/core';
 import { workspaceTabs, workspaceTabStrip } from './workspace.js';
 import { historyPane } from './history.js';
+import { activityPane } from './activity.js';
 import { createDashboardPoller } from './polling.js';
 import { statisticsPanel, coverageRows } from './statistics.js';
 import { folderNavigation, recentMailPane, mailboxFolders } from './desktop.js';
@@ -56,6 +57,8 @@ let backupOptionsDraft = null;
 let schedulerDraft = null;
 let schedulerLoaded = false;
 let historyFilter = 'all';
+let activityFilter = 'all';
+let activityRawOpen = false;
 let selectedHistoryRun = '';
 let dashboardPoller;
 let schedulerMonth = new Date();
@@ -99,6 +102,7 @@ function render() {
   }
   if (navigationAccount !== dashboard.user) {
     navigationAccount = dashboard.user;
+    activityFilter = 'all'; activityRawOpen = false;
     resetNavigation();
   }
   const run = dashboard.lastRun;
@@ -119,7 +123,7 @@ function render() {
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)
     : activeTab === 'history' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
-    : activeTab === 'activity' ? `<section class="activity-pane" aria-label="Activity log"><div class="pane-title"><h2>Activity log</h2><button data-action="open-logs">Open log folder</button></div><pre>${escapeHtml(dashboard.latestLog?.tail || 'No activity recorded yet.')}</pre></section>`
+    : activeTab === 'activity' ? activityPane(dashboard, activityFilter, activityRawOpen, escapeHtml, formatNumber)
     : `<section class="folder-pane" aria-label="Folder coverage"><div class="pane-title"><h2>Folder coverage</h2><span>${formatNumber(mailboxFolders(dashboard).length)} folders</span></div><div class="table-wrap"><table class="folder-table"><thead><tr><th>Folder</th><th>Saved locally</th><th>On server</th><th>Remaining</th><th><span class="sr-only">Download</span></th></tr></thead><tbody>${folderRows || '<tr><td colspan="5" class="empty-pane">No folders to show. Check mailbox to load coverage.</td></tr>'}</tbody></table></div></section>${recentMailPane(dashboard, selectedFolder, escapeHtml, formatDate)}`;
 
 
@@ -335,8 +339,13 @@ app.addEventListener('input', event => {
   if (activeTab === 'mailbox') document.querySelector('.folder-table tbody').innerHTML = coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter) || '<tr><td colspan="5" class="empty-pane">No folders to show.</td></tr>';
 });
 
+app.addEventListener('toggle', event => {
+  if (event.target.matches('.activity-raw')) activityRawOpen = event.target.open;
+}, true);
+
 app.addEventListener('change', event => {
   if (event.target.id === 'theme-preference') { setTheme(event.target.value); return; }
+  if (event.target.id === 'activity-filter') { activityFilter = event.target.value; render(); return; }
   if (event.target.id === 'history-filter') { historyFilter = event.target.value; render(); return; }
   if (event.target.closest('#scheduler-form')) { updateSchedulePreview(); return; }
   if (event.target.id === 'active-account') switchAccount(event.target.value);
