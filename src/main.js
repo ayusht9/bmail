@@ -18,6 +18,7 @@ let busy = false;
 let controlBusy = false;
 let activeExports = 0;
 const startupMailChecked = new Set();
+const newMailRetryAfter = new Map();
 const newMailByAccount = new Map();
 const mailIndicators = () => newMailByAccount.get(dashboard?.user) || new Map();
 
@@ -26,7 +27,7 @@ function rememberNewMail(snapshot, account = dashboard.user) {
 }
 
 async function checkStartupMail() {
-  if (!dashboard?.credentialReady || !dashboard.user.includes('@') || dashboard.backupRunning || busy || startupMailChecked.has(dashboard.user)) return;
+  if (!dashboard?.credentialReady || !dashboard.user.includes('@') || dashboard.backupRunning || busy || startupMailChecked.has(dashboard.user) || Date.now() < (newMailRetryAfter.get(dashboard.user) || 0)) return;
   const account = dashboard.user;
   startupMailChecked.add(account);
   busy = true; busyAction = 'new-mail';
@@ -35,12 +36,20 @@ async function checkStartupMail() {
   try {
     const result = await invoke('run_action', { action: 'new-mail' });
     rememberNewMail(JSON.parse(result), account);
-  } catch {
-    failed = true;
+    newMailRetryAfter.delete(account);
+    if (operationFailure?.action === 'new-mail') operationFailure = null;
+  } catch (error) {
+    if (String(error).includes('NEW_MAIL_CHECK_BUSY')) {
+      startupMailChecked.delete(account);
+      newMailRetryAfter.set(account, Date.now() + 10000);
+    } else {
+      failed = true;
+      operationFailure = { action: 'new-mail', message: String(error) };
+    }
   } finally {
     busy = false; busyAction = '';
     await refresh();
-    if (failed) toast('New mail check failed. Use Check mailbox to try again.', true);
+    if (failed) toast('New mail check failed. See the error above.', true);
   }
 }
 
@@ -203,7 +212,7 @@ function render() {
         </nav>${workspaceTabStrip(activeTab, busy)}</div>
         <div class="workspace-heading"><div><h1>${escapeHtml(tabTitle)}</h1><p>${escapeHtml(dashboard.user)}</p></div></div>
         <section class="run-banner ${state}" aria-label="Backup status"><h2>${statusTitle}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span></section>
-        ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'stats' ? 'Mailbox check failed' : 'Action failed'}</strong><p>${escapeHtml(operationFailure.message)}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
+        ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'new-mail' ? 'New mail check failed' : operationFailure.action === 'stats' ? 'Mailbox check failed' : 'Action failed'}</strong><p>${escapeHtml(operationFailure.message)}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
         ${!dashboard.credentialReady ? `<aside class="notice">Save an account and app password to start backing up. <button data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
         ${run?.error ? `<aside class="notice error">${escapeHtml(run.error.message || 'Backup failed')}. Completed downloads are retained.</aside>` : ''}
         ${dashboard.launchError ? `<aside class="notice error">${escapeHtml(dashboard.launchError)}</aside>` : ''}
@@ -336,6 +345,7 @@ app.addEventListener('click', event => {
   }
   if (busy && ['select-tab','select-folder','selection','schedule','reset-selection','schedule-day','schedule-prev','schedule-next'].includes(action)) return;
   if (action === 'navigate-back' || action === 'navigate-forward') { moveNavigation(action === 'navigate-back' ? -1 : 1); return; }
+  if (action === 'new-mail') { startupMailChecked.delete(dashboard.user); newMailRetryAfter.delete(dashboard.user); checkStartupMail(); return; }
   if (action === 'retry-mail') { savedMail.key = ''; render(); return; }
   if (action === 'sort-mail') {
     const column = button.dataset.column;

@@ -498,20 +498,24 @@ fn control_backup(app: tauri::AppHandle, command: String, run_id: String, proces
     }.into())
 }
 
+fn new_mail_check_busy(stdout: &str, stderr: &str) -> bool {
+    [stdout, stderr].iter().any(|text| text.contains("BACKUP_BUSY") || text.contains("A backup or verification is already running"))
+}
+
 #[tauri::command]
 async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let root = data_root(&app)?;
         let engine = engine_root(&app)?;
         if ["backup", "verify", "folders", "stats", "new-mail"].contains(&action.as_str()) && active_backup(&backup_root(&root)) {
-            return Err("A backup is already active. Pause, stop, or wait for it to finish first.".into());
+            return Err(if action == "new-mail" { "NEW_MAIL_CHECK_BUSY" } else { "A backup is already active. Pause, stop, or wait for it to finish first." }.into());
         }
         let (program, output) = match action.as_str() {
             "backup" => ("Backup", powershell(&engine, &root, "Run-Backup.ps1")?),
             "schedule" => ("Schedule", powershell(&engine, &root, "Install-BackupSchedule.ps1")?),
             "folders" | "stats" | "new-mail" => ("Mailbox check", {
                 if active_backup(&backup_root(&root)) {
-                    return Err("Wait for the current backup to finish before reloading folders.".into());
+                    return Err(if action == "new-mail" { "NEW_MAIL_CHECK_BUSY" } else { "Wait for the current backup to finish before reloading folders." }.into());
                 }
                 hidden_command("powershell.exe").current_dir(&root).env("MAIL_VAULT_DATA_DIR", &root)
                     .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
@@ -524,6 +528,7 @@ async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, Str
         };
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        if action == "new-mail" && !output.status.success() && new_mail_check_busy(&stdout, &stderr) { return Err("NEW_MAIL_CHECK_BUSY".into()); }
         if output.status.success() {
             if action == "new-mail" {
                 let snapshot = read_json(&backup_root(&root).join("new-mail-status.json")).ok_or("Mailbox check produced no result.")?;
@@ -575,6 +580,14 @@ pub fn run() {
 #[cfg(test)]
 mod dashboard_tests {
     use super::*;
+
+    #[test]
+    fn new_mail_contention_is_distinct_from_connection_failures() {
+        assert!(new_mail_check_busy("", r#"{"code":"BACKUP_BUSY"}"#));
+        assert!(new_mail_check_busy("A backup or verification is already running", ""));
+        assert!(!new_mail_check_busy("", "Authentication rejected"));
+        assert!(!new_mail_check_busy("", "Connection timed out"));
+    }
 
     #[test]
     fn advanced_options_deserialize_the_ui_field_names() {

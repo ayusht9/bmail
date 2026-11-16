@@ -103,3 +103,5 @@ Tables always fill the available width, including after columns are narrowed or 
 Dragging, keyboard resizing, and auto-fit preserve the visible table width. Other columns retain a minimum usable width; a column stops expanding when no more space is available. Both tables fit the window without horizontal scrolling.
 
 Download icons are fixed row actions inside the last data cell, with no separate download column or resize handle. The idle status text and saved-mail sorting hint are hidden.
+
+If another backup, verification, or mail check owns the mailbox lock at startup, the new-mail check waits and retries after a short cooldown. It does not show a failure for this temporary busy state. Other startup failures show diagnostic details and a Retry button.
