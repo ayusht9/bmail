@@ -709,9 +709,6 @@ dialog input[readonly] {
     flex-direction:column;
     gap:2px;
   }
-  .mail-table th:nth-child(3),.mail-table td:nth-child(3) {
-    display:none;
-  }
   .statusbar {
     gap:12px;
   }
@@ -1000,3 +997,9 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .folder-row > .new-mail-dot { margin-inline: 4px 6px; }
 .folder-table .new-mail-dot { margin-left: 8px; }
 .statusbar > .new-mail-dot { width: 8px; height: 8px; flex-basis: 8px; outline: 3px solid var(--selected); }
+
+.mail-table th button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; border: 0; background: transparent; font-weight: 600; padding: 3px 0; text-align: left; }
+.mail-table th button span { color: var(--muted); }
+.mail-table th[aria-sort] button, .mail-table th[aria-sort] button span { color: var(--link); }
+
+.mail-table { min-width: 620px; }

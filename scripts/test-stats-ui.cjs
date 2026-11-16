@@ -34,6 +34,7 @@ const assert = require('node:assert/strict');
       window.__TAURI_INTERNALS__ = { invoke: async (name, args) => {
         window.calls.push(name);
         if (name === 'export_mail') { window.exports.push(args); if (window.holdExport) await new Promise(resolve => { window.finishExport = resolve; }); if (window.failExport) throw 'Export failed'; return 'Download saved.'; }
+        if (name === 'get_saved_mail') return structuredClone(window.data.localStats.recent.filter(mail => !args.folder || mail.folder === args.folder));
         if (name === 'get_dashboard') { window.dashboardForces.push(args?.force); return structuredClone(window.data); }
         if (name === 'manage_schedule') {
           if (window.failSchedule) throw 'Windows scheduler unavailable';
@@ -77,7 +78,7 @@ const assert = require('node:assert/strict');
     assert.equal(await page.locator('.selection-summary,.storage-summary,.inspector').count(), 0);
     assert.equal(await page.getByRole('button', { name: 'Open backup folder', exact: true }).count(), 1);
     assert.equal(await page.getByRole('button', { name: 'Choose what to back up', exact: true }).count(), 0);
-    const recent = page.getByRole('region', { name: 'Recently saved mail' });
+    const recent = page.getByRole('region', { name: 'Saved mail' });
     await recent.waitFor();
     const back = page.getByRole('button', { name: 'Back', exact: true });
     const forward = page.getByRole('button', { name: 'Forward', exact: true });
@@ -316,6 +317,42 @@ const assert = require('node:assert/strict');
       await go(tab);
       assert.notEqual(await page.locator('.mail-workspace').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(255, 255, 255)');
     }
+    await page.evaluate(() => {
+      window.data.backupRunning = false;
+      window.data.localStats.messages = 36;
+      window.data.localStats.recent = Array.from({ length: 35 }, (_, index) => ({ subject: `Message ${index + 1}`, sender: `Sender ${35 - index}`, folder: 'INBOX', file: `mail-${index}.eml`, backedUpAt: new Date(Date.UTC(2026, 10, index + 1)).toISOString() }));
+      window.data.localStats.recent.push({ subject: 'Sent mail', sender: 'Me', folder: 'Sent', file: 'sent.eml', backedUpAt: '2026-11-01T00:00:00Z' });
+    });
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await go('Mailbox');
+    await sidebar.locator('[data-action="select-folder"][data-folder="INBOX"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('.mail-table tbody tr').length === 35);
+    const mail = page.getByRole('region', { name: 'Saved mail' });
+    const sortColumn = column => mail.locator(`[data-action="sort-mail"][data-column="${column}"]`);
+    const firstCell = column => mail.locator(`tbody tr:first-child td:nth-child(${column})`);
+    await sortColumn('subject').click();
+    assert.equal(await firstCell(1).textContent(), 'Message 1');
+    assert.equal(await mail.locator('th[aria-sort]').getAttribute('aria-sort'), 'ascending');
+    await page.keyboard.press('Enter');
+    assert.equal(await firstCell(1).textContent(), 'Message 35');
+    assert.equal(await mail.locator('th[aria-sort]').getAttribute('aria-sort'), 'descending');
+    await sortColumn('sender').click();
+    assert.equal(await firstCell(2).textContent(), 'Sender 1');
+    await sortColumn('sender').click();
+    assert.equal(await firstCell(2).textContent(), 'Sender 35');
+    await sortColumn('backedUpAt').click();
+    assert.equal(await firstCell(1).textContent(), 'Message 1');
+    await sortColumn('backedUpAt').click();
+    assert.equal(await firstCell(1).textContent(), 'Message 35');
+    await sidebar.locator('[data-action="select-folder"][data-folder=""]').click();
+    await page.waitForFunction(() => document.querySelectorAll('.mail-table tbody tr').length === 36);
+    await sortColumn('folder').click();
+    assert.equal(await firstCell(3).textContent(), 'INBOX');
+    await sortColumn('folder').click();
+    assert.equal(await firstCell(3).textContent(), 'Sent');
+    await go('Overview'); await go('Mailbox');
+    assert.equal(await mail.locator('th[aria-sort] button').getAttribute('data-column'), 'folder');
+    assert.equal(await mail.locator('th[aria-sort]').getAttribute('aria-sort'), 'descending');
     await page.evaluate(() => {
       window.data.backupRunning = false;
       window.data.mailboxes = { folders: Array.from({ length: 1000 }, (_, i) => `Folder-${i}`) };

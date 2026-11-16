@@ -6,7 +6,7 @@ import { historyPane } from './history.js';
 import { activityPane } from './activity.js';
 import { createDashboardPoller } from './polling.js';
 import { statisticsPanel, coverageRows } from './statistics.js';
-import { folderNavigation, recentMailPane, mailboxFolders, newMailDot } from './desktop.js';
+import { folderNavigation, savedMailPane, mailboxFolders, newMailDot } from './desktop.js';
 import { progressPanel, statusDownloadProgress } from './progress.js';
 import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, nextRuns, calendarMarkup, scheduleSummary, localDate, updateClock } from './scheduler.js';
 import { backupOptionsView, folderChoices, advancedFromForm } from './selection.js';
@@ -46,6 +46,26 @@ async function checkStartupMail() {
 let addingAccount = false;
 let selectedFolder = '';
 let folderFilter = '';
+let savedMail = { key: '', rows: [], loading: false, error: '' };
+let mailSort = { column: 'backedUpAt', direction: 'desc' };
+
+function loadSavedMail() {
+  const key = JSON.stringify([dashboard.user, selectedFolder, dashboard.localStats]);
+  if (savedMail.key === key) return;
+  const request = { key, rows: [], loading: true, error: '' };
+  savedMail = request;
+  invoke('get_saved_mail', { folder: selectedFolder || null })
+    .then(rows => { request.rows = rows; })
+    .catch(error => { request.error = String(error); })
+    .finally(() => {
+      request.loading = false;
+      if (savedMail === request && activeTab === 'mailbox' && !document.querySelector('dialog[open]')) {
+        const pane = document.querySelector('.mail-pane');
+        if (pane) pane.outerHTML = savedMailPane(request, selectedFolder, mailSort, escapeHtml, formatDate);
+      }
+    });
+}
+
 let operationFailure = null;
 let busyAction = '';
 let activeTab = 'mailbox';
@@ -143,6 +163,7 @@ function render() {
   const statusTitle = dashboard.backupRunning ? dashboard.progress?.state === 'paused' ? 'Your backup is paused' : 'Your backup is running'
     : intentional ? outcome === 'stopped' ? 'Backup stopped safely' : 'Backup cancelled' : healthy ? 'Selected backup complete' : run ? 'Last run needs attention' : dashboard.hasManifest ? 'Ready to continue your backup' : 'Ready for the first backup';
   if (selectedFolder && !mailboxFolders(dashboard).includes(selectedFolder)) selectedFolder = '';
+  if (activeTab === 'mailbox') loadSavedMail();
   const folderRows = activeTab === 'mailbox' ? coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter, mailIndicators()) : '';
   const tabTitle = activeTab === 'mailbox' ? selectedFolder || 'All folders' : workspaceTabs.find(([key]) => key === activeTab)?.[1];
   const workspaceBody = activeTab === 'overview' ? `<div class="overview-page">${statisticsPanel(dashboard, escapeHtml, formatNumber, formatDate, busy)}</div>`
@@ -150,7 +171,7 @@ function render() {
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)
     : activeTab === 'activity' ? `<div class="activity-page">${historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)}${activityPane(dashboard, activityFilter, activityRawOpen, escapeHtml, formatNumber)}</div>`
-    : `<section class="folder-pane" aria-label="Folder coverage"><div class="pane-title"><h2>Folder coverage</h2><span>${formatNumber(mailboxFolders(dashboard).length)} folders</span></div><div class="table-wrap"><table class="folder-table"><thead><tr><th>Folder</th><th>Saved locally</th><th>On server</th><th>Remaining</th><th><span class="sr-only">Download</span></th></tr></thead><tbody>${folderRows || '<tr><td colspan="5" class="empty-pane">No folders to show. Check mailbox to load coverage.</td></tr>'}</tbody></table></div></section>${recentMailPane(dashboard, selectedFolder, escapeHtml, formatDate)}`;
+    : `<section class="folder-pane" aria-label="Folder coverage"><div class="pane-title"><h2>Folder coverage</h2><span>${formatNumber(mailboxFolders(dashboard).length)} folders</span></div><div class="table-wrap"><table class="folder-table"><thead><tr><th>Folder</th><th>Saved locally</th><th>On server</th><th>Remaining</th><th><span class="sr-only">Download</span></th></tr></thead><tbody>${folderRows || '<tr><td colspan="5" class="empty-pane">No folders to show. Check mailbox to load coverage.</td></tr>'}</tbody></table></div></section>${savedMailPane(savedMail, selectedFolder, mailSort, escapeHtml, formatDate)}`;
 
 
   app.innerHTML = `
@@ -242,6 +263,7 @@ async function refresh(background = false, force = false) {
   refreshFinished = new Promise(resolve => { finished = resolve; });
   try {
     const next = await invoke('get_dashboard', { force });
+    if (force) savedMail.key = '';
     next.newMailFolders = [...(newMailByAccount.get(next.user)?.keys() || [])];
     const unchanged = JSON.stringify(next) === JSON.stringify(dashboard);
     dashboard = next;
@@ -251,6 +273,7 @@ async function refresh(background = false, force = false) {
     const focusAction = document.activeElement?.dataset?.action;
     const focusFolder = document.activeElement?.dataset?.folder;
     const focusTab = document.activeElement?.dataset?.tab;
+    const focusColumn = document.activeElement?.dataset?.column;
     const filterInput = document.activeElement?.id === 'folder-filter' ? document.activeElement : null;
     const coverageHelpOpen = document.querySelector('.coverage-help')?.open;
     const scrollPositions = [...document.querySelectorAll('.folder-list, .mail-workspace, .inspector, .table-wrap')].map(el => el.scrollTop);
@@ -260,7 +283,8 @@ async function refresh(background = false, force = false) {
     if (filterInput) { document.querySelector('#folder-filter').replaceWith(filterInput); filterInput.focus({ preventScroll: true }); }
     if (focusAction === 'select-folder') [...document.querySelectorAll('[data-action="select-folder"]')].find(el => el.dataset.folder === focusFolder)?.focus({ preventScroll: true });
     if (focusAction === 'select-tab') document.querySelector(`#tab-${focusTab}`)?.focus({ preventScroll: true });
-    if (focusAction && !['select-folder','select-tab'].includes(focusAction)) [...document.querySelectorAll('[data-action]')].find(el => el.dataset.action === focusAction)?.focus({ preventScroll: true });
+    if (focusAction === 'sort-mail') document.querySelector(`[data-action="sort-mail"][data-column="${focusColumn}"]`)?.focus({ preventScroll: true });
+    if (focusAction && !['select-folder','select-tab','sort-mail'].includes(focusAction)) [...document.querySelectorAll('[data-action]')].find(el => el.dataset.action === focusAction)?.focus({ preventScroll: true });
   } catch (error) {
     if (!background) app.innerHTML = `<main class="fatal"><h1>Bmail could not start</h1><p>${escapeHtml(error)}</p></main>`;
   } finally { refreshing = false; finished(); dashboardPoller?.reschedule(); void checkStartupMail(); }
@@ -311,6 +335,15 @@ app.addEventListener('click', event => {
   }
   if (busy && ['select-tab','select-folder','selection','schedule','reset-selection','schedule-day','schedule-prev','schedule-next'].includes(action)) return;
   if (action === 'navigate-back' || action === 'navigate-forward') { moveNavigation(action === 'navigate-back' ? -1 : 1); return; }
+  if (action === 'retry-mail') { savedMail.key = ''; render(); return; }
+  if (action === 'sort-mail') {
+    const column = button.dataset.column;
+    if (!['subject', 'sender', 'folder', 'backedUpAt'].includes(column)) return;
+    mailSort = { column, direction: mailSort.column === column && mailSort.direction === 'asc' ? 'desc' : 'asc' };
+    document.querySelector('.mail-pane').outerHTML = savedMailPane(savedMail, selectedFolder, mailSort, escapeHtml, formatDate);
+    document.querySelector(`[data-action="sort-mail"][data-column="${column}"]`)?.focus({ preventScroll: true });
+    return;
+  }
   if (action === 'select-tab') { selectTab(button.dataset.tab); return; }
   if (action === 'reset-selection') { backupOptionsDraft = null; render(); return; }
   if (action === 'schedule-load-folders') { loadScheduledFolders(button); return; }
