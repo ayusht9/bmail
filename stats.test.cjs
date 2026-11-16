@@ -63,7 +63,7 @@ test('full coverage checks every UID and folder, detects new mail, corruption an
 
 test('coverage UI keeps unknown, partial, full and active backups distinct and escapes recent mail', async () => {
   const { backupCoverage, coverageRows, statisticsPanel, formatBytes } = await import('./src/statistics.js');
-  const { recentMailPane, folderNavigation } = await import('./src/desktop.js');
+  const { savedMailPane, folderNavigation } = await import('./src/desktop.js');
   assert.match(backupCoverage({}).title, /not checked/);
   assert.match(backupCoverage({ mailboxStatus: { complete: false } }).title, /incomplete/);
   assert.equal(backupCoverage({ mailboxStatus: { complete: true } }).complete, true);
@@ -74,7 +74,7 @@ test('coverage UI keeps unknown, partial, full and active backups distinct and e
     mailboxStatus: { complete: false, totalServerMessages: 3, savedMessages: 2, missingMessages: 1, newMessages: 1, checkedAt: 'date', previousCheckedAt: 'earlier' } };
   const html = statisticsPanel(dashboard, escape, String, String, false);
   assert.match(html, /value="66"/);
-  const recent = recentMailPane(dashboard, '', escape, String);
+  const recent = savedMailPane({ rows: dashboard.localStats.recent, loading: false }, '', { column: 'subject', direction: 'asc' }, escape, String);
   assert.match(recent, /&lt;script>/);
   assert.doesNotMatch(recent, /<script>/);
   assert.match(coverageRows(dashboard, escape, String), /&lt;Inbox>/);

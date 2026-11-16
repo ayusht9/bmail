@@ -26,10 +26,22 @@ export function folderNavigation(dashboard, selected, filter, escape, number, ne
     `<div class="folder-row" data-folder="${escape(name)}"><button class="folder-item ${selected === name ? 'selected' : ''}" data-action="select-folder" data-folder="${escape(name)}" aria-pressed="${selected === name}"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M2 5h6l2 2h8v9H2z"/></svg><span>${escape(name)}</span><small>${number(counts.get(name) || 0)}</small></button>${newMailDot(newMail.get(name), escape, name)}${downloadButton('download-folder', `data-folder="${escape(name)}"`, `Download ${name} (.zip)`, escape, !counts.get(name))}</div>`).join('');
 }
 
-export function recentMailPane(dashboard, selected, escape, date) {
-  const messages = (dashboard.localStats?.recent || []).filter(message => !selected || message.folder === selected);
+const mailCollator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+export function sortMail(messages, sort) {
+  const direction = sort.direction === 'asc' ? 1 : -1;
+  const value = message => sort.column === 'backedUpAt' ? Date.parse(message.backedUpAt) || 0 : String(message[sort.column] || (sort.column === 'subject' ? 'No subject' : sort.column === 'sender' ? 'Unknown sender' : ''));
+  return [...messages].sort((a, b) => {
+    const result = sort.column === 'backedUpAt' ? value(a) - value(b) : mailCollator.compare(value(a), value(b));
+    return direction * result;
+  });
+}
+
+export function savedMailPane(state, selected, sort, escape, date) {
+  const messages = sortMail(state.rows, sort);
+  const headings = [['subject', 'Subject'], ['sender', 'From'], ['folder', 'Folder'], ['backedUpAt', 'Saved']];
+  const header = headings.map(([key, label]) => `<th ${sort.column === key ? `aria-sort="${sort.direction === 'asc' ? 'ascending' : 'descending'}"` : ''}><button type="button" data-action="sort-mail" data-column="${key}" title="Sort by ${label.toLowerCase()} ${sort.column === key && sort.direction === 'asc' ? 'descending' : 'ascending'}">${label}<span aria-hidden="true">${sort.column === key ? sort.direction === 'asc' ? '&#8593;' : '&#8595;' : '&#8597;'}</span></button></th>`).join('');
   const rows = messages.map(message => `<tr><td>${escape(message.subject || 'No subject')}</td><td>${escape(message.sender || 'Unknown sender')}</td><td>${escape(message.folder)}</td><td>${date(message.backedUpAt)}</td><td>${downloadButton('download-email', `data-file="${escape(message.file || '')}"`, `Download ${message.subject || 'email'} (.eml)`, escape, !message.file)}</td></tr>`).join('');
-  return `<section class="mail-pane" aria-label="Recently saved mail"><div class="pane-title"><h2>Recently saved mail</h2><span>Latest saved records${selected ? ` in ${escape(selected)}` : ''}</span></div>
-    ${rows ? `<div class="table-wrap"><table class="mail-table"><thead><tr><th>Subject</th><th>From</th><th>Folder</th><th>Saved</th><th><span class="sr-only">Download</span></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty-pane">No recent saved records for this folder.</p>'}
-    <p class="pane-hint">Shows the latest 10 saved records for this account. Download individual emails as .eml files or a folder as a ZIP from Folder coverage.</p></section>`;
+  return `<section class="mail-pane" aria-label="Saved mail" aria-busy="${state.loading}"><div class="pane-title"><h2>Saved mail</h2><span>${state.loading ? 'Loading...' : `${messages.length.toLocaleString()} emails`}${selected ? ` in ${escape(selected)}` : ' across all folders'}</span></div>
+    ${state.loading ? '<p class="empty-pane">Loading saved emails...</p>' : state.error ? `<p class="empty-pane" role="alert">${escape(state.error)} <button data-action="retry-mail">Retry</button></p>` : rows ? `<div class="table-wrap"><table class="mail-table"><thead><tr>${header}<th><span class="sr-only">Download</span></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty-pane">No saved emails in this folder yet.</p>'}
+    <p class="pane-hint">All saved emails are shown. Click a column heading to change the sort order.</p></section>`;
 }
