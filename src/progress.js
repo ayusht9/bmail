@@ -43,3 +43,18 @@ function controlButtons(p, request, escapeHtml) {
     <button class="danger-button" data-action="cancel" data-run-id="${escapeHtml(p.runId)}" ${pending === 'cancel' ? 'disabled' : ''} title="Abort the current download; completed emails are kept">${pending === 'cancel' ? 'Cancelling...' : 'Cancel now'}</button>
     </div><p class="muted">Pause holds the download. Stop finishes this email. Cancel discards its incomplete copy. Saved mail is kept.</p>`;
 }
+
+export function statusDownloadProgress(dashboard, number, exports = 0) {
+  if (exports) return `<div class="status-download"><span>Saving download${exports > 1 ? 's' : ''}...</span><progress max="100" aria-label="Saving downloads"></progress></div>`;
+  if (!dashboard.backupRunning) return '';
+  const p = dashboard.progress;
+  const fresh = p && !['completed', 'failed', 'stopped', 'cancelled'].includes(p.state);
+  const labels = { paused: 'Download paused', retrying: 'Reconnecting', stopping: 'Stopping download',
+    connecting: 'Connecting', discovering: 'Counting emails', checking: 'Checking saved email', verifying: 'Verifying downloads' };
+  const phase = fresh ? ['paused', 'retrying', 'stopping'].includes(p.state) ? p.state : p.phase : p ? 'finalizing' : 'starting';
+  const known = fresh && Number.isFinite(p.plannedDownloads) && p.plannedDownloads > 0;
+  const downloaded = Math.max(0, Math.min(p?.downloaded || 0, p?.plannedDownloads || 0));
+  const percent = known ? Math.min(100, Math.floor(downloaded * 100 / p.plannedDownloads)) : null;
+  const label = labels[phase] || (phase === 'finalizing' ? 'Finishing backup' : phase === 'downloading' ? 'Downloading' : 'Preparing download');
+  return `<div class="status-download"><span>${label}${known ? `: ${number(downloaded)} / ${number(p.plannedDownloads)} (${percent}%)` : '...'}</span><progress max="100" ${known ? `value="${percent}"` : ''} aria-label="Download progress"></progress></div>`;
+}

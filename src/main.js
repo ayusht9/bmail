@@ -6,7 +6,7 @@ import { historyPane } from './history.js';
 import { createDashboardPoller } from './polling.js';
 import { statisticsPanel, coverageRows } from './statistics.js';
 import { folderNavigation, recentMailPane, mailboxFolders } from './desktop.js';
-import { progressPanel } from './progress.js';
+import { progressPanel, statusDownloadProgress } from './progress.js';
 import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, nextRuns, calendarMarkup, scheduleSummary, localDate, updateClock } from './scheduler.js';
 import { backupOptionsView, folderChoices, advancedFromForm } from './selection.js';
 
@@ -14,6 +14,7 @@ const app = document.querySelector('#app');
 let dashboard;
 let busy = false;
 let controlBusy = false;
+let activeExports = 0;
 let addingAccount = false;
 let selectedFolder = '';
 let folderFilter = '';
@@ -81,6 +82,15 @@ const dateFormatter = new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', ti
 const numberFormatter = new Intl.NumberFormat('en-IN');
 const formatDate = value => value ? dateFormatter.format(new Date(value)) : 'Never';
 const formatNumber = value => numberFormatter.format(value || 0);
+
+function statusBarContents() {
+  return `<span class="status-message">${busy ? busyAction === 'stats' ? 'Checking mailbox...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : 'Ready'}</span>${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span><span class="status-updates">Manual app updates</span>`;
+}
+
+function updateStatusBar() {
+  const footer = document.querySelector('.statusbar');
+  if (footer && dashboard) footer.innerHTML = statusBarContents();
+}
 
 function render() {
   if (!dashboard) {
@@ -150,7 +160,7 @@ function render() {
         ${workspaceTabs.map(([key]) => `<section id="view-${key}" role="tabpanel" aria-labelledby="tab-${key}" ${activeTab === key ? 'tabindex="0"' : 'hidden'}>${activeTab === key ? workspaceBody : ''}</section>`).join('')}
       </main>
     </div>
-    <footer class="statusbar"><span>${busy ? busyAction === 'stats' ? 'Checking mailbox and verifying saved files...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : 'Ready'}</span><span>Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span><span>Manual app updates</span></footer>
+    <footer class="statusbar">${statusBarContents()}</footer>
     <div id="toast" role="status"></div>
     <dialog id="mailbox-dialog" aria-labelledby="setup-title" aria-describedby="setup-description">
       <form id="mailbox-form">
@@ -204,6 +214,7 @@ async function refresh(background = false, force = false) {
     const next = await invoke('get_dashboard', { force });
     const unchanged = JSON.stringify(next) === JSON.stringify(dashboard);
     dashboard = next;
+    updateStatusBar();
     if (background && (unchanged || ['options','scheduler'].includes(activeTab) || document.querySelector('dialog[open]'))) return;
     captureTabDraft();
     const focusAction = document.activeElement?.dataset?.action;
@@ -281,10 +292,12 @@ app.addEventListener('click', event => {
   if (action === 'download-email' || action === 'download-folder') {
     if (button.disabled) return;
     button.disabled = true;
+    activeExports++;
+    updateStatusBar();
     invoke('export_mail', { folder: button.dataset.folder || null, file: button.dataset.file || null })
       .then(message => { if (message) toast(message); })
       .catch(error => toast(String(error), true))
-      .finally(() => { button.disabled = false; });
+      .finally(() => { activeExports--; updateStatusBar(); button.disabled = false; });
     return;
   }
   if (action === 'select-folder') { captureTabDraft(); rememberNavigation('mailbox', button.dataset.folder); selectedFolder = button.dataset.folder; activeTab = 'mailbox'; render(); return; }
