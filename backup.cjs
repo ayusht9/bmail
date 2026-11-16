@@ -101,10 +101,11 @@ function acquireLock(root) {
     const lock = readJson(filename);
     let alive = true;
     try { process.kill(lock.pid, 0); } catch (error) { if (error.code === 'ESRCH') alive = false; }
-    if (alive) throw new Error('A backup or verification is already running');
+    if (alive) throw Object.assign(new Error('A backup or verification is already running'), { code: 'BACKUP_BUSY' });
     fs.unlinkSync(filename);
   }
-  fs.writeFileSync(filename, JSON.stringify({ pid: process.pid }), { flag: 'wx' });
+  try { fs.writeFileSync(filename, JSON.stringify({ pid: process.pid }), { flag: 'wx' }); }
+  catch (error) { if (error.code === 'EEXIST') throw Object.assign(new Error('A backup or verification is already running'), { code: 'BACKUP_BUSY' }); throw error; }
   return () => fs.unlinkSync(filename);
 }
 function verify(root, manifest) {

@@ -153,3 +153,20 @@ test('Gmail rejects SMTP port 25 and repairs a saved wrong port without changing
     assert.ok(!corrupt.stderr.includes(secret));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+
+test('new-mail checks report a busy mailbox lock before connecting to the server', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-new-mail-busy-'));
+  try {
+    fs.mkdirSync(path.join(root, 'backups'));
+    fs.writeFileSync(path.join(root, 'backup-config.json'), JSON.stringify({ user: 'fixture@example.com', host: 'imap.example.com', port: 993, backupDirectory: 'backups' }));
+    fs.writeFileSync(path.join(root, 'backups', '.backup.lock'), JSON.stringify({ pid: process.pid }));
+    const result = spawnSync(process.execPath, [path.resolve('backup.cjs'), '--new-mail'], {
+      env: { ...process.env, MAIL_VAULT_DATA_DIR: root }, encoding: 'utf8', input: JSON.stringify({ user: 'fixture@example.com', password: 'fixture-test-secret' }), timeout: 10000,
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /BACKUP_BUSY/);
+    assert.doesNotMatch(result.stderr + result.stdout, /fixture-test-secret/);
+    assert.equal(fs.existsSync(path.join(root, 'backups', '.backup.lock')), true, 'The other process retains its lock');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

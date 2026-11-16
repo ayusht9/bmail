@@ -23,7 +23,7 @@ const assert = require('node:assert/strict');
     await page.addInitScript(() => {
       window.calls = []; window.exports = []; window.failExport = false;
       window.dashboardForces = [];
-      window.failCheck = false; window.newMailChecks = 0;
+      window.failCheck = false; window.newMailChecks = 0; window.newMailFailure = sessionStorage.getItem('fixture-new-mail-failure') || '';
       window.failSchedule = false;
       window.scheduleState = { installed: false, enabled: false, state: 'Not installed', settings: null, checkedAt: new Date().toISOString() };
       window.data = { user: 'fixture@example.com', accounts: ['fixture@example.com'], host: 'imap.gmail.com', port: 993,
@@ -47,7 +47,7 @@ const assert = require('node:assert/strict');
         if (name === 'save_backup_options') { window.savedOptions = args.options; window.data.backupOptions = args.options; return 'Backup options saved'; }
         if (name === 'test_notification') return 'Test notification requested';
         if (name === 'run_action') {
-          if (args.action === 'new-mail') { window.newMailChecks++; return JSON.stringify({ folders: [{ name: 'INBOX', newMessages: 2 }, { name: 'Sent', newMessages: 0 }, { name: 'New folder', newMessages: 1 }] }); }
+          if (args.action === 'new-mail') { window.newMailChecks++; if (window.newMailFailure) throw window.newMailFailure; return JSON.stringify({ folders: [{ name: 'INBOX', newMessages: 2 }, { name: 'Sent', newMessages: 0 }, { name: 'New folder', newMessages: 1 }] }); }
           if (args.action === 'folders') { window.data.mailboxes = { folders: ['INBOX','Sent','Archive','Drafts'] }; return 'Folders loaded'; }
           if (args.action !== 'stats') throw 'Unexpected action';
           if (window.failCheck) throw 'Connection failed';
@@ -449,6 +449,20 @@ const assert = require('node:assert/strict');
     assert.equal(await beforeFilter.evaluate(node => node.isConnected), true);
     console.log(`1,000-folder filter completed in ${Math.round(performance.now() - started)} ms without rebuilding the workspace.`);
     assert.equal(await page.evaluate(() => window.newMailChecks), 1, 'Polling and navigation do not repeat the startup check');
+    await page.evaluate(() => sessionStorage.setItem('fixture-new-mail-failure', 'NEW_MAIL_CHECK_BUSY'));
+    await page.reload();
+    await page.waitForFunction(() => window.newMailChecks === 1 && document.querySelector('.status-message')?.textContent === '');
+    assert.equal(await page.locator('.operation-error').count(), 0, 'Busy startup checks do not show a failure');
+    assert.equal(await page.locator('#toast').textContent(), '');
+    await page.evaluate(() => { window.newMailFailure = ''; document.dispatchEvent(new Event('visibilitychange')); });
+    assert.equal(await page.evaluate(() => window.newMailChecks), 1, 'Busy retries respect their cooldown');
+    await page.waitForFunction(() => window.newMailChecks === 2 && document.querySelector('.statusbar .new-mail-dot'));
+    await page.evaluate(() => sessionStorage.setItem('fixture-new-mail-failure', 'Connection timed out'));
+    await page.reload();
+    await page.locator('.operation-error').getByText('Connection timed out', { exact: true }).waitFor();
+    await page.evaluate(() => { window.newMailFailure = ''; sessionStorage.removeItem('fixture-new-mail-failure'); });
+    await page.locator('.operation-error').getByRole('button', { name: 'Retry', exact: true }).click();
+    await page.waitForFunction(() => window.newMailChecks === 2 && !document.querySelector('.operation-error') && document.querySelector('.statusbar .new-mail-dot'));
     assert.deepEqual(errors, []);
     assert.equal(await page.locator('.statusbar progress').count(), 0, 'Finished runs clear the status progress bar');
     console.log('Tabbed workspace passed: no duplicate panels, keyboard tabs, retained drafts, independent scheduled folders, calendar, retries, history, notifications and responsive layout.');
