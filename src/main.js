@@ -135,7 +135,7 @@ const formatDate = value => value ? dateFormatter.format(new Date(value)) : 'Nev
 const formatNumber = value => numberFormatter.format(value || 0);
 
 function statusBarContents() {
-  return `<span class="status-message">${busy ? busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Checking mailbox...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailDot([...mailIndicators().values()].reduce((sum, count) => sum + count, 0), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span><span class="status-updates">Manual app updates</span>`;
+  return `<span class="status-message">${busy ? busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Checking mailbox...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailDot([...mailIndicators().values()].reduce((sum, count) => sum + count, 0), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>`;
 }
 
 function updateStatusBar() {
