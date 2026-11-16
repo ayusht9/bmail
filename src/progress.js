@@ -20,7 +20,6 @@ export function progressPanel(dashboard, escapeHtml, formatNumber) {
   const percent = known ? p.state === 'completed' ? 100 : Math.min(100, Math.floor(p.processedMessages * 100 / Math.max(1, p.totalMessages))) : null;
   return `<section class="panel run-progress" aria-labelledby="progress-title">
     <div class="panel-head"><h2 id="progress-title">${labels[phase] || 'Backup progress'}</h2><span class="run-state">${active ? 'Live' : 'Finished'}</span></div>
-    ${active && fresh && p.runId ? controlButtons(p, dashboard.controlRequest, escapeHtml) : ''}
     <div class="progress-heading"><strong>${known ? `${formatNumber(p.processedMessages)} / ${formatNumber(p.totalMessages)} messages checked` : fresh && p.phase === 'checking' ? `Checked ${formatNumber(p.alreadyVerified)} saved emails` : active && !p ? `${formatNumber(dashboard.totalMessages)} messages saved so far` : 'Preparing your selected backup'}</strong><span>${percent == null ? '' : `${percent}%`}</span></div>
     <progress max="100" ${percent == null ? '' : `value="${percent}"`} aria-label="Backup progress"></progress>
     <p class="progress-detail">${escapeHtml(fresh && p.currentFolder || (phase === 'verifying' ? 'Checking the integrity of saved mail' : 'Completed emails remain on your computer'))}${fresh && p.currentMessageTotal ? ` · Current email ${formatBytes(p.currentMessageBytes)} / ${formatBytes(p.currentMessageTotal)}` : ''}</p>
@@ -32,16 +31,21 @@ export function progressPanel(dashboard, escapeHtml, formatNumber) {
   </section>`;
 }
 
-function controlButtons(p, request, escapeHtml) {
-  const pending = request?.runId === p.runId ? request.command : null;
-  const stopping = pending === 'stop' || pending === 'cancel' || p.state === 'stopping';
-  const paused = p.state === 'paused';
+export function backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml) {
+  const p = dashboard.progress;
+  const active = dashboard.backupRunning && p?.runId && !['completed', 'failed', 'stopped', 'cancelled'].includes(p.state);
+  const pending = active && dashboard.controlRequest?.runId === p.runId ? dashboard.controlRequest.command : null;
+  const paused = active && p.state === 'paused';
+  const stopping = pending === 'stop' || pending === 'cancel' || p?.state === 'stopping';
   const waiting = !paused && pending === 'pause' || paused && pending === 'resume';
-  return `<div class="progress-actions">
-    <button class="ghost" data-action="${paused ? 'resume' : 'pause'}" data-run-id="${escapeHtml(p.runId)}" ${stopping || waiting ? 'disabled' : ''}>${waiting ? paused ? 'Resuming...' : 'Pausing...' : paused ? 'Resume' : 'Pause'}</button>
-    <button class="ghost" data-action="stop" data-run-id="${escapeHtml(p.runId)}" ${stopping ? 'disabled' : ''} title="Finish the current email, then stop">${stopping ? 'Stopping...' : 'Stop after this email'}</button>
-    <button class="danger-button" data-action="cancel" data-run-id="${escapeHtml(p.runId)}" ${pending === 'cancel' ? 'disabled' : ''} title="Abort the current download; completed emails are kept">${pending === 'cancel' ? 'Cancelling...' : 'Cancel now'}</button>
-    </div><p class="muted">Pause holds the download. Stop finishes this email. Cancel discards its incomplete copy. Saved mail is kept.</p>`;
+  const disabled = busy || controlBusy || !active;
+  const runId = active ? escapeHtml(p.runId) : '';
+  return `<div class="backup-controls" role="group" aria-label="Backup controls">
+    <button class="primary" data-action="backup" ${busy || controlBusy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'backup' ? 'Starting...' : 'Start backup'}</button>
+    <button data-action="${paused ? 'resume' : 'pause'}" data-run-id="${runId}" aria-label="${paused ? 'Resume backup' : 'Pause backup'}" ${disabled || stopping || waiting ? 'disabled' : ''}>${waiting ? paused ? 'Resuming...' : 'Pausing...' : paused ? 'Resume' : 'Pause'}</button>
+    <button data-action="stop" data-run-id="${runId}" aria-label="Stop backup" title="Finish the current email, then stop" ${disabled || stopping ? 'disabled' : ''}>${stopping ? 'Stopping...' : 'Stop'}</button>
+    <button class="cancel-backup" data-action="cancel" data-run-id="${runId}" aria-label="Cancel backup" title="Cancel now; completed emails are kept" ${disabled || pending === 'cancel' ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
+  </div>`;
 }
 
 export function statusDownloadProgress(dashboard, number, exports = 0) {

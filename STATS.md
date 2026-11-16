@@ -113,3 +113,5 @@ The mail list shows the original Sent date and message Size, both sortable. Date
 Drag the divider at the sidebar edge to change the navigation width. Drag the horizontal divider between the mail list and reading pane to change their heights. Both support arrow keys (Shift for larger steps), double-click to reset, and persist on this device. Resize limits keep the mail area and reader usable in smaller windows.
 
 Tab title/account headers are hidden. Activity now contains only the full-width backup history table, with a resizable details pane underneath. Select a run by clicking its row or activating its date button with the keyboard; selection and result filters persist when switching tabs. The separate activity-log feed has been removed.
+
+Start, Pause/Resume, Stop, and Cancel controls live in the Backup tab alongside detailed run progress. Home keeps the compact status-bar progress. Controls remain visible when idle, with unavailable actions disabled, and prevent duplicate requests while a command is pending.
