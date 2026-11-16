@@ -28,21 +28,27 @@ export function folderNavigation(dashboard, selected, filter, escape, number, ne
     `<div class="folder-row" data-folder="${escape(name)}"><button class="folder-item ${selected === name ? 'selected' : ''}" data-action="select-folder" data-folder="${escape(name)}" aria-pressed="${selected === name}"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M2 5h6l2 2h8v9H2z"/></svg><span>${escape(name)}</span><small>${number(counts.get(name) || 0)}</small></button>${newMailDot(newMail.get(name), escape, name)}${downloadButton('download-folder', `data-folder="${escape(name)}"`, `Download ${name} (.zip)`, escape, !counts.get(name))}</div>`).join('');
 }
 
+export function mailSize(bytes = 0) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
 const mailCollator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
 export function sortMail(messages, sort) {
   const direction = sort.direction === 'asc' ? 1 : -1;
-  const value = message => sort.column === 'backedUpAt' ? Date.parse(message.backedUpAt) || 0 : String(message[sort.column] || (sort.column === 'subject' ? 'No subject' : sort.column === 'sender' ? 'Unknown sender' : ''));
+  const value = message => sort.column === 'sentAt' ? Date.parse(message.sentAt) || 0 : sort.column === 'bytes' ? Number(message.bytes) || 0 : String(message[sort.column] || (sort.column === 'subject' ? 'No subject' : sort.column === 'sender' ? 'Unknown sender' : ''));
   return [...messages].sort((a, b) => {
-    const result = sort.column === 'backedUpAt' ? value(a) - value(b) : mailCollator.compare(value(a), value(b));
+    const result = ['sentAt', 'bytes'].includes(sort.column) ? value(a) - value(b) : mailCollator.compare(value(a), value(b));
     return direction * result;
   });
 }
 
 export function savedMailPane(state, selected, sort, escape, date, selectedFile = '') {
   const messages = sortMail(state.rows, sort);
-  const headings = [['subject', 'Subject'], ['sender', 'From'], ['folder', 'Folder'], ['backedUpAt', 'Saved']];
+  const headings = [['subject', 'Subject'], ['sender', 'From'], ['folder', 'Folder'], ['sentAt', 'Sent'], ['bytes', 'Size']];
   const header = headings.map(([key, label], index) => `<th ${sort.column === key ? `aria-sort="${sort.direction === 'asc' ? 'ascending' : 'descending'}"` : ''}><button type="button" data-action="sort-mail" data-column="${key}" title="Sort by ${label.toLowerCase()} ${sort.column === key && sort.direction === 'asc' ? 'descending' : 'ascending'}">${label}<span aria-hidden="true">${sort.column === key ? sort.direction === 'asc' ? '&#8593;' : '&#8595;' : '&#8597;'}</span></button>${columnHandle('mail', index, label)}</th>`).join('');
-  const rows = messages.map(message => `<tr class="${message.file === selectedFile ? 'selected' : ''}" data-action="select-message" data-file="${escape(message.file || '')}"><td><button class="mail-subject" data-action="select-message" data-file="${escape(message.file || '')}" title="${escape(message.subject || 'No subject')}">${escape(message.subject || 'No subject')}</button></td><td>${escape(message.sender || 'Unknown sender')}</td><td>${escape(message.folder)}</td><td class="row-actions"><span>${date(message.backedUpAt)}</span>${downloadButton('download-email', `data-file="${escape(message.file || '')}"`, `Download ${message.subject || 'email'} (.eml)`, escape, !message.file)}</td></tr>`).join('');
+  const rows = messages.map(message => `<tr class="${message.backedUp ? 'backed-up' : ''} ${message.file === selectedFile ? 'selected' : ''}" data-action="select-message" data-file="${escape(message.file || '')}"><td><button class="mail-subject" data-action="select-message" data-file="${escape(message.file || '')}" title="${escape(message.subject || 'No subject')}">${escape(message.subject || 'No subject')}</button></td><td>${escape(message.sender || 'Unknown sender')}</td><td>${escape(message.folder)}</td><td>${message.sentAt ? date(message.sentAt) : 'Unknown'}</td><td class="row-actions"><span>${mailSize(message.bytes)}</span>${downloadButton('download-email', `data-file="${escape(message.file || '')}"`, `Download ${message.subject || 'email'} (.eml)`, escape, !message.file)}</td></tr>`).join('');
   return `<section class="mail-pane" aria-label="Saved mail" aria-busy="${state.loading}">
     ${state.loading ? '<p class="empty-pane">Loading saved emails...</p>' : state.error ? `<p class="empty-pane" role="alert">${escape(state.error)} <button data-action="retry-mail">Retry</button></p>` : rows ? `<div class="table-wrap">${tableStart('mail', 'mail-table')}<thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty-pane">No saved emails in this folder yet.</p>'}
 </section>`;

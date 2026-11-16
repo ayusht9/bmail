@@ -1,6 +1,6 @@
-const defaults = { mail: [280, 200, 150, 230], folders: [260, 130, 130, 170] };
+const defaults = { mail: [280, 200, 150, 190, 112], folders: [260, 130, 130, 170] };
 const layouts = new Map();
-const minimum = index => index === 3 ? 112 : 72;
+const minimum = index => index >= 3 ? 112 : 72;
 const clamp = (width, index) => Math.round(Math.min(1200, Math.max(minimum(index), width)));
 let dragging = null;
 export const columnResizeActive = () => Boolean(dragging);
@@ -8,8 +8,8 @@ export const columnResizeActive = () => Boolean(dragging);
 function widthsFor(id) {
   if (!layouts.has(id)) {
     let saved;
-    try { saved = JSON.parse(localStorage.getItem(`bmail-columns-${id}`)); } catch { /* Use defaults when storage is unavailable. */ }
-    layouts.set(id, Array.isArray(saved) && [4, 5].includes(saved.length) && saved.every(Number.isFinite) ? saved.slice(0, 4).map(clamp) : null);
+    try { saved = JSON.parse(localStorage.getItem(`bmail-columns-${id}${id === 'mail' ? '-sent-size' : ''}`)); } catch { /* Use defaults when storage is unavailable. */ }
+    layouts.set(id, Array.isArray(saved) && saved.length === defaults[id].length && saved.every(Number.isFinite) ? saved.map(clamp) : null);
   }
   return layouts.get(id);
 }
@@ -69,7 +69,7 @@ function currentWidths(table) {
 function saveWidths(table, widths) {
   const id = table.dataset.resizeTable;
   layouts.set(id, widths);
-  try { localStorage.setItem(`bmail-columns-${id}`, JSON.stringify(widths)); } catch { /* Keep this session's widths. */ }
+  try { localStorage.setItem(`bmail-columns-${id}${id === 'mail' ? '-sent-size' : ''}`, JSON.stringify(widths)); } catch { /* Keep this session's widths. */ }
 }
 
 function fitColumn(table, index) {

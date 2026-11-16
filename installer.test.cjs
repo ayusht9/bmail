@@ -191,3 +191,31 @@ test('email reader decodes multipart saved mail and rejects unsaved or external 
     await assert.rejects(readSavedMail(root, outside), /Invalid saved email path/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); fs.rmSync(outside, { force: true }); }
 });
+
+
+test('saved mail lists original sent dates and sizes for old backups and marks only intact copies', async () => {
+  const { listSavedMail } = require('./read-mail.cjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-mail-metadata-'));
+  try {
+    const source = Buffer.from('Date: Tue, 02 Jan 2024 12:30:00 +0530\r\nSubject: Old email\r\n\r\nMessage');
+    fs.writeFileSync(path.join(root, 'old.eml'), source);
+    fs.writeFileSync(path.join(root, 'undated.eml'), 'Subject: No date\r\n\r\nBody');
+    fs.writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({ folders: { inbox: { name: 'INBOX', messages: {
+      1: { file: 'old.eml', bytes: source.length, backedUpAt: '2026-11-17T00:00:00Z' },
+      2: { file: 'missing.eml', bytes: 500 }, 3: { file: 'undated.eml' }, 4: { file: 'partial.eml', complete: false }
+    } } } }));
+    let rows = await listSavedMail(root, 'INBOX');
+    assert.equal(rows.length, 3);
+    assert.equal(rows[0].sentAt, '2024-01-02T07:00:00.000Z');
+    assert.equal(rows[0].bytes, source.length);
+    assert.equal(rows[0].backedUp, true);
+    assert.equal(rows[1].backedUp, false);
+    assert.equal(rows[2].sentAt, null, 'No backup time is substituted for a missing Date header');
+    assert.deepEqual(await listSavedMail(root, 'Other'), []);
+    assert.deepEqual(await listSavedMail(root, 'INBOX'), rows, 'Cached metadata preserves original dates');
+    fs.writeFileSync(path.join(root, 'old.eml'), 'Date: Tue, 03 Jan 2023 00:00:00 +0000\r\n\r\nChanged');
+    rows = await listSavedMail(root, 'INBOX');
+    assert.equal(rows[0].sentAt, '2023-01-03T00:00:00.000Z');
+    assert.equal(rows[0].backedUp, false, 'A size mismatch is not marked as an intact backup');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

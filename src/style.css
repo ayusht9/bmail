@@ -1041,3 +1041,7 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .status-folder { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .statusbar { gap: 12px; }
 @media(max-width: 1050px) { .statusbar:has(.status-download) .status-schedule { display: none; } }
+
+.mail-table tbody tr.backed-up { background: var(--sidebar); }
+.mail-table tbody tr.backed-up:hover { background: var(--hover); }
+.mail-table tbody tr.selected, .mail-table tbody tr.selected:hover { background: var(--selected); }
