@@ -41,6 +41,5 @@ export function statisticsPanel(dashboard, escape, number, date) {
     <dl class="check-dates"><div><dt>Mailbox checked</dt><dd>${snapshot ? date(snapshot.checkedAt) : 'Not checked'}</dd></div>
       <div><dt>Last full backup confirmed</dt><dd>${snapshot?.lastFullBackupAt ? date(snapshot.lastFullBackupAt) : 'Not confirmed'}</dd></div>
       <div><dt>New mail compared with</dt><dd>${snapshot?.previousCheckedAt ? date(snapshot.previousCheckedAt) : 'Requires two checks'}</dd></div></dl>
-    <details class="coverage-help"><summary>About these counts</summary><p>Counts include each folder copy, including Gmail labels. Local totals come from saved records; Check mailbox verifies files. Missing or damaged copies are counted as remaining. Mail arriving during or after a check may not be included. Selections and download limits can leave the full mailbox incomplete.</p></details>
   </section>`;
 }

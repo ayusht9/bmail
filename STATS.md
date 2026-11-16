@@ -1,9 +1,9 @@
 # Backup statistics
 
-The desktop workspace has an account and folder sidebar and six tabs: Mailbox,
-Overview, Backup options, Scheduler, Activity and Preferences. Mailbox shows
+The desktop workspace has an account and folder sidebar and six tabs: Home,
+Backup, Overview, Scheduler, Activity and Preferences. Home shows
 every saved email in the selected folder above a reading pane; Overview shows account statistics. Select a
-folder to open Mailbox and narrow its tables; use Filter folders to find a name.
+folder to open Home and narrow its tables; use Filter folders to find a name.
 Mailbox-check failures remain visible with diagnostic details and Retry until
 dismissed or successfully retried. Activity contains backup history and the latest activity log.
 
@@ -87,7 +87,7 @@ of mailbox settings. Changing appearance does not call the mail provider.
 Folder search updates folder navigation and coverage rows without rebuilding the
 workspace or discarding form edits. Folder names are cached for unchanged source
 lists, date/number formatters are reused, and folder coverage is generated only
-when the Mailbox tab is displayed. The calendar updates its date highlights only
+when the Home tab is displayed. The calendar updates its date highlights only
 when the day changes or a new calendar is rendered.
 
 Activity combines backup run history and details with the latest activity log. The latest log is independent of the selected historical run. Each section keeps its own filter.
