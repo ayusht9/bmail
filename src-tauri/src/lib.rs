@@ -5,6 +5,8 @@ use std::{fs, path::{Path, PathBuf}, process::Command};
 use tauri::Manager;
 mod profile;
 mod cache;
+mod export;
+mod mail;
 use std::sync::Mutex;
 
 #[derive(Default)]
@@ -184,7 +186,7 @@ fn local_statistics(manifest: Option<&Value>) -> Value {
                     size += record.get("bytes").and_then(Value::as_u64).unwrap_or(0);
                     if let Some(saved_at) = record.get("backedUpAt").and_then(Value::as_str) {
                         if recent.len() == 10 && recent.last().and_then(|item| item["backedUpAt"].as_str()).is_some_and(|oldest| saved_at <= oldest) { continue; }
-                        recent.push(serde_json::json!({"folder": name, "subject": record.get("subject"), "sender": record.get("sender"), "backedUpAt": record.get("backedUpAt")}));
+                        recent.push(serde_json::json!({"folder": name, "file": record.get("file"), "subject": record.get("subject"), "sender": record.get("sender"), "backedUpAt": record.get("backedUpAt")}));
                         recent.sort_by(|a, b| b["backedUpAt"].as_str().cmp(&a["backedUpAt"].as_str()));
                         recent.truncate(10);
                     }
@@ -496,24 +498,28 @@ fn control_backup(app: tauri::AppHandle, command: String, run_id: String, proces
     }.into())
 }
 
+fn new_mail_check_busy(stdout: &str, stderr: &str) -> bool {
+    [stdout, stderr].iter().any(|text| text.contains("BACKUP_BUSY") || text.contains("A backup or verification is already running"))
+}
+
 #[tauri::command]
 async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let root = data_root(&app)?;
         let engine = engine_root(&app)?;
-        if ["backup", "verify", "folders", "stats"].contains(&action.as_str()) && active_backup(&backup_root(&root)) {
-            return Err("A backup is already active. Pause, stop, or wait for it to finish first.".into());
+        if ["backup", "verify", "folders", "stats", "new-mail"].contains(&action.as_str()) && active_backup(&backup_root(&root)) {
+            return Err(if action == "new-mail" { "NEW_MAIL_CHECK_BUSY" } else { "A backup is already active. Pause, stop, or wait for it to finish first." }.into());
         }
         let (program, output) = match action.as_str() {
             "backup" => ("Backup", powershell(&engine, &root, "Run-Backup.ps1")?),
             "schedule" => ("Schedule", powershell(&engine, &root, "Install-BackupSchedule.ps1")?),
-            "folders" | "stats" => ("Mailbox check", {
+            "folders" | "stats" | "new-mail" => ("Mailbox check", {
                 if active_backup(&backup_root(&root)) {
-                    return Err("Wait for the current backup to finish before reloading folders.".into());
+                    return Err(if action == "new-mail" { "NEW_MAIL_CHECK_BUSY" } else { "Wait for the current backup to finish before reloading folders." }.into());
                 }
                 hidden_command("powershell.exe").current_dir(&root).env("MAIL_VAULT_DATA_DIR", &root)
                     .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
-                    .arg(engine.join("Run-Backup.ps1")).args(["-Mode", if action == "stats" { "Stats" } else { "Folders" }]).output().map_err(|e| e.to_string())?
+                    .arg(engine.join("Run-Backup.ps1")).args(["-Mode", if action == "new-mail" { "NewMail" } else if action == "stats" { "Stats" } else { "Folders" }]).output().map_err(|e| e.to_string())?
             }),
             "verify" => ("Verification", hidden_command(engine.join("node.exe")).current_dir(&root)
                 .env("MAIL_VAULT_DATA_DIR", &root).arg(engine.join("backup.cjs")).arg("--verify")
@@ -522,7 +528,12 @@ async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, Str
         };
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        if action == "new-mail" && !output.status.success() && new_mail_check_busy(&stdout, &stderr) { return Err("NEW_MAIL_CHECK_BUSY".into()); }
         if output.status.success() {
+            if action == "new-mail" {
+                let snapshot = read_json(&backup_root(&root).join("new-mail-status.json")).ok_or("Mailbox check produced no result.")?;
+                return Ok(serde_json::json!({"checkedAt": snapshot["checkedAt"], "folders": snapshot["folders"].as_array().map(|folders| folders.iter().map(|folder| serde_json::json!({"name": folder["name"], "newMessages": folder["newMessages"]})).collect::<Vec<_>>()).unwrap_or_default()}).to_string());
+            }
             if action == "schedule" {
                 let cache = app.state::<cache::DashboardCache>();
                 if let Ok(mut cache) = cache.0.lock() { cache.invalidate_schedule(&root); };
@@ -561,7 +572,7 @@ pub fn run() {
         .manage(BackupProcess::default())
         .manage(cache::DashboardCache::default())
         .setup(|app| { initialize_profiles(app.handle()).map_err(std::io::Error::other)?; Ok(()) })
-        .invoke_handler(tauri::generate_handler![get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
+        .invoke_handler(tauri::generate_handler![mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }
@@ -569,6 +580,14 @@ pub fn run() {
 #[cfg(test)]
 mod dashboard_tests {
     use super::*;
+
+    #[test]
+    fn new_mail_contention_is_distinct_from_connection_failures() {
+        assert!(new_mail_check_busy("", r#"{"code":"BACKUP_BUSY"}"#));
+        assert!(new_mail_check_busy("A backup or verification is already running", ""));
+        assert!(!new_mail_check_busy("", "Authentication rejected"));
+        assert!(!new_mail_check_busy("", "Connection timed out"));
+    }
 
     #[test]
     fn advanced_options_deserialize_the_ui_field_names() {

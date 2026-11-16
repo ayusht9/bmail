@@ -6,7 +6,7 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const { digest } = require('./backup.cjs');
 
-test('Stats mode launches Node through the real PowerShell helper and preserves diagnostics', { skip: process.platform !== 'win32' }, () => {
+test('Stats and NewMail modes launch Node through the real PowerShell helper and preserves diagnostics', { skip: process.platform !== 'win32' }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-stats-launch-'));
   const engine = path.join(root, 'Engine with spaces');
   const data = path.join(root, 'Account data');
@@ -22,20 +22,23 @@ test('Stats mode launches Node through the real PowerShell helper and preserves 
       (async () => {
         let input = ''; for await (const chunk of process.stdin) input += chunk;
         const credentials = JSON.parse(input.replace(/^\\uFEFF/, ''));
-        if (process.argv[2] !== '--check-mailbox' || credentials.user !== 'fixture@example.com' || !credentials.password) process.exit(9);
+        if (process.argv[2] !== (process.env.EXPECT_NEW_MAIL ? '--new-mail' : '--check-mailbox') || credentials.user !== 'fixture@example.com' || !credentials.password) process.exit(9);
         if (process.env.STATS_TEST_FAIL) { console.error('Fixture mailbox connection failed'); process.exit(7); }
         console.log('Mailbox checked through native launcher');
       })();
     `);
-    const run = extra => spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(engine, 'Run-Backup.ps1'), '-Mode', 'Stats'],
+    const run = (extra, mode = 'Stats') => spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(engine, 'Run-Backup.ps1'), '-Mode', mode],
       { env: { ...env, ...extra }, encoding: 'utf8', windowsHide: true, timeout: 30000 });
     const checked = run({});
     assert.equal(checked.status, 0, checked.stderr || checked.stdout);
     assert.match(checked.stdout, /Mailbox checked through native launcher/);
+    const newMail = run({ EXPECT_NEW_MAIL: '1' }, 'NewMail');
+    assert.equal(newMail.status, 0, newMail.stderr || newMail.stdout);
+    assert.match(newMail.stdout, /Mailbox checked through native launcher/);
     const failed = run({ STATS_TEST_FAIL: '1' });
     assert.equal(failed.status, 7, failed.stderr || failed.stdout);
     assert.match(failed.stdout, /Fixture mailbox connection failed/);
-    assert.ok(![checked.stdout, checked.stderr, failed.stdout, failed.stderr].join('').includes(secret));
+    assert.ok(![checked.stdout, checked.stderr, newMail.stdout, newMail.stderr, failed.stdout, failed.stderr].join('').includes(secret));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -148,5 +151,71 @@ test('Gmail rejects SMTP port 25 and repairs a saved wrong port without changing
     assert.equal(JSON.parse(corrupt.stdout).errorCode, 'CONFIG_UNREADABLE');
     assert.ok(!corrupt.stdout.includes(secret));
     assert.ok(!corrupt.stderr.includes(secret));
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test('new-mail checks report a busy mailbox lock before connecting to the server', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-new-mail-busy-'));
+  try {
+    fs.mkdirSync(path.join(root, 'backups'));
+    fs.writeFileSync(path.join(root, 'backup-config.json'), JSON.stringify({ user: 'fixture@example.com', host: 'imap.example.com', port: 993, backupDirectory: 'backups' }));
+    fs.writeFileSync(path.join(root, 'backups', '.backup.lock'), JSON.stringify({ pid: process.pid }));
+    const result = spawnSync(process.execPath, [path.resolve('backup.cjs'), '--new-mail'], {
+      env: { ...process.env, MAIL_VAULT_DATA_DIR: root }, encoding: 'utf8', input: JSON.stringify({ user: 'fixture@example.com', password: 'fixture-test-secret' }), timeout: 10000,
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /BACKUP_BUSY/);
+    assert.doesNotMatch(result.stderr + result.stdout, /fixture-test-secret/);
+    assert.equal(fs.existsSync(path.join(root, 'backups', '.backup.lock')), true, 'The other process retains its lock');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test('email reader decodes multipart saved mail and rejects unsaved or external paths', async () => {
+  const { readSavedMail } = require('./read-mail.cjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-reader-'));
+  const outside = root + '.eml';
+  try {
+    const source = 'From: =?UTF-8?B?U2VuZGVy?= <sender@example.com>\r\nTo: reader@example.com\r\nSubject: =?UTF-8?B?SGVsbG8gw6k=?=\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary="parts"\r\n\r\n--parts\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\nHello =C3=A9\r\n--parts\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\nPHA+SGVsbG8gw6k8L3A+\r\n--parts--\r\n';
+    fs.writeFileSync(path.join(root, 'saved.eml'), source);
+    const manifest = { folders: { inbox: { messages: { 1: { file: 'saved.eml', complete: true }, 2: { file: 'partial.eml', complete: false }, 3: { file: outside } } } } };
+    fs.writeFileSync(path.join(root, 'manifest.json'), JSON.stringify(manifest));
+    const mail = await readSavedMail(root, 'saved.eml');
+    assert.equal(mail.subject, 'Hello \u00e9');
+    assert.match(mail.text, /Hello \u00e9/);
+    assert.match(mail.html, /<p>Hello \u00e9<\/p>/);
+    await assert.rejects(readSavedMail(root, 'partial.eml'), /not in the saved mailbox/);
+    await assert.rejects(readSavedMail(root, 'unknown.eml'), /not in the saved mailbox/);
+    fs.writeFileSync(outside, 'Private data');
+    await assert.rejects(readSavedMail(root, outside), /Invalid saved email path/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); fs.rmSync(outside, { force: true }); }
+});
+
+
+test('saved mail lists original sent dates and sizes for old backups and marks only intact copies', async () => {
+  const { listSavedMail } = require('./read-mail.cjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-mail-metadata-'));
+  try {
+    const source = Buffer.from('Date: Tue, 02 Jan 2024 12:30:00 +0530\r\nSubject: Old email\r\n\r\nMessage');
+    fs.writeFileSync(path.join(root, 'old.eml'), source);
+    fs.writeFileSync(path.join(root, 'undated.eml'), 'Subject: No date\r\n\r\nBody');
+    fs.writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({ folders: { inbox: { name: 'INBOX', messages: {
+      1: { file: 'old.eml', bytes: source.length, backedUpAt: '2026-11-17T00:00:00Z' },
+      2: { file: 'missing.eml', bytes: 500 }, 3: { file: 'undated.eml' }, 4: { file: 'partial.eml', complete: false }
+    } } } }));
+    let rows = await listSavedMail(root, 'INBOX');
+    assert.equal(rows.length, 3);
+    assert.equal(rows[0].sentAt, '2024-01-02T07:00:00.000Z');
+    assert.equal(rows[0].bytes, source.length);
+    assert.equal(rows[0].backedUp, true);
+    assert.equal(rows[1].backedUp, false);
+    assert.equal(rows[2].sentAt, null, 'No backup time is substituted for a missing Date header');
+    assert.deepEqual(await listSavedMail(root, 'Other'), []);
+    assert.deepEqual(await listSavedMail(root, 'INBOX'), rows, 'Cached metadata preserves original dates');
+    fs.writeFileSync(path.join(root, 'old.eml'), 'Date: Tue, 03 Jan 2023 00:00:00 +0000\r\n\r\nChanged');
+    rows = await listSavedMail(root, 'INBOX');
+    assert.equal(rows[0].sentAt, '2023-01-03T00:00:00.000Z');
+    assert.equal(rows[0].backedUp, false, 'A size mismatch is not marked as an intact backup');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

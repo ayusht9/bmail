@@ -1,11 +1,11 @@
 # Backup statistics
 
-The desktop workspace has an account and folder sidebar and seven tabs: Mailbox,
-Overview, Backup options, Scheduler, History, Activity and Preferences. Mailbox shows folder
-coverage and recent saved records; Overview shows account statistics. Select a
-folder to open Mailbox and narrow its tables; use Filter folders to find a name.
+The desktop workspace has an account and folder sidebar and five tabs: Home,
+Backup, Scheduler, Activity and Preferences. Home shows
+every saved email in the selected folder above a reading pane. Select a
+folder to open Home and narrow its tables; use Filter folders to find a name.
 Mailbox-check failures remain visible with diagnostic details and Retry until
-dismissed or successfully retried. Activity log has its own tab.
+dismissed or successfully retried. Activity contains backup history and selected run details.
 
 ## Per-account caching
 
@@ -41,7 +41,7 @@ Windows incremental-cache permission warning recurs.
 ## Coverage and new mail
 
 The dashboard shows the active account's saved message count, recorded email
-bytes, downloads in the last run, recent saved mail, and per-folder coverage.
+bytes, downloads in the last run, saved mail, and per-folder coverage.
 Totals count each saved folder copy; Gmail labels may contain the same email in
 several folders. Retained messages from deleted server mail or older UIDVALIDITY
 generations remain included in local totals.
@@ -87,5 +87,31 @@ of mailbox settings. Changing appearance does not call the mail provider.
 Folder search updates folder navigation and coverage rows without rebuilding the
 workspace or discarding form edits. Folder names are cached for unchanged source
 lists, date/number formatters are reused, and folder coverage is generated only
-when the Mailbox tab is displayed. The calendar updates its date highlights only
+when the Home tab is displayed. The calendar updates its date highlights only
 when the day changes or a new calendar is rendered.
+
+Activity shows backup run history as a table with selected run details below it. Use the result filter to narrow the table.
+
+On startup, Bmail checks each configured account once when opened, after any active backup finishes. A small dot in the status bar and beside affected folders indicates new emails since the previous check. Hover over a dot for the count. The first check establishes a baseline; reset folder identifiers also establish a fresh baseline. Startup checks compare server message IDs without downloading mail or verifying local files. Use Check mailbox to refresh the indicators manually.
+
+Saved mail loads on demand for the selected folder (or all folders) without the dashboard summary's ten-record limit. Subject, From, Folder, and Saved column headings toggle ascending/descending sorting; the active column shows an arrow. The list includes complete saved records from every UID generation and retains individual email downloads.
+
+The folder and mail tables begin directly with column headers. Drag a header edge to resize its column, or focus the divider and press Left/Right (Shift for larger steps). Column widths are saved on this device and survive sorting, navigation, and restarts.
+
+Tables always fill the available width, including after columns are narrowed or the window grows. Double-click a column divider to fit the widest saved value or heading within the available space; width is redistributed among neighboring columns so every column stays inside the table container.
+
+Dragging, keyboard resizing, and auto-fit preserve the visible table width. Other columns retain a minimum usable width; a column stops expanding when no more space is available. Both tables fit the window without horizontal scrolling.
+
+Download icons are fixed row actions inside the last data cell, with no separate download column or resize handle. The idle status text and saved-mail sorting hint are hidden.
+
+If another backup, verification, or mail check owns the mailbox lock at startup, the new-mail check waits and retries after a short cooldown. It does not show a failure for this temporary busy state. Other startup failures show diagnostic details and a Retry button.
+
+The mailbox view opens directly on the email list, with a reading pane below for the selected saved message. Folder counts (saved, on server, remaining) appear in the status bar instead of a coverage table. Messages are decoded locally; HTML is sanitized and sandboxed, with scripts and remote resources blocked. Folder downloads remain in the sidebar.
+
+The mail list shows the original Sent date and message Size, both sortable. Dates for older backups are read from their saved Date headers and cached locally; absent dates show Unknown. Complete records whose local file still exists at the recorded size have a faded row background. Selection keeps its stronger highlight.
+
+Drag the divider at the sidebar edge to change the navigation width. Drag the horizontal divider between the mail list and reading pane to change their heights. Both support arrow keys (Shift for larger steps), double-click to reset, and persist on this device. Resize limits keep the mail area and reader usable in smaller windows.
+
+Tab title/account headers are hidden. Activity now contains only the full-width backup history table, with a resizable details pane underneath. Select a run by clicking its row or activating its date button with the keyboard; selection and result filters persist when switching tabs. The separate activity-log feed has been removed.
+
+Start, Pause/Resume, Stop, and Cancel controls live in the Backup tab alongside detailed run progress. Home keeps the compact status-bar progress. Controls remain visible when idle, with unavailable actions disabled, and prevent duplicate requests while a command is pending.

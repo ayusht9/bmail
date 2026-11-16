@@ -53,6 +53,7 @@ function messageLocation(folderName, key, uid, source, internalDate) {
   const sender = (/<([^<>]+)>/.exec(from)?.[1] || from).trim() || 'Unknown sender';
   const dateHeader = /^Date:[ \t]*(.*)$/im.exec(headers)?.[1];
   let date = new Date(dateHeader || NaN);
+  const sentAt = Number.isFinite(date.getTime()) ? date.toISOString() : null;
   if (!Number.isFinite(date.getTime())) date = new Date(internalDate || NaN);
   const dateText = Number.isFinite(date.getTime())
     ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
@@ -60,7 +61,7 @@ function messageLocation(folderName, key, uid, source, internalDate) {
   const month = dateText === 'Unknown-date' ? 'Unknown-month' : dateText.slice(0, 7);
   const folder = safeName(folderName, 30) + '__' + key.slice(0, 12) + '-' + key.split('-').at(-1);
   return { file: path.join('messages', folder, month,
-    dateText + '_' + safeName(sender, 45) + '_' + safeName(subject, 70) + '__' + uid + '.eml'), subject, sender };
+    dateText + '_' + safeName(sender, 45) + '_' + safeName(subject, 70) + '__' + uid + '.eml'), subject, sender, sentAt };
 }
 function organize(root, manifest) {
   let moved = 0;
@@ -101,10 +102,11 @@ function acquireLock(root) {
     const lock = readJson(filename);
     let alive = true;
     try { process.kill(lock.pid, 0); } catch (error) { if (error.code === 'ESRCH') alive = false; }
-    if (alive) throw new Error('A backup or verification is already running');
+    if (alive) throw Object.assign(new Error('A backup or verification is already running'), { code: 'BACKUP_BUSY' });
     fs.unlinkSync(filename);
   }
-  fs.writeFileSync(filename, JSON.stringify({ pid: process.pid }), { flag: 'wx' });
+  try { fs.writeFileSync(filename, JSON.stringify({ pid: process.pid }), { flag: 'wx' }); }
+  catch (error) { if (error.code === 'EEXIST') throw Object.assign(new Error('A backup or verification is already running'), { code: 'BACKUP_BUSY' }); throw error; }
   return () => fs.unlinkSync(filename);
 }
 function verify(root, manifest) {
@@ -282,7 +284,7 @@ async function backup(client, root, config, log = console.log, context = {}) {
           const relative = location.file;
           const record = { file: relative, bytes: message.source.length, sha256: digest(message.source),
             subject: location.subject,
-            sender: location.sender,
+            sender: location.sender, sentAt: location.sentAt,
             complete: true, downloadMode: 'partial-fetch-with-eof', reportedSize: message.reportedSize,
             internalDate: message.internalDate ? new Date(message.internalDate).toISOString() : null,
             flags: [...(message.flags || [])], backedUpAt: new Date().toISOString() };
@@ -439,12 +441,17 @@ async function main() {
     });
     return client;
   };
-  if (process.argv.includes('--check-mailbox') || process.argv.includes('--list-folders')) {
+  if (process.argv.includes('--check-mailbox') || process.argv.includes('--new-mail') || process.argv.includes('--list-folders')) {
     fs.mkdirSync(root, { recursive: true });
     const release = acquireLock(root);
     const client = makeClient();
     try {
       await client.connect();
+      if (process.argv.includes('--new-mail')) {
+        await checkMailbox(client, root, null, { readJson, atomicWrite, newMailOnly: true });
+        console.log('New mail check complete.');
+        return;
+      }
       if (process.argv.includes('--check-mailbox')) {
         const manifest = readJson(path.join(root, 'manifest.json'), null);
         if (manifest && (manifest.user !== config.user || manifest.host !== config.host)) throw new Error('Backup identity does not match configuration');

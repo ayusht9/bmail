@@ -19,7 +19,8 @@
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",
     "imapflow": "^2.10.0",
-    "libmime": "^5.6.3"
+    "libmime": "^5.6.3",
+    "mailparser": "^3.14.5"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.4",

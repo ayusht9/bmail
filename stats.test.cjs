@@ -63,7 +63,7 @@ test('full coverage checks every UID and folder, detects new mail, corruption an
 
 test('coverage UI keeps unknown, partial, full and active backups distinct and escapes recent mail', async () => {
   const { backupCoverage, coverageRows, statisticsPanel, formatBytes } = await import('./src/statistics.js');
-  const { recentMailPane, folderNavigation } = await import('./src/desktop.js');
+  const { savedMailPane, folderNavigation } = await import('./src/desktop.js');
   assert.match(backupCoverage({}).title, /not checked/);
   assert.match(backupCoverage({ mailboxStatus: { complete: false } }).title, /incomplete/);
   assert.equal(backupCoverage({ mailboxStatus: { complete: true } }).complete, true);
@@ -74,10 +74,56 @@ test('coverage UI keeps unknown, partial, full and active backups distinct and e
     mailboxStatus: { complete: false, totalServerMessages: 3, savedMessages: 2, missingMessages: 1, newMessages: 1, checkedAt: 'date', previousCheckedAt: 'earlier' } };
   const html = statisticsPanel(dashboard, escape, String, String, false);
   assert.match(html, /value="66"/);
-  const recent = recentMailPane(dashboard, '', escape, String);
+  const recent = savedMailPane({ rows: dashboard.localStats.recent, loading: false }, '', { column: 'subject', direction: 'asc' }, escape, String);
   assert.match(recent, /&lt;script>/);
   assert.doesNotMatch(recent, /<script>/);
   assert.match(coverageRows(dashboard, escape, String), /&lt;Inbox>/);
   assert.match(folderNavigation(dashboard, '<Inbox>', '', escape, String), /aria-pressed="true"/);
   assert.equal(folderNavigation(dashboard, '', 'Sent', escape, String), '');
+});
+
+
+test('startup new-mail check compares folder IDs without validating files or replacing coverage', async () => {
+  const files = new Map();
+  let inbox = [1, 2];
+  let validity = 1;
+  const client = {
+    mailbox: { get uidValidity() { return validity; } },
+    list: async () => [{ path: 'INBOX', flags: new Set() }, { path: 'Sent', flags: new Set() }],
+    getMailboxLock: async (folder, options) => { assert.equal(options.readOnly, true); client.folder = folder; return { release() {} }; },
+    search: async () => client.folder === 'INBOX' ? inbox : [1],
+  };
+  const root = path.join(os.tmpdir(), 'bmail-new-mail-test');
+  const options = { readJson: (name, fallback) => files.get(name) || fallback, atomicWrite: (name, data) => files.set(name, JSON.parse(data)),
+    validateRecord: () => { throw new Error('Startup must not read saved emails'); }, newMailOnly: true };
+  let result = await checkMailbox(client, root, null, options);
+  assert.equal(result.folders[0].newMessages, null);
+  inbox = [1, 2, 3];
+  result = await checkMailbox(client, root, null, options);
+  assert.equal(result.folders[0].newMessages, 1);
+  assert.equal(result.folders[1].newMessages, 0);
+  assert.equal(files.has(path.join(root, 'mailbox-status.json')), false);
+  validity = 2;
+  result = await checkMailbox(client, root, null, options);
+  assert.equal(result.folders[0].newMessages, null, 'A changed UID validity establishes a fresh baseline');
+  assert.equal(result.folders[1].newMessages, null);
+  files.set(path.join(root, 'mailbox-status.json'), { checkedAt: '9999-01-01', folders: [{ name: 'INBOX', uidValidity: '2', uids: [1, 2] }, { name: 'Sent', uidValidity: '2', uids: [1] }] });
+  result = await checkMailbox(client, root, null, options);
+  assert.equal(result.folders[0].newMessages, 1, 'A newer manual mailbox check provides the baseline');
+});
+
+
+test('column resizing redistributes available width without hiding other columns', async () => {
+  const { fitWidths, resizeWidths } = await import('./src/columns.js');
+  for (const available of [536, 900, 1400]) {
+    const widths = fitWidths([1000, 300, 200, 250], available);
+    assert.ok(Math.abs(widths.reduce((sum, width) => sum + width, 0) - available) < 0.01);
+    for (let index = 0; index < widths.length; index++) {
+      for (const desired of [1, 5000]) {
+        const resized = resizeWidths(widths, index, desired);
+        assert.ok(Math.abs(resized.reduce((sum, width) => sum + width, 0) - available) < 0.01);
+        resized.forEach((width, i) => assert.ok(width >= (i === 3 ? 112 : 72) - 0.01));
+      }
+    }
+  }
 });

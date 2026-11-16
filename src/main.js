@@ -1,12 +1,14 @@
 import './style.css';
+import { paneDivider, installPaneResizing, paneResizeActive } from './panes.js';
+import { installColumnResizing, columnResizeActive } from './columns.js';
 import { themePreference, setTheme } from './theme.js';
 import { invoke } from '@tauri-apps/api/core';
 import { workspaceTabs, workspaceTabStrip } from './workspace.js';
 import { historyPane } from './history.js';
+import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
-import { statisticsPanel, coverageRows } from './statistics.js';
-import { folderNavigation, recentMailPane, mailboxFolders } from './desktop.js';
-import { progressPanel } from './progress.js';
+import { folderNavigation, savedMailPane, mailboxFolders, newMailDot } from './desktop.js';
+import { progressPanel, statusDownloadProgress, backupControls } from './progress.js';
 import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, nextRuns, calendarMarkup, scheduleSummary, localDate, updateClock } from './scheduler.js';
 import { backupOptionsView, folderChoices, advancedFromForm } from './selection.js';
 
@@ -14,12 +16,120 @@ const app = document.querySelector('#app');
 let dashboard;
 let busy = false;
 let controlBusy = false;
+let activeExports = 0;
+const startupMailChecked = new Set();
+const newMailRetryAfter = new Map();
+const newMailByAccount = new Map();
+const mailIndicators = () => newMailByAccount.get(dashboard?.user) || new Map();
+
+function rememberNewMail(snapshot, account = dashboard.user) {
+  newMailByAccount.set(account, new Map((snapshot?.folders || []).map(folder => [folder.name, Math.max(0, Number(folder.newMessages) || 0)])));
+}
+
+async function checkStartupMail() {
+  if (!dashboard?.credentialReady || !dashboard.user.includes('@') || dashboard.backupRunning || busy || startupMailChecked.has(dashboard.user) || Date.now() < (newMailRetryAfter.get(dashboard.user) || 0)) return;
+  const account = dashboard.user;
+  startupMailChecked.add(account);
+  busy = true; busyAction = 'new-mail';
+  captureTabDraft(); render();
+  let failed = false;
+  try {
+    const result = await invoke('run_action', { action: 'new-mail' });
+    rememberNewMail(JSON.parse(result), account);
+    newMailRetryAfter.delete(account);
+    if (operationFailure?.action === 'new-mail') operationFailure = null;
+  } catch (error) {
+    if (String(error).includes('NEW_MAIL_CHECK_BUSY')) {
+      startupMailChecked.delete(account);
+      newMailRetryAfter.set(account, Date.now() + 10000);
+    } else {
+      failed = true;
+      operationFailure = { action: 'new-mail', message: String(error) };
+    }
+  } finally {
+    busy = false; busyAction = '';
+    await refresh();
+    if (failed) toast('New mail check failed. See the error above.', true);
+  }
+}
+
 let addingAccount = false;
 let selectedFolder = '';
 let folderFilter = '';
+let savedMail = { key: '', rows: [], loading: false, error: '' };
+let selectedMessage = { file: '', message: null, loading: false, error: '' };
+let messageFolderKey = '';
+
+function mailList() { return savedMailPane(savedMail, selectedFolder, mailSort, escapeHtml, formatDate, selectedMessage.file); }
+function updateReader() {
+  const pane = document.querySelector('.reading-pane');
+  if (pane && activeTab === 'mailbox') pane.outerHTML = readingPane(selectedMessage, escapeHtml, formatDate);
+}
+function openMessage(file) {
+  if (!file) return;
+  const request = { file, message: null, loading: true, error: '' };
+  selectedMessage = request;
+  updateReader();
+  document.querySelectorAll('.mail-table tbody tr').forEach(row => row.classList.toggle('selected', row.dataset.file === file));
+  invoke('get_saved_message', { file }).then(message => { request.message = message; }).catch(error => { request.error = String(error); }).finally(() => {
+    request.loading = false;
+    if (selectedMessage === request) updateReader();
+  });
+}
+
+let mailSort = { column: 'sentAt', direction: 'desc' };
+
+function loadSavedMail() {
+  const key = JSON.stringify([dashboard.user, selectedFolder, dashboard.localStats]);
+  if (savedMail.key === key) return;
+  const request = { key, rows: [], loading: true, error: '' };
+  savedMail = request;
+  invoke('get_saved_mail', { folder: selectedFolder || null })
+    .then(rows => { request.rows = rows; })
+    .catch(error => { request.error = String(error); })
+    .finally(() => {
+      request.loading = false;
+      if (savedMail === request && activeTab === 'mailbox' && !document.querySelector('dialog[open]')) {
+        const pane = document.querySelector('.mail-pane');
+        if (pane) pane.outerHTML = mailList();
+      }
+    });
+}
+
 let operationFailure = null;
 let busyAction = '';
 let activeTab = 'mailbox';
+let navigationHistory = [{ tab: 'mailbox', folder: '', filter: '' }];
+let navigationIndex = 0;
+let navigationAccount;
+
+function rememberNavigation(tab, folder = selectedFolder) {
+  const current = navigationHistory[navigationIndex];
+  current.filter = folderFilter;
+  if (current.tab === tab && current.folder === folder) return;
+  navigationHistory = navigationHistory.slice(0, navigationIndex + 1);
+  navigationHistory.push({ tab, folder, filter: folderFilter });
+  if (navigationHistory.length > 100) navigationHistory.shift();
+  navigationIndex = navigationHistory.length - 1;
+}
+
+function resetNavigation() {
+  navigationHistory = [{ tab: activeTab, folder: selectedFolder, filter: folderFilter }];
+  navigationIndex = 0;
+}
+
+async function moveNavigation(direction) {
+  const next = navigationIndex + direction;
+  if (busy || next < 0 || next >= navigationHistory.length) return;
+  captureTabDraft();
+  navigationHistory[navigationIndex].filter = folderFilter;
+  navigationIndex = next;
+  const destination = navigationHistory[next];
+  selectedFolder = destination.folder;
+  folderFilter = destination.filter;
+  await selectTab(destination.tab, false);
+}
+
 let backupOptionsDraft = null;
 let schedulerDraft = null;
 let schedulerLoaded = false;
@@ -51,10 +161,48 @@ const numberFormatter = new Intl.NumberFormat('en-IN');
 const formatDate = value => value ? dateFormatter.format(new Date(value)) : 'Never';
 const formatNumber = value => numberFormatter.format(value || 0);
 
+function folderStatus() {
+  const local = (dashboard.localStats?.folders || []).filter(folder => !selectedFolder || folder.name === selectedFolder).reduce((sum, folder) => sum + folder.messages, 0);
+  const server = (dashboard.mailboxStatus?.folders || []).filter(folder => !selectedFolder || folder.name === selectedFolder);
+  const checked = dashboard.mailboxStatus && (!selectedFolder || server.length);
+  const onServer = checked ? formatNumber(selectedFolder ? server.reduce((sum, folder) => sum + folder.serverMessages, 0) : dashboard.mailboxStatus.totalServerMessages) : 'Not checked';
+  const remaining = checked ? formatNumber(selectedFolder ? server.reduce((sum, folder) => sum + folder.missingMessages, 0) : dashboard.mailboxStatus.missingMessages) : 'Not checked';
+  return `${selectedFolder || 'All folders'}: ${formatNumber(local)} saved | ${onServer} on server | ${remaining} remaining`;
+}
+
+function statusBarContents() {
+  return `<span class="status-message">${busy ? busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Checking mailbox...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailDot([...mailIndicators().values()].reduce((sum, count) => sum + count, 0), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>`;
+}
+
+function updateBackupControls() {
+  const controls = document.querySelector('.backup-controls');
+  if (controls && dashboard) controls.outerHTML = backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml);
+}
+
+function updateBackupProgress() {
+  const page = document.querySelector('.backup-page');
+  if (!page) return;
+  const progress = page.querySelector('.run-progress');
+  if (!dashboard.backupRunning) { progress?.remove(); return; }
+  const html = progressPanel(dashboard, escapeHtml, formatNumber);
+  if (progress) progress.outerHTML = html;
+  else page.querySelector('.backup-page-actions')?.insertAdjacentHTML('afterend', html);
+}
+
+function updateStatusBar() {
+  const footer = document.querySelector('.statusbar');
+  if (footer && dashboard) footer.innerHTML = statusBarContents();
+}
+
 function render() {
   if (!dashboard) {
     app.innerHTML = '<main class="loading"><span class="spinner"></span>Reading your backup…</main>';
     return;
+  }
+  if (navigationAccount !== dashboard.user) {
+    navigationAccount = dashboard.user;
+    historyFilter = 'all'; selectedHistoryRun = '';
+    resetNavigation();
   }
   const run = dashboard.lastRun;
   const hasAccount = !addingAccount && dashboard.user.includes('@');
@@ -67,21 +215,19 @@ function render() {
   const statusTitle = dashboard.backupRunning ? dashboard.progress?.state === 'paused' ? 'Your backup is paused' : 'Your backup is running'
     : intentional ? outcome === 'stopped' ? 'Backup stopped safely' : 'Backup cancelled' : healthy ? 'Selected backup complete' : run ? 'Last run needs attention' : dashboard.hasManifest ? 'Ready to continue your backup' : 'Ready for the first backup';
   if (selectedFolder && !mailboxFolders(dashboard).includes(selectedFolder)) selectedFolder = '';
-  const folderRows = activeTab === 'mailbox' ? coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter) : '';
-  const tabTitle = activeTab === 'mailbox' ? selectedFolder || 'All folders' : workspaceTabs.find(([key]) => key === activeTab)?.[1];
-  const workspaceBody = activeTab === 'overview' ? `<div class="overview-page">${statisticsPanel(dashboard, escapeHtml, formatNumber, formatDate, busy)}</div>`
-    : activeTab === 'preferences' ? `<section class="preferences-page" aria-labelledby="preferences-title"><h2 id="preferences-title">Appearance</h2><label for="theme-preference">Theme</label><select id="theme-preference" aria-describedby="theme-description">${[['auto','Auto'],['light','Light'],['dark','Dark']].map(([value,label]) => `<option value="${value}" ${themePreference() === value ? 'selected' : ''}>${label}</option>`).join('')}</select><p id="theme-description">Auto follows your Windows appearance. Your choice is saved on this device.</p></section>`
+  if (activeTab === 'mailbox') loadSavedMail();
+  const folderKey = JSON.stringify([dashboard.user, selectedFolder]);
+  if (messageFolderKey !== folderKey) { messageFolderKey = folderKey; selectedMessage = { file: '', message: null, loading: false, error: '' }; }
+  const workspaceBody = activeTab === 'preferences' ? `<section class="preferences-page" aria-labelledby="preferences-title"><h2 id="preferences-title">Appearance</h2><label for="theme-preference">Theme</label><select id="theme-preference" aria-describedby="theme-description">${[['auto','Auto'],['light','Light'],['dark','Dark']].map(([value,label]) => `<option value="${value}" ${themePreference() === value ? 'selected' : ''}>${label}</option>`).join('')}</select><p id="theme-description">Auto follows your Windows appearance. Your choice is saved on this device.</p></section>`
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
-    : activeTab === 'options' ? backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)
-    : activeTab === 'history' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
-    : activeTab === 'activity' ? `<section class="activity-pane" aria-label="Activity log"><div class="pane-title"><h2>Activity log</h2><button data-action="open-logs">Open log folder</button></div><pre>${escapeHtml(dashboard.latestLog?.tail || 'No activity recorded yet.')}</pre></section>`
-    : `<section class="folder-pane" aria-label="Folder coverage"><div class="pane-title"><h2>Folder coverage</h2><span>${formatNumber(mailboxFolders(dashboard).length)} folders</span></div><div class="table-wrap"><table class="folder-table"><thead><tr><th>Folder</th><th>Saved locally</th><th>On server</th><th>Remaining</th></tr></thead><tbody>${folderRows || '<tr><td colspan="4" class="empty-pane">No folders to show. Check mailbox to load coverage.</td></tr>'}</tbody></table></div></section>${recentMailPane(dashboard, selectedFolder, escapeHtml, formatDate)}`;
+    : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions">${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}</div>${dashboard.backupRunning ? progressPanel(dashboard, escapeHtml, formatNumber) : ''}${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
+    : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
+    : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readingPane(selectedMessage, escapeHtml, formatDate)}</div>`;
 
 
   app.innerHTML = `
     <header class="app-toolbar">
       <div class="app-name"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 6l9 7 9-7"/></svg><strong>Bmail</strong></div>
-      <button class="primary" data-action="backup" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'backup' ? 'Starting...' : 'Back up now'}</button>
       <button data-action="stats" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'stats' ? 'Checking mailbox...' : 'Check mailbox'}</button>
       <span class="toolbar-separator"></span>
       <button data-action="open-backups">Open backup folder</button>
@@ -95,24 +241,26 @@ function render() {
         <div class="sidebar-heading"><h2>Folders</h2><button class="icon-button" data-action="add-account" aria-label="Add account" title="Add account" ${busy || dashboard.backupRunning ? 'disabled' : ''}>+</button></div>
         <label class="filter-field"><span class="sr-only">Filter folders</span><input id="folder-filter" type="search" placeholder="Filter folders" value="${escapeHtml(folderFilter)}"></label>
         <nav class="folder-list" aria-label="Mailbox folders"><button class="folder-item ${!selectedFolder ? 'selected' : ''}" data-action="select-folder" data-folder="" aria-pressed="${!selectedFolder}"><span>All folders</span><small>${formatNumber(dashboard.localStats?.messages || 0)}</small></button>
-          ${folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber) || `<p class="sidebar-empty">${folderFilter ? 'No matching folders.' : 'Check your mailbox to load folders.'}</p>`}</nav>
+          ${folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber, mailIndicators()) || `<p class="sidebar-empty">${folderFilter ? 'No matching folders.' : 'Check your mailbox to load folders.'}</p>`}</nav>
         <div class="sidebar-tools"><button data-action="setup" ${busy ? 'disabled' : ''}>${dashboard.credentialReady ? 'Account settings' : 'Set up mailbox'}</button>
-          <button data-action="verify" ${busy || dashboard.backupRunning || !dashboard.hasManifest ? 'disabled' : ''}>Verify local files</button></div>
+        </div>
+        ${paneDivider('sidebar')}
       </aside>
       <main class="mail-workspace">
-        ${workspaceTabStrip(activeTab, busy)}
-        <div class="workspace-heading"><div><h1>${escapeHtml(tabTitle)}</h1><p>${escapeHtml(dashboard.user)}</p></div><span class="connection-status">Read-only IMAP</span></div>
-        <section class="run-banner ${state}" aria-label="Backup status"><h2>${statusTitle}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span></section>
-        ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'stats' ? 'Mailbox check failed' : 'Action failed'}</strong><p>${escapeHtml(operationFailure.message)}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
+        <div class="workspace-navigation"><nav class="navigation-buttons" aria-label="Navigation history">
+          <button type="button" data-action="navigate-back" aria-label="Back" title="Back" ${busy || navigationIndex === 0 ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m9 4-6 6 6 6M3 10h14"/></svg></button>
+          <button type="button" data-action="navigate-forward" aria-label="Forward" title="Forward" ${busy || navigationIndex === navigationHistory.length - 1 ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m11 4 6 6-6 6M3 10h14"/></svg></button>
+        </nav>${workspaceTabStrip(activeTab, busy)}</div>
+        ${!['mailbox', 'activity'].includes(activeTab) ? `<section class="run-banner ${state}" aria-label="Backup status"><h2>${statusTitle}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span></section>` : ''}
+        ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'new-mail' ? 'New mail check failed' : operationFailure.action === 'stats' ? 'Mailbox check failed' : 'Action failed'}</strong><p>${escapeHtml(operationFailure.message)}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
         ${!dashboard.credentialReady ? `<aside class="notice">Save an account and app password to start backing up. <button data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
         ${run?.error ? `<aside class="notice error">${escapeHtml(run.error.message || 'Backup failed')}. Completed downloads are retained.</aside>` : ''}
         ${dashboard.launchError ? `<aside class="notice error">${escapeHtml(dashboard.launchError)}</aside>` : ''}
         ${dashboard.migrationNotice ? `<aside class="notice">${escapeHtml(dashboard.migrationNotice)}</aside>` : ''}
-        ${dashboard.backupRunning ? progressPanel(dashboard, escapeHtml, formatNumber) : ''}
         ${workspaceTabs.map(([key]) => `<section id="view-${key}" role="tabpanel" aria-labelledby="tab-${key}" ${activeTab === key ? 'tabindex="0"' : 'hidden'}>${activeTab === key ? workspaceBody : ''}</section>`).join('')}
       </main>
     </div>
-    <footer class="statusbar"><span>${busy ? busyAction === 'stats' ? 'Checking mailbox and verifying saved files...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : 'Ready'}</span><span>Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span><span>Manual app updates</span></footer>
+    <footer class="statusbar">${statusBarContents()}</footer>
     <div id="toast" role="status"></div>
     <dialog id="mailbox-dialog" aria-labelledby="setup-title" aria-describedby="setup-description">
       <form id="mailbox-form">
@@ -164,26 +312,34 @@ async function refresh(background = false, force = false) {
   refreshFinished = new Promise(resolve => { finished = resolve; });
   try {
     const next = await invoke('get_dashboard', { force });
+    if (force) savedMail.key = '';
+    next.newMailFolders = [...(newMailByAccount.get(next.user)?.keys() || [])];
     const unchanged = JSON.stringify(next) === JSON.stringify(dashboard);
     dashboard = next;
-    if (background && (unchanged || ['options','scheduler'].includes(activeTab) || document.querySelector('dialog[open]'))) return;
+    updateBackupControls();
+    updateBackupProgress();
+    updateStatusBar();
+    if (background && (columnResizeActive() || paneResizeActive() || unchanged || ['options','scheduler'].includes(activeTab) || document.querySelector('dialog[open]'))) return;
     captureTabDraft();
     const focusAction = document.activeElement?.dataset?.action;
     const focusFolder = document.activeElement?.dataset?.folder;
     const focusTab = document.activeElement?.dataset?.tab;
+    const focusColumn = document.activeElement?.dataset?.column;
     const filterInput = document.activeElement?.id === 'folder-filter' ? document.activeElement : null;
-    const coverageHelpOpen = document.querySelector('.coverage-help')?.open;
+    const previousReader = document.querySelector('#view-mailbox .reading-pane');
+    const previousMessage = selectedMessage;
     const scrollPositions = [...document.querySelectorAll('.folder-list, .mail-workspace, .inspector, .table-wrap')].map(el => el.scrollTop);
     render();
+    if (previousReader && selectedMessage === previousMessage) document.querySelector('.reading-pane')?.replaceWith(previousReader);
     document.querySelectorAll('.folder-list, .mail-workspace, .inspector, .table-wrap').forEach((el, index) => el.scrollTop = scrollPositions[index] || 0);
-    if (coverageHelpOpen) document.querySelector('.coverage-help').open = true;
     if (filterInput) { document.querySelector('#folder-filter').replaceWith(filterInput); filterInput.focus({ preventScroll: true }); }
     if (focusAction === 'select-folder') [...document.querySelectorAll('[data-action="select-folder"]')].find(el => el.dataset.folder === focusFolder)?.focus({ preventScroll: true });
     if (focusAction === 'select-tab') document.querySelector(`#tab-${focusTab}`)?.focus({ preventScroll: true });
-    if (focusAction && !['select-folder','select-tab'].includes(focusAction)) [...document.querySelectorAll('[data-action]')].find(el => el.dataset.action === focusAction)?.focus({ preventScroll: true });
+    if (focusAction === 'sort-mail') document.querySelector(`[data-action="sort-mail"][data-column="${focusColumn}"]`)?.focus({ preventScroll: true });
+    if (focusAction && !['select-folder','select-tab','sort-mail'].includes(focusAction)) [...document.querySelectorAll('[data-action]')].find(el => el.dataset.action === focusAction)?.focus({ preventScroll: true });
   } catch (error) {
     if (!background) app.innerHTML = `<main class="fatal"><h1>Bmail could not start</h1><p>${escapeHtml(error)}</p></main>`;
-  } finally { refreshing = false; finished(); dashboardPoller?.reschedule(); }
+  } finally { refreshing = false; finished(); dashboardPoller?.reschedule(); void checkStartupMail(); }
 }
 
 async function run(action) {
@@ -205,6 +361,7 @@ async function run(action) {
     busy = false;
     busyAction = '';
     await refresh();
+    if (!failed && action === 'stats') { rememberNewMail(dashboard.mailboxStatus); render(); }
     toast(failed ? (action === 'stats' ? 'Mailbox check failed. See the error above.' : 'Action failed. See the error above.') : message, failed);
   }
 }
@@ -229,17 +386,41 @@ app.addEventListener('click', event => {
     return;
   }
   if (busy && ['select-tab','select-folder','selection','schedule','reset-selection','schedule-day','schedule-prev','schedule-next'].includes(action)) return;
+  if (action === 'navigate-back' || action === 'navigate-forward') { moveNavigation(action === 'navigate-back' ? -1 : 1); return; }
+  if (action === 'new-mail') { startupMailChecked.delete(dashboard.user); newMailRetryAfter.delete(dashboard.user); checkStartupMail(); return; }
+  if (action === 'select-message') { openMessage(button.dataset.file); return; }
+  if (action === 'retry-message') { openMessage(selectedMessage.file); return; }
+  if (action === 'retry-mail') { savedMail.key = ''; render(); return; }
+  if (action === 'sort-mail') {
+    const column = button.dataset.column;
+    if (!['subject', 'sender', 'folder', 'sentAt', 'bytes'].includes(column)) return;
+    mailSort = { column, direction: mailSort.column === column && mailSort.direction === 'asc' ? 'desc' : 'asc' };
+    document.querySelector('.mail-pane').outerHTML = mailList();
+    document.querySelector(`[data-action="sort-mail"][data-column="${column}"]`)?.focus({ preventScroll: true });
+    return;
+  }
   if (action === 'select-tab') { selectTab(button.dataset.tab); return; }
   if (action === 'reset-selection') { backupOptionsDraft = null; render(); return; }
   if (action === 'schedule-load-folders') { loadScheduledFolders(button); return; }
   if (action === 'test-notification') { testNotification(button); return; }
-  if (action === 'history-select') { selectedHistoryRun = button.dataset.runId; render(); return; }
+  if (action === 'history-select') { selectedHistoryRun = button.dataset.runId; render(); [...document.querySelectorAll('.history-table button[data-action="history-select"]')].find(element => element.dataset.runId === selectedHistoryRun)?.focus({ preventScroll: true }); return; }
   if (action === 'schedule') { selectTab('scheduler'); return; }
   if (action === 'schedule-read') { scheduleOperation('read'); return; }
   if (action === 'schedule-remove') { scheduleOperation('remove'); return; }
   if (action === 'schedule-prev' || action === 'schedule-next') { schedulerMonth = new Date(schedulerMonth.getFullYear(), schedulerMonth.getMonth() + (action === 'schedule-next' ? 1 : -1), 1); schedulerFocusDate = localDate(schedulerMonth); updateSchedulePreview(); return; }
   if (action === 'schedule-day') { const date = button.dataset.date; document.querySelector('#schedule-date').value = date; schedulerFocusDate = date; schedulerMonth = new Date(`${date}T00:00:00`); updateSchedulePreview(); document.querySelector(`.schedule-calendar [data-date="${date}"]`)?.focus(); return; }
-  if (action === 'select-folder') { captureTabDraft(); selectedFolder = button.dataset.folder; activeTab = 'mailbox'; render(); return; }
+  if (action === 'download-email' || action === 'download-folder') {
+    if (button.disabled) return;
+    button.disabled = true;
+    activeExports++;
+    updateStatusBar();
+    invoke('export_mail', { folder: button.dataset.folder || null, file: button.dataset.file || null })
+      .then(message => { if (message) toast(message); })
+      .catch(error => toast(String(error), true))
+      .finally(() => { activeExports--; updateStatusBar(); button.disabled = false; });
+    return;
+  }
+  if (action === 'select-folder') { captureTabDraft(); rememberNavigation('mailbox', button.dataset.folder); selectedFolder = button.dataset.folder; activeTab = 'mailbox'; render(); return; }
   if (action === 'dismiss-error') { operationFailure = null; render(); return; }
   if (action === 'setup') { captureTabDraft(); document.querySelector('#mailbox-dialog').showModal(); }
   else if (action === 'add-account') { captureTabDraft(); addingAccount = true; render(); document.querySelector('#mailbox-dialog').showModal(); }
@@ -270,8 +451,8 @@ app.addEventListener('input', event => {
   const navigation = document.querySelector('.folder-list');
   // Keep the search input, forms, clock and other workspace nodes intact.
   navigation.querySelectorAll('[data-folder]:not([data-folder=""]), .sidebar-empty').forEach(node => node.remove());
-  navigation.insertAdjacentHTML('beforeend', folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber) || '<p class="sidebar-empty">No matching folders.</p>');
-  if (activeTab === 'mailbox') document.querySelector('.folder-table tbody').innerHTML = coverageRows(dashboard, escapeHtml, formatNumber, selectedFolder, folderFilter) || '<tr><td colspan="4" class="empty-pane">No folders to show.</td></tr>';
+  navigation.insertAdjacentHTML('beforeend', folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber, mailIndicators()) || '<p class="sidebar-empty">No matching folders.</p>');
+
 });
 
 app.addEventListener('change', event => {
@@ -320,13 +501,13 @@ async function loadFolders() {
 async function controlBackup(command, runId) {
   if (controlBusy) return;
   controlBusy = true;
-  document.querySelectorAll('.progress-actions button').forEach(el => el.disabled = true);
+  updateBackupControls();
   try {
     const result = await invoke('control_backup', { command, runId });
     await refresh();
     toast(result);
   } catch (error) { toast(String(error), true); await refresh(); }
-  finally { controlBusy = false; }
+  finally { controlBusy = false; updateBackupControls(); }
 }
 
 async function switchAccount(email) {
@@ -337,6 +518,7 @@ async function switchAccount(email) {
   folderFilter = '';
   selectedHistoryRun = '';
   activeTab = 'mailbox'; backupOptionsDraft = schedulerDraft = null; schedulerLoaded = false; schedulerFocusDate = '';
+  resetNavigation();
   render();
   try { await invoke('switch_account', { email }); }
   catch (error) { toast(String(error), true); }
@@ -400,9 +582,10 @@ function initializeSchedulerView() {
   updateSchedulePreview(); updateScheduleStatus();
 }
 
-async function selectTab(tab) {
+async function selectTab(tab, remember = true) {
   if (busy || !workspaceTabs.some(([key]) => key === tab)) return;
   captureTabDraft();
+  if (remember) rememberNavigation(tab);
   activeTab = tab;
   render();
   document.querySelector(`#tab-${tab}`)?.focus({ preventScroll: true });
@@ -532,6 +715,7 @@ app.addEventListener('submit', async event => {
     const result = await invoke('configure_mailbox', { settings });
     addingAccount = false;
     activeTab = 'mailbox'; backupOptionsDraft = schedulerDraft = null; schedulerLoaded = false; schedulerFocusDate = '';
+    selectedFolder = ''; folderFilter = ''; resetNavigation();
     busy = false;
     dialog.close();
     await refresh();
@@ -556,6 +740,8 @@ dashboardPoller = createDashboardPoller({
 });
 document.addEventListener('visibilitychange', () => dashboardPoller.wake());
 window.addEventListener('pagehide', () => dashboardPoller.stop());
+installColumnResizing(app);
+installPaneResizing(app);
 render();
 refresh().finally(() => dashboardPoller.start());
 setInterval(updateClock, 1000);

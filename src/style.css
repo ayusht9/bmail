@@ -416,16 +416,8 @@ progress {
 .check-dates dd {
   margin:2px 0 0;
 }
-.coverage-help {
-  padding:6px 12px 12px;
-  font-size:11px;
-  color:var(--muted);
-}
 summary {
   cursor:pointer;
-}
-.coverage-help p {
-  margin-bottom:0;
 }
 .selection-summary,.storage-summary {
   padding:12px;
@@ -455,7 +447,7 @@ summary {
   font-size:11px;
   color:var(--tone-526070);
 }
-.statusbar span:first-child {
+.statusbar > .status-message {
   margin-right:auto;
 }
 .operation-error {
@@ -486,17 +478,6 @@ summary {
   background:var(--error-bg);
   color:var(--error-deep);
   border-color:var(--tone-e8b7b5);
-}
-.activity-pane {
-  border-top:1px solid var(--line);
-}
-.activity-pane pre {
-  margin:0;
-  padding:12px;
-  max-height:230px;
-  overflow:auto;
-  font:11px/1.6 Consolas,monospace;
-  white-space:pre-wrap;
 }
 .panel.run-progress {
   padding:10px 12px;
@@ -720,9 +701,6 @@ dialog input[readonly] {
     flex-direction:column;
     gap:2px;
   }
-  .mail-table th:nth-child(3),.mail-table td:nth-child(3) {
-    display:none;
-  }
   .statusbar {
     gap:12px;
   }
@@ -812,10 +790,10 @@ dialog input[readonly] {
 .scheduler-page .schedule-weekdays label { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-weight: 400; }
 .overview-page { max-width: 900px; margin: 20px; }
 .overview-page .backup-statistics { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); }
-.overview-page .pane-title, .overview-page .coverage-status, .overview-page .coverage-help { grid-column: 1 / -1; }
+.overview-page .pane-title, .overview-page .coverage-status { grid-column: 1 / -1; }
 .overview-page .stats-list { border-right: 1px solid var(--soft); }
 .overview-page .check-dates { border-top: 0; }
-.activity-pane pre { max-height: none; min-height: 200px; }
+
 @media (max-width: 1050px) { .desktop-layout { grid-template-columns: 184px minmax(0, 1fr); }.workspace-tabs [role="tab"] { padding-left: 10px; padding-right: 10px; } }
 @media (max-width: 850px) { .desktop-layout { grid-template-columns: 166px minmax(0, 1fr); }.scheduler-page, .backup-options-page { padding: 14px; }.scheduler-page .scheduler-layout { grid-template-columns: 200px minmax(0, 1fr); gap: 12px; }.scheduler-calendar-pane { padding-right: 10px; }.scheduler-page .date-fields { grid-template-columns: 1fr; gap: 0; }.overview-page { margin: 14px; } }
 
@@ -929,3 +907,116 @@ button.primary:hover:not(:disabled) { background: #145caf; }
 .preferences-page p { color: var(--muted); }
 input::placeholder { color: var(--muted); opacity: 1; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+
+/* Small, consistently visible download actions with keyboard-accessible targets. */
+button.download-icon, .folder-table td button.download-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 6px; border: 1px solid transparent;
+  border-radius: 6px; color: inherit; background: transparent;
+}
+.download-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+button.download-icon:hover:not(:disabled) { background: var(--surface); border-color: currentColor; }
+button.download-icon:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+button.download-icon:disabled { opacity: .35; cursor: default; }
+
+.folder-row { display: flex; align-items: center; padding-right: 6px; }
+.folder-row .folder-item { flex: 1; min-width: 0; }
+.folder-row .download-icon { flex-shrink: 0; }
+
+.workspace-navigation { display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 3; background: var(--sidebar); border-bottom: 1px solid var(--line); padding-left: 8px; }
+.workspace-navigation .workspace-tabs { flex: 1; min-width: 0; position: static; border-bottom: 0; }
+.navigation-buttons { display: flex; gap: 4px; flex-shrink: 0; }
+.navigation-buttons button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 6px; }
+.navigation-buttons svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+.status-download { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.status-download span { white-space: nowrap; }
+.status-download progress { width: 110px; height: 7px; flex-shrink: 0; margin: 0; accent-color: var(--accent); }
+.status-schedule { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.status-message { flex-shrink: 0; }
+@media (max-width: 1050px) {
+  .statusbar { gap: 12px; }
+  .status-download progress { width: 80px; }
+}
+
+.new-mail-dot { display: inline-block; width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--accent); vertical-align: middle; }
+.folder-row > .new-mail-dot { margin-inline: 4px 6px; }
+.folder-table .new-mail-dot { margin-left: 8px; }
+.statusbar > .new-mail-dot { width: 8px; height: 8px; flex-basis: 8px; outline: 3px solid var(--selected); }
+
+.mail-table th button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; border: 0; background: transparent; font-weight: 600; padding: 3px 0; text-align: left; }
+.mail-table th button span { color: var(--muted); }
+.mail-table th[aria-sort] button, .mail-table th[aria-sort] button span { color: var(--link); }
+
+.mail-table { min-width: 620px; }
+
+.resizable-table th { position: relative; padding-right: 15px; width: auto; }
+.resizable-table.mail-table th:first-child, .resizable-table.mail-table th:nth-child(2), .resizable-table.folder-table th:first-child { width: auto; }
+.column-resize { position: absolute; top: 0; right: 0; bottom: 0; width: 9px; cursor: col-resize; touch-action: none; z-index: 2; }
+.column-resize::after { content: ''; position: absolute; top: 20%; bottom: 20%; right: 3px; width: 2px; background: var(--line); }
+.column-resize:hover::after, .column-resize:focus-visible::after { background: var(--accent); }
+.resizing-columns, .resizing-columns * { cursor: col-resize !important; user-select: none !important; }
+
+.resizable-table { width: 100%; min-width: 0; max-width: 100%; }
+.mail-pane .table-wrap, .folder-pane .table-wrap { overflow-x: hidden; }
+.mail-table th button { overflow: hidden; }
+
+.resizable-table td.row-actions { position: relative; padding-right: 48px; height: 44px; }
+.resizable-table .row-actions > .download-icon { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
+.resizable-table th:last-child { padding-right: 48px; }
+
+.mailbox-panes { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.mailbox-panes .mail-pane { flex: 0 0 42%; min-height: 150px; overflow: hidden; }
+.mailbox-panes .mail-pane .table-wrap { height: 100%; max-height: none; }
+.mailbox-panes .reading-pane { flex: 1; min-height: 160px; border-top: 1px solid var(--line); overflow: auto; }
+#view-mailbox:not([hidden]) { flex: 1; min-height: 0; }
+.mail-workspace:has(#view-mailbox:not([hidden])) { display: flex; flex-direction: column; overflow: hidden; }
+.mail-subject { border: 0; background: transparent; padding: 0; color: inherit; text-align: left; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mail-table tbody tr { cursor: pointer; }
+.reading-empty { display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--muted); }
+.reading-empty h2 { font-size: 16px; font-weight: 500; margin: 0 0 5px; }
+.reading-empty p { margin: 0; }
+.reading-header { padding: 18px 24px; border-bottom: 1px solid var(--line); }
+.reading-header h2 { margin: 0 0 14px; font-size: 20px; overflow-wrap: anywhere; }
+.reading-header dl { margin: 0; font-size: 12px; }
+.reading-header dl > div { display: flex; gap: 12px; margin-top: 4px; }
+.reading-header dt { min-width: 34px; color: var(--muted); }
+.reading-header dd { margin: 0; overflow-wrap: anywhere; }
+.reading-attachments { color: var(--muted); margin-bottom: 0; font-size: 12px; }
+.email-body { display: block; width: 100%; height: 420px; border: 0; background: white; }
+.email-text { white-space: pre-wrap; overflow-wrap: anywhere; padding: 20px 24px; margin: 0; font: 14px/1.7 'Segoe UI', sans-serif; }
+.status-folder { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.statusbar { gap: 12px; }
+@media(max-width: 1050px) { .statusbar:has(.status-download) .status-schedule { display: none; } }
+
+.mail-table tbody tr.backed-up { background: var(--sidebar); }
+.mail-table tbody tr.backed-up:hover { background: var(--hover); }
+.mail-table tbody tr.selected, .mail-table tbody tr.selected:hover { background: var(--selected); }
+
+.desktop-layout { grid-template-columns: var(--sidebar-width, 224px) minmax(0, 1fr); }
+.folder-sidebar { position: relative; }
+.pane-divider { touch-action: none; flex-shrink: 0; z-index: 5; }
+.sidebar-divider { position: absolute; top: 0; bottom: 0; right: -3px; width: 6px; cursor: col-resize; }
+.mail-divider { height: 6px; cursor: row-resize; background: var(--sidebar); border-block: 1px solid var(--line); }
+.pane-divider:hover, .pane-divider:focus-visible { background: var(--accent); }
+.mailbox-panes .mail-pane { flex: 0 0 var(--mail-list-height, 42%); min-height: 0; }
+.mailbox-panes .reading-pane { min-height: 0; border-top: 0; }
+.resizing-sidebar, .resizing-sidebar * { cursor: col-resize !important; user-select: none !important; }
+.resizing-mail, .resizing-mail * { cursor: row-resize !important; user-select: none !important; }
+
+#view-activity:not([hidden]) { flex: 1; min-height: 0; }
+.mail-workspace:has(#view-activity:not([hidden])) { display: flex; flex-direction: column; overflow: hidden; }
+.history-pane .history-list { display: flex; flex-direction: column; }
+.history-pane .history-list .table-wrap { flex: 1; min-height: 0; height: auto; max-height: none; }
+.history-pane .pane-title { flex-shrink: 0; padding: 10px 16px; }
+.history-pane .history-details { padding: 20px 24px; }
+.history-table tbody tr { cursor: pointer; }
+.history-table tbody tr.selected { background: var(--selected); }
+.history-table th:last-child { padding-right: 15px; }
+
+.backup-controls { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.backup-controls button { white-space: nowrap; }
+.cancel-backup { display: inline-flex; align-items: center; justify-content: center; width: 29px; padding: 5px; }
+.cancel-backup svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.5; fill: none; }
+
+.backup-page-actions { position: sticky; top: 39px; z-index: 2; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
