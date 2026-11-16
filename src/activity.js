@@ -26,7 +26,7 @@ export function activityPane(dashboard, filter, rawOpen, escape, number) {
   const entries = activityEntries(dashboard.latestLog?.tail);
   const visible = entries.filter(entry => filter !== 'problems' || ['warning', 'error'].includes(entry.type));
   const problems = entries.filter(entry => ['warning', 'error'].includes(entry.type)).length;
-  const state = dashboard.backupRunning ? 'Updates automatically while your backup runs' : 'Latest backup activity';
+  const state = dashboard.backupRunning ? 'Updates automatically while your backup runs' : 'Latest log, independent of the selected backup run';
   return `<section class="activity-pane" aria-label="Activity log">
     <div class="activity-header"><div><h2>Activity log</h2><p>${state}</p></div><button data-action="open-logs">Open log folder</button></div>
     <div class="activity-toolbar"><div class="activity-source"><span class="activity-indicator ${dashboard.backupRunning ? 'is-live' : ''}"></span><span>${dashboard.backupRunning ? 'Backup running' : 'Recent activity'}</span><small>${number(entries.length)} entries${problems ? `, ${number(problems)} to review` : ''}</small></div><div class="activity-filter"><label for="activity-filter">Show</label><select id="activity-filter"><option value="all" ${filter === 'all' ? 'selected' : ''}>All activity</option><option value="problems" ${filter === 'problems' ? 'selected' : ''}>Warnings and errors</option></select></div></div>

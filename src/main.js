@@ -102,7 +102,7 @@ function render() {
   }
   if (navigationAccount !== dashboard.user) {
     navigationAccount = dashboard.user;
-    activityFilter = 'all'; activityRawOpen = false;
+    activityFilter = historyFilter = 'all'; activityRawOpen = false; selectedHistoryRun = '';
     resetNavigation();
   }
   const run = dashboard.lastRun;
@@ -122,8 +122,7 @@ function render() {
     : activeTab === 'preferences' ? `<section class="preferences-page" aria-labelledby="preferences-title"><h2 id="preferences-title">Appearance</h2><label for="theme-preference">Theme</label><select id="theme-preference" aria-describedby="theme-description">${[['auto','Auto'],['light','Light'],['dark','Dark']].map(([value,label]) => `<option value="${value}" ${themePreference() === value ? 'selected' : ''}>${label}</option>`).join('')}</select><p id="theme-description">Auto follows your Windows appearance. Your choice is saved on this device.</p></section>`
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)
-    : activeTab === 'history' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
-    : activeTab === 'activity' ? activityPane(dashboard, activityFilter, activityRawOpen, escapeHtml, formatNumber)
+    : activeTab === 'activity' ? `<div class="activity-page">${historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)}${activityPane(dashboard, activityFilter, activityRawOpen, escapeHtml, formatNumber)}</div>`
     : `<section class="folder-pane" aria-label="Folder coverage"><div class="pane-title"><h2>Folder coverage</h2><span>${formatNumber(mailboxFolders(dashboard).length)} folders</span></div><div class="table-wrap"><table class="folder-table"><thead><tr><th>Folder</th><th>Saved locally</th><th>On server</th><th>Remaining</th><th><span class="sr-only">Download</span></th></tr></thead><tbody>${folderRows || '<tr><td colspan="5" class="empty-pane">No folders to show. Check mailbox to load coverage.</td></tr>'}</tbody></table></div></section>${recentMailPane(dashboard, selectedFolder, escapeHtml, formatDate)}`;
 
 
