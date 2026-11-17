@@ -693,9 +693,6 @@ dialog input[readonly] {
   .app-name strong {
     display:none;
   }
-  .app-toolbar button[data-action="open-backups"] {
-    display:none;
-  }
   .run-banner {
     align-items:flex-start;
     flex-direction:column;
@@ -1082,3 +1079,9 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 @media (max-width: 950px) { .mail-page-position { display: none; } .mail-pagination { gap: 6px; } }
 
 .mail-page-size-control { display: flex; align-items: center; gap: 5px; }
+
+.account-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+.account-heading label { margin: 0; }
+.account-sync { display: inline-flex; align-items: center; justify-content: center; width: 28px; min-height: 28px; padding: 5px; border: 1px solid transparent; background: transparent; }
+.account-sync svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.backup-page-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }

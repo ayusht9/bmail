@@ -229,7 +229,7 @@ function folderStatus() {
 }
 
 function statusBarContents() {
-  return `<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Checking mailbox...' : 'Working...') : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailBadge(totalNewMail(mailIndicators()), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>`;
+  return `<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Syncing mailbox...' : 'Working...') : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailBadge(totalNewMail(mailIndicators()), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>`;
 }
 
 function updateBackupControls() {
@@ -279,7 +279,7 @@ function render() {
   if (messageFolderKey !== folderKey) { messageFolderKey = folderKey; selectedMessage = { file: '', message: null, loading: false, error: '' }; }
   const workspaceBody = activeTab === 'preferences' ? preferencesView(themePreference(), desktopPreferences, preferencesSaving, preferencesError, escapeHtml)
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
-    : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions">${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}</div>${dashboard.backupRunning ? progressPanel(dashboard, escapeHtml, formatNumber) : ''}${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
+    : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions">${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button data-action="open-backups">Open backup folder</button></div>${dashboard.backupRunning ? progressPanel(dashboard, escapeHtml, formatNumber) : ''}${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
     : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
     : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readingPane(selectedMessage, escapeHtml, formatDate)}</div>`;
 
@@ -287,21 +287,17 @@ function render() {
   app.innerHTML = `
     <header class="app-toolbar" data-tauri-drag-region>
       <div class="app-name" data-tauri-drag-region><img data-tauri-drag-region class="app-logo" src="${logoUrl}" alt="" width="28" height="28"><strong data-tauri-drag-region>Bmail</strong></div>
-      <button data-action="stats" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'stats' ? 'Checking mailbox...' : 'Check mailbox'}</button>
-      <span class="toolbar-separator"></span>
-      <button data-action="open-backups">Open backup folder</button>
       <div class="toolbar-spacer" data-tauri-drag-region></div>
-      <button data-action="refresh" ${busy ? 'disabled' : ''}>Refresh</button>
       ${windowControls()}
     </header>
     <div class="desktop-layout">
       <aside class="folder-sidebar" aria-label="Accounts and folders">
-        <div class="account-switcher"><label for="active-account">Account</label><select id="active-account" ${busy || dashboard.backupRunning || !dashboard.accounts?.length ? 'disabled' : ''}>
+        <div class="account-switcher"><div class="account-heading"><label for="active-account">Account</label><button type="button" class="account-sync" data-action="stats" aria-label="Sync" title="Sync" aria-busy="${busyAction === 'stats'}" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'stats' ? '<span class="spinner" aria-hidden="true"></span>' : '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 7a6 6 0 0 0-10-2L3 8m0-5v5h5M4 13a6 6 0 0 0 10 2l3-3m0 5v-5h-5"/></svg>'}</button></div><select id="active-account" ${busy || dashboard.backupRunning || !dashboard.accounts?.length ? 'disabled' : ''}>
           ${dashboard.accounts?.length ? dashboard.accounts.map(email => `<option value="${escapeHtml(email)}" ${email === dashboard.user ? 'selected' : ''}>${escapeHtml(email)}</option>`).join('') : '<option>No mailbox configured</option>'}</select></div>
         <div class="sidebar-heading"><h2>Folders</h2><button class="icon-button" data-action="add-account" aria-label="Add account" title="Add account" ${busy || dashboard.backupRunning ? 'disabled' : ''}>+</button></div>
         <label class="filter-field"><span class="sr-only">Filter folders</span><input id="folder-filter" type="search" placeholder="Filter folders" value="${escapeHtml(folderFilter)}"></label>
         <nav class="folder-list" aria-label="Mailbox folders"><button class="folder-item ${!selectedFolder ? 'selected' : ''}" data-action="select-folder" data-folder="" aria-pressed="${!selectedFolder}"><span>All folders</span><small>${formatNumber(dashboard.localStats?.messages || 0)}</small></button>
-          ${folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber, mailIndicators()) || `<p class="sidebar-empty">${folderFilter ? 'No matching folders.' : 'Check your mailbox to load folders.'}</p>`}</nav>
+          ${folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber, mailIndicators()) || `<p class="sidebar-empty">${folderFilter ? 'No matching folders.' : 'Sync your mailbox to load folders.'}</p>`}</nav>
         <div class="sidebar-tools"><button data-action="setup" ${busy ? 'disabled' : ''}>${dashboard.credentialReady ? 'Account settings' : 'Set up mailbox'}</button>
         </div>
         ${paneDivider('sidebar')}
@@ -312,7 +308,7 @@ function render() {
           <button type="button" data-action="navigate-forward" aria-label="Forward" title="Forward" ${busy || !navigation.canMove(1) ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m11 4 6 6-6 6M3 10h14"/></svg></button>
         </nav>${workspaceTabStrip(activeTab, busy)}</div>
         ${!['mailbox', 'activity'].includes(activeTab) ? `<section class="run-banner ${state}" aria-label="Backup status"><h2>${statusTitle}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span></section>` : ''}
-        ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'new-mail' ? 'New mail check failed' : operationFailure.action === 'stats' ? 'Mailbox check failed' : 'Action failed'}</strong><p>${escapeHtml(operationFailure.message)}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
+        ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'new-mail' ? 'New mail check failed' : operationFailure.action === 'stats' ? 'Mailbox sync failed' : 'Action failed'}</strong><p>${escapeHtml(operationFailure.message)}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
         ${!dashboard.credentialReady ? `<aside class="notice">Save an account and app password to start backing up. <button data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
         ${run?.error ? `<aside class="notice error">${escapeHtml(run.error.message || 'Backup failed')}. Completed downloads are retained.</aside>` : ''}
         ${dashboard.launchError ? `<aside class="notice error">${escapeHtml(dashboard.launchError)}</aside>` : ''}
