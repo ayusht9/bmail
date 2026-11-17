@@ -1,3 +1,4 @@
+import { loadingIndicator } from './loading.js';
 import './style.css';
 import logoUrl from '../src-tauri/icons/app.svg';
 import { paneDivider, installPaneResizing, paneResizeActive } from './panes.js';
@@ -199,7 +200,7 @@ function folderStatus() {
 }
 
 function statusBarContents() {
-  return `<span class="status-message">${busy ? busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Checking mailbox...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailBadge(totalNewMail(mailIndicators()), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>`;
+  return `<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail?' : busyAction === 'stats' ? 'Checking mailbox?' : 'Working?') : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailBadge(totalNewMail(mailIndicators()), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>`;
 }
 
 function updateBackupControls() {
@@ -225,7 +226,7 @@ function updateStatusBar() {
 
 function render() {
   if (!dashboard) {
-    app.innerHTML = `${startupHeader(logoUrl)}<main class="loading startup-loading"><img src="${logoUrl}" width="72" height="72" alt=""><h1>Bmail</h1><p role="status">Opening your local mailbox?</p><button data-action="refresh">Retry startup</button></main>`;
+    app.innerHTML = `${startupHeader(logoUrl)}<main class="loading startup-loading"><img src="${logoUrl}" width="72" height="72" alt=""><h1>Bmail</h1>${loadingIndicator('Opening your local mailbox?')}<button data-action="refresh">Retry startup</button></main>`;
     return;
   }
   if (navigationAccount !== dashboard.user) {

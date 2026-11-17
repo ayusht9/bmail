@@ -1050,3 +1050,7 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .window-controls { margin-block: -7px; }
 .app-toolbar .window-controls button { min-height: 48px; }
 .app-toolbar + .loading, .app-toolbar + .fatal { min-height: calc(100dvh - 49px); }
+
+.loading-indicator { display: inline-flex; align-items: center; gap: 8px; }
+.loading-indicator .spinner { display: inline-block; flex: 0 0 16px; }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none !important; } }

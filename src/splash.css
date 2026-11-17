@@ -14,3 +14,8 @@ body { margin: 0; }
   .startup-progress { background: #2d5b60; }
   .startup-progress span { background: #79e0c7; }
 }
+
+.startup-spinner { width: 22px; height: 22px; margin-top: 16px; border: 2px solid #b6dcd3; border-top-color: #168576; border-radius: 50%; animation: startup-spin .8s linear infinite; }
+@keyframes startup-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .startup-spinner { animation: none; } }
+@media (prefers-color-scheme: dark) { .startup-spinner { border-color: #2d5b60; border-top-color: #79e0c7; } }
