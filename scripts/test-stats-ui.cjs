@@ -135,7 +135,7 @@ const assert = require('node:assert/strict');
     assert.equal(await page.locator('.selection-summary,.storage-summary,.inspector').count(), 0);
     assert.equal(await page.getByRole('button', { name: 'Open backup folder', exact: true }).count(), 1);
     assert.equal(await page.getByRole('button', { name: 'Choose what to back up', exact: true }).count(), 0);
-    const recent = page.getByRole('region', { name: 'Saved mail' });
+    const recent = page.getByRole('region', { name: 'Mail list' });
     await recent.waitFor();
     const back = page.getByRole('button', { name: 'Back', exact: true });
     const forward = page.getByRole('button', { name: 'Forward', exact: true });
@@ -458,9 +458,9 @@ const assert = require('node:assert/strict');
     await go('Home');
     await sidebar.locator('[data-action="select-folder"][data-folder="INBOX"]').click();
     await page.waitForFunction(() => document.querySelectorAll('.mail-table tbody tr').length === 35);
-    const mail = page.getByRole('region', { name: 'Saved mail' });
+    const mail = page.getByRole('region', { name: 'Mail list' });
     const sortColumn = column => mail.locator(`[data-action="sort-mail"][data-column="${column}"]`);
-    const firstCell = column => mail.locator(`tbody tr:first-child td:nth-child(${column})`);
+    const firstCell = column => column === 1 ? mail.locator("tbody tr:first-child .mail-subject") : mail.locator(`tbody tr:first-child td:nth-child(${column})`);
     await sortColumn('subject').click();
     assert.equal(await firstCell(1).textContent(), 'Message 1');
     assert.equal(await mail.locator('th[aria-sort]').getAttribute('aria-sort'), 'ascending');
@@ -609,6 +609,24 @@ const assert = require('node:assert/strict');
     assert.ok(await page.locator('.reading-pane').evaluate(el => el.getBoundingClientRect().height) >= 139, 'Reading pane keeps a usable minimum height');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await sidebarDivider.dblclick(); await mailDivider.dblclick();
+    await page.evaluate(() => {
+      window.data.localStats.recent = [
+        { id: 'server-new', file: '', folder: 'INBOX', subject: 'New server mail', sender: 'sender@example.test', isNew: true, onServer: true, backedUp: false },
+        { id: 'server-old', file: '', folder: 'INBOX', subject: 'Existing server mail', sender: 'sender@example.test', isNew: false, onServer: true, backedUp: false },
+        { id: 'saved-new', file: 'saved-new.eml', folder: 'INBOX', subject: 'New saved mail', sender: 'sender@example.test', isNew: true, onServer: true, backedUp: true },
+      ];
+    });
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await go('Home');
+    const serverNew = page.locator('.mail-table tbody tr').filter({ hasText: 'New server mail' });
+    await serverNew.waitFor();
+    assert.equal(await serverNew.locator('.state-new').textContent(), 'New');
+    assert.equal(await serverNew.locator('.state-not-backed-up').textContent(), 'Not backed up');
+    assert.equal(await serverNew.locator('.download-icon').isDisabled(), true);
+    await serverNew.locator('.mail-subject').click();
+    await page.getByRole('region', { name: 'Email preview' }).getByRole('heading', { name: 'Not backed up', exact: true }).waitFor();
+    assert.equal(await page.locator('.mail-table tbody tr').filter({ hasText: 'Existing server mail' }).locator('.state-new').count(), 0);
+    assert.equal(await page.locator('.mail-table tbody tr').filter({ hasText: 'New saved mail' }).locator('.mail-state').count(), 2);
     await page.evaluate(() => sessionStorage.setItem('fixture-new-mail-failure', 'NEW_MAIL_CHECK_BUSY'));
     await page.reload();
     await page.waitForFunction(() => window.newMailChecks === 1 && document.querySelector('.status-message')?.textContent === '');

@@ -1,9 +1,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { readMailIndex, indexFolder } = require('./mail-index.cjs');
 
 // The caller holds the backup lock and supplies a connected read-only client.
-async function checkMailbox(client, root, manifest, { readJson, atomicWrite, validateRecord, newMailOnly = false }) {
+async function checkMailbox(client, root, manifest, { readJson, atomicWrite, validateRecord, newMailOnly = false, indexMessages = false }) {
   const coverageFile = path.join(root, 'mailbox-status.json');
   const filename = newMailOnly ? path.join(root, 'new-mail-status.json') : coverageFile;
   let previous = readJson(filename, null);
@@ -12,6 +13,8 @@ async function checkMailbox(client, root, manifest, { readJson, atomicWrite, val
     if (coverage && (!previous || coverage.checkedAt > previous.checkedAt)) previous = coverage;
   }
   const folders = [];
+  const previousIndex = indexMessages ? readMailIndex(root, readJson) : {};
+  const indexedFolders = {};
   const available = (await client.list()).filter(folder => !folder.flags.has('\\Noselect'));
   if (!available.length) throw new Error('No accessible mailbox folders found.');
   for (const folder of available) {
@@ -27,15 +30,19 @@ async function checkMailbox(client, root, manifest, { readJson, atomicWrite, val
       const earlier = previous?.folders?.find(item => item.name === folder.path && item.uidValidity === uidValidity);
       const known = new Set(earlier?.uids || []);
       const reset = !earlier && previous?.folders?.some(item => item.name === folder.path);
-      folders.push({ name: folder.path, uidValidity, uids, serverMessages: uids.length, savedMessages: saved,
-        missingMessages: uids.length - saved, newMessages: previous && !reset ? (earlier ? uids.filter(uid => !known.has(uid)).length : uids.length) : null });
+      const newUids = previous && !reset ? (earlier ? uids.filter(uid => !known.has(uid)) : uids) : [];
+      const summary = { name: folder.path, uidValidity, uids, newUids, serverMessages: uids.length, savedMessages: saved,
+        missingMessages: uids.length - saved, newMessages: previous && !reset ? newUids.length : null };
+      folders.push(summary);
+      if (indexMessages) indexedFolders[key] = await indexFolder(client, summary, previousIndex[key], records);
     } finally { lock.release(); }
   }
   const checkedAt = new Date().toISOString();
+  if (indexMessages) atomicWrite(path.join(root, 'mail-index.json'), JSON.stringify({ checkedAt, folders: indexedFolders }) + '\n');
   const total = field => folders.reduce((sum, folder) => sum + (folder[field] || 0), 0);
   const complete = folders.every(folder => folder.missingMessages === 0);
   if (newMailOnly) {
-    const snapshot = { checkedAt, previousCheckedAt: previous?.checkedAt || null, folders: folders.map(({ name, uidValidity, uids, newMessages }) => ({ name, uidValidity, uids, newMessages })) };
+    const snapshot = { checkedAt, previousCheckedAt: previous?.checkedAt || null, folders: folders.map(({ name, uidValidity, uids, newUids, newMessages }) => ({ name, uidValidity, uids, newUids, newMessages })) };
     atomicWrite(filename, JSON.stringify(snapshot, null, 2) + '\n');
     return snapshot;
   }

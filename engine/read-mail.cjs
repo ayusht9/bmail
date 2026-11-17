@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { simpleParser } = require('mailparser');
 const { dataDirectory } = require('./paths.cjs');
+const { readMailIndex } = require('./mail-index.cjs');
 
 async function readSavedMail(root, file) {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, ''));
@@ -28,9 +29,9 @@ async function listSavedMail(root, selected) {
   try { cache = JSON.parse(fs.readFileSync(cachePath, 'utf8')); } catch {}
   const rows = [];
   let changed = false;
-  for (const folder of Object.values(manifest.folders || {})) {
+  for (const [folderKey, folder] of Object.entries(manifest.folders || {})) {
     if (selected && folder.name !== selected) continue;
-    for (const record of Object.values(folder.messages || {})) {
+    for (const [uid, record] of Object.entries(folder.messages || {})) {
       if (record.complete === false) continue;
       let sentAt = record.sentAt || null;
       let backedUp = false;
@@ -59,7 +60,7 @@ async function listSavedMail(root, selected) {
           }
         }
       } catch { /* Missing or damaged saved files remain visible without a backup indicator. */ }
-      rows.push({ folder: folder.name, file: record.file, subject: record.subject, sender: record.sender, sentAt, bytes, backedUp });
+      rows.push({ id: `${folderKey}:${uid}`, uid: Number(uid), folder: folder.name, file: record.file, subject: record.subject, sender: record.sender, sentAt, bytes, backedUp });
     }
   }
   if (changed) try {
@@ -70,12 +71,31 @@ async function listSavedMail(root, selected) {
   return rows;
 }
 
+async function listMailbox(root, selected) {
+  const saved = await listSavedMail(root, selected);
+  const rows = new Map(saved.map(row => [row.id, { ...row, onServer: false, isNew: false }]));
+  const folders = readMailIndex(root, (filename, fallback) => {
+    try { return JSON.parse(fs.readFileSync(filename, 'utf8')); } catch { return fallback; }
+  });
+  for (const [key, folder] of Object.entries(folders)) {
+    if (selected && folder.name !== selected) continue;
+    const newUids = new Set(folder.newUids || []);
+    for (const [uid, message] of Object.entries(folder.messages || {})) {
+      const id = `${key}:${uid}`;
+      const local = rows.get(id);
+      rows.set(id, { ...message, ...local, id, folder: folder.name, uid: Number(uid), file: local?.file || '',
+        backedUp: local?.backedUp || false, onServer: true, isNew: newUids.has(Number(uid)) });
+    }
+  }
+  return [...rows.values()];
+}
+
 if (require.main === module) (async () => {
   const data = dataDirectory();
   const config = JSON.parse(fs.readFileSync(path.join(data, 'backup-config.json'), 'utf8').replace(/^\uFEFF/, ''));
   let input = ''; for await (const chunk of process.stdin) input += chunk;
   const { file, folder } = JSON.parse(input);
   const root = path.resolve(data, config.backupDirectory || 'backups');
-  console.log(JSON.stringify(process.argv.includes('--list') ? await listSavedMail(root, folder) : await readSavedMail(root, file)));
+  console.log(JSON.stringify(process.argv.includes('--list') ? await listMailbox(root, folder) : await readSavedMail(root, file)));
 })().catch(error => { console.error(error.message); process.exitCode = 1; });
-module.exports = { readSavedMail, listSavedMail };
+module.exports = { readSavedMail, listSavedMail, listMailbox };

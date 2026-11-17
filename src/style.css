@@ -1054,3 +1054,17 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .loading-indicator { display: inline-flex; align-items: center; gap: 8px; }
 .loading-indicator .spinner { display: inline-block; flex: 0 0 16px; }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none !important; } }
+
+.mail-legend { display: flex; gap: 18px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+.mail-legend > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.mail-legend i { width: 8px; height: 8px; border-radius: 2px; background: #a6b2c0; }
+.mail-legend .legend-new { background: #176bcc; } .mail-legend .legend-backed-up { background: #0f766e; }
+.mail-states { display: flex; gap: 5px; margin-top: 4px; overflow: hidden; }
+.mail-state { display: inline-block; font-size: 10px; font-weight: 600; line-height: 17px; padding: 0 5px; border-radius: 3px; white-space: nowrap; }
+.state-new { color: #154d99; background: #deebff; } .state-backed-up { color: #115d50; background: #dcefe8; }
+.state-not-backed-up, .state-local-only { color: #4d5b69; background: #e9edf2; }
+.mail-table tr.new-mail .mail-subject { font-weight: 700; }
+.server-mail-notice { padding: 18px 24px; color: var(--muted); line-height: 1.5; }
+:root[data-theme="dark"] .state-new { color: #c1ddff; background: #28476c; }
+:root[data-theme="dark"] .state-backed-up { color: #b5ecdd; background: #24574f; }
+:root[data-theme="dark"] .state-not-backed-up, :root[data-theme="dark"] .state-local-only { color: #d1dbe5; background: #384453; }
