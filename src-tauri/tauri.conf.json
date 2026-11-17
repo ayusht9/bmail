@@ -14,6 +14,7 @@
     "windows": [
       {
         "label": "main",
+        "decorations": false,
         "visible": false,
         "title": "Bmail",
         "width": 1120,

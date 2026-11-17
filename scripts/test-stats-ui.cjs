@@ -10,6 +10,7 @@ const assert = require('node:assert/strict');
     const file = path.resolve(root, '.' + new URL(request.url, 'http://localhost').pathname);
     if (file !== root && !file.startsWith(root + path.sep)) { response.writeHead(403).end(); return; }
     const target = file === root ? path.join(root, 'index.html') : file;
+    response.setHeader('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'");
     response.setHeader('Content-Type', target.endsWith('.js') ? 'text/javascript' : target.endsWith('.css') ? 'text/css' : target.endsWith('.svg') ? 'image/svg+xml' : 'text/html');
     fs.createReadStream(target).on('error', () => response.writeHead(404).end()).pipe(response);
   });
@@ -32,8 +33,9 @@ const assert = require('node:assert/strict');
         localStats: { messages: 3, bytes: 1048576, folders: [{ name: 'INBOX', messages: 3 }], recent: [
           { file: 'emails/INBOX/one.eml', subject: '<img src=x onerror="window.injected=true">', sender: 'fixture@example.com', folder: 'INBOX', sentAt: '2020-01-02T00:00:00Z', bytes: 2048, backedUp: true, backedUpAt: '2026-11-15T00:00:00Z' },
         ] }, lastRun: { success: true, downloaded: 1, finishedAt: '2026-11-15T00:00:00Z' } };
-      window.__TAURI_INTERNALS__ = { invoke: async (name, args) => {
+      window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } }, invoke: async (name, args) => {
         window.calls.push(name);
+        if (name.startsWith('plugin:window|')) return;
         if (name === 'finish_startup') return;
         if (name === 'get_desktop_preferences') return { closeToTray: sessionStorage.getItem('fixture-close-to-tray') !== 'false' };
         if (name === 'save_desktop_preferences') {
@@ -90,6 +92,12 @@ const assert = require('node:assert/strict');
     if (process.env.BMAIL_SPLASH_SCREENSHOT) await page.screenshot({ path: process.env.BMAIL_SPLASH_SCREENSHOT });
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.goto(`http://127.0.0.1:${server.address().port}`);
+    await page.locator('.app-logo').waitFor();
+    await page.waitForFunction(() => document.querySelector('.app-logo')?.naturalWidth > 0);
+    assert.equal((await page.locator('.app-logo').getAttribute('src')).startsWith('data:'), false, 'The header logo is packaged as an asset rather than a blocked data URL');
+    assert.equal(await page.getByRole('group', { name: 'Window controls' }).count(), 1);
+    await page.getByRole('button', { name: 'Minimize window', exact: true }).click();
+    await page.getByRole('button', { name: 'Maximize or restore window', exact: true }).click();
     const tab = name => page.getByRole('tab', { name, exact: true });
     const go = async name => { await tab(name).click(); await page.getByRole('tabpanel', { name, exact: true }).waitFor(); };
     const sidebar = page.getByRole('navigation', { name: 'Mailbox folders' });
