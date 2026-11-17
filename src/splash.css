@@ -1,0 +1,16 @@
+:root { font-family: "Segoe UI", sans-serif; color: #103d43; background: #f4fffc; color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.startup-screen { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px; }
+.startup-screen h1 { margin: 16px 0 4px; font-size: 32px; font-weight: 650; letter-spacing: -.8px; }
+.startup-screen p { margin: 8px 0 22px; font-size: 14px; }
+.startup-screen small { margin-top: 24px; font-size: 12px; opacity: .75; }
+.startup-progress { width: 144px; height: 3px; overflow: hidden; border-radius: 3px; background: #d2e8e2; }
+.startup-progress span { display: block; width: 48px; height: 100%; border-radius: inherit; background: #168576; animation: startup-progress 1.4s ease-in-out infinite alternate; }
+@keyframes startup-progress { to { transform: translateX(96px); } }
+@media (prefers-reduced-motion: reduce) { .startup-progress span { animation: none; width: 100%; } }
+@media (prefers-color-scheme: dark) {
+  :root { color: #f4fffc; background: #103d43; color-scheme: dark; }
+  .startup-progress { background: #2d5b60; }
+  .startup-progress span { background: #79e0c7; }
+}

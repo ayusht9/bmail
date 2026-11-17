@@ -1022,3 +1022,6 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .backup-page-actions { position: sticky; top: 39px; z-index: 2; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
 
 .app-logo { display: block; width: 28px; height: 28px; flex-shrink: 0; }
+
+.startup-loading { flex-direction: column; gap: 12px; }
+.startup-loading h1, .startup-loading p { margin: 0; }

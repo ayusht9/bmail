@@ -10,7 +10,7 @@ const assert = require('node:assert/strict');
     const file = path.resolve(root, '.' + new URL(request.url, 'http://localhost').pathname);
     if (file !== root && !file.startsWith(root + path.sep)) { response.writeHead(403).end(); return; }
     const target = file === root ? path.join(root, 'index.html') : file;
-    response.setHeader('Content-Type', target.endsWith('.js') ? 'text/javascript' : target.endsWith('.css') ? 'text/css' : 'text/html');
+    response.setHeader('Content-Type', target.endsWith('.js') ? 'text/javascript' : target.endsWith('.css') ? 'text/css' : target.endsWith('.svg') ? 'image/svg+xml' : 'text/html');
     fs.createReadStream(target).on('error', () => response.writeHead(404).end()).pipe(response);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -34,6 +34,7 @@ const assert = require('node:assert/strict');
         ] }, lastRun: { success: true, downloaded: 1, finishedAt: '2026-11-15T00:00:00Z' } };
       window.__TAURI_INTERNALS__ = { invoke: async (name, args) => {
         window.calls.push(name);
+        if (name === 'finish_startup') return;
         if (name === 'export_mail') { window.exports.push(args); if (window.holdExport) await new Promise(resolve => { window.finishExport = resolve; }); if (window.failExport) throw 'Export failed'; return 'Download saved.'; }
         if (name === 'start_backup') {
           window.data.backupRunning = true;
