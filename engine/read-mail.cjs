@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { simpleParser } = require('mailparser');
+const { dataDirectory } = require('./paths.cjs');
 
 async function readSavedMail(root, file) {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, ''));
@@ -70,7 +71,7 @@ async function listSavedMail(root, selected) {
 }
 
 if (require.main === module) (async () => {
-  const data = process.env.MAIL_VAULT_DATA_DIR || __dirname;
+  const data = dataDirectory();
   const config = JSON.parse(fs.readFileSync(path.join(data, 'backup-config.json'), 'utf8').replace(/^\uFEFF/, ''));
   let input = ''; for await (const chunk of process.stdin) input += chunk;
   const { file, folder } = JSON.parse(input);

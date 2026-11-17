@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $failureCode = 'SETUP_START_FAILED'
 try {
     # Saving a password does not need Node or an IMAP connection.
-    $dataDirectory = if ($env:MAIL_VAULT_DATA_DIR) { $env:MAIL_VAULT_DATA_DIR } else { $PSScriptRoot }
+    . (Join-Path $PSScriptRoot 'Data-Directory.ps1')
     . (Join-Path $PSScriptRoot 'Protect-CredentialDirectory.ps1')
     # Read secrets only from stdin, never from process arguments or log files.
     $failureCode = 'INVALID_REQUEST'

@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { checkMailbox } = require('./backup-stats.cjs');
-const { digest, atomicWrite, readJson, validateRecord } = require('./backup.cjs');
+const { checkMailbox } = require('../engine/backup-stats.cjs');
+const { digest, atomicWrite, readJson, validateRecord } = require('../engine/backup.cjs');
 
 test('full coverage checks every UID and folder, detects new mail, corruption and UID resets without downloading', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-stats-'));
@@ -62,8 +62,8 @@ test('full coverage checks every UID and folder, detects new mail, corruption an
 });
 
 test('coverage UI keeps unknown, partial, full and active backups distinct and escapes recent mail', async () => {
-  const { backupCoverage, coverageRows, statisticsPanel, formatBytes } = await import('./src/statistics.js');
-  const { savedMailPane, folderNavigation } = await import('./src/desktop.js');
+  const { backupCoverage, coverageRows, statisticsPanel, formatBytes } = await import('../src/statistics.js');
+  const { savedMailPane, folderNavigation } = await import('../src/desktop.js');
   assert.match(backupCoverage({}).title, /not checked/);
   assert.match(backupCoverage({ mailboxStatus: { complete: false } }).title, /incomplete/);
   assert.equal(backupCoverage({ mailboxStatus: { complete: true } }).complete, true);
@@ -114,7 +114,7 @@ test('startup new-mail check compares folder IDs without validating files or rep
 
 
 test('column resizing redistributes available width without hiding other columns', async () => {
-  const { fitWidths, resizeWidths } = await import('./src/columns.js');
+  const { fitWidths, resizeWidths } = await import('../src/columns.js');
   for (const available of [536, 900, 1400]) {
     const widths = fitWidths([1000, 300, 200, 250], available);
     assert.ok(Math.abs(widths.reduce((sum, width) => sum + width, 0) - available) < 0.01);

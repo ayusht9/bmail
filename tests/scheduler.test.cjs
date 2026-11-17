@@ -4,12 +4,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
-const { normalizeSelection, searchForSelection, scheduledSelection } = require('./backup-selection.cjs');
-const { recordRun, notifyRun } = require('./backup-history.cjs');
-const { atomicWrite, readJson } = require('./backup.cjs');
+const { normalizeSelection, searchForSelection, scheduledSelection } = require('../engine/backup-selection.cjs');
+const { recordRun, notifyRun } = require('../engine/backup-history.cjs');
+const { atomicWrite, readJson } = require('../engine/backup.cjs');
 
 test('calendar preview handles intervals, selected weekdays, leap years, month ends and expired schedules', async () => {
-  const { defaultSchedule, normalizeSchedule, nextRuns, localDate } = await import('./src/scheduler.js');
+  const { defaultSchedule, normalizeSchedule, nextRuns, localDate } = await import('../src/scheduler.js');
   const now = new Date('2032-01-01T09:00:00');
   const base = { ...defaultSchedule(now), startDate: '2032-01-01', time: '11:00' };
   let schedule = normalizeSchedule({ ...base, frequency: 'daily', every: 2 }, now);
@@ -105,7 +105,7 @@ test('Windows schedule XML and persistence support all recurrences and keep acco
   `);
   try {
     const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', probe], {
-      env: { ...process.env, BMAIL_SOURCE_ROOT: process.cwd(), BMAIL_TEST_ROOT: root }, encoding: 'utf8', windowsHide: true, timeout: 30000,
+      env: { ...process.env, BMAIL_SOURCE_ROOT: path.resolve('engine'), BMAIL_TEST_ROOT: root }, encoding: 'utf8', windowsHide: true, timeout: 30000,
     });
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /account isolation passed/);
@@ -116,7 +116,7 @@ test('schedule status is readable through the real Windows launcher without regi
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-schedule-read-'));
   try {
     fs.writeFileSync(path.join(root, 'backup-config.json'), JSON.stringify({ user: `fixture-${path.basename(root)}@example.test` }));
-    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('Manage-BackupSchedule.ps1')],
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('engine/Manage-BackupSchedule.ps1')],
       { input: JSON.stringify({ action: 'read' }), env: { ...process.env, MAIL_VAULT_DATA_DIR: root }, encoding: 'utf8', windowsHide: true, timeout: 30000 });
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const status = JSON.parse(result.stdout.replace(/^\uFEFF/, ''));
@@ -164,7 +164,7 @@ test('notification preferences route only enabled outcomes and do not expose cre
   await notifyRun(config, { outcome: 'cancelled', downloaded: 1 }, { notifyOnStopped: true }, launch);
   assert.equal(payloads.length, 3); assert.equal(payloads[1].failed, true);
   assert.ok(!JSON.stringify(payloads).includes(config.password));
-  const checked = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('Notify-Backup.ps1'), '-ValidateOnly'],
+  const checked = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('engine/Notify-Backup.ps1'), '-ValidateOnly'],
     { input: JSON.stringify(payloads[0]), encoding: 'utf8', windowsHide: true, timeout: 10000 });
   assert.equal(checked.status, 0, checked.stderr || checked.stdout);
 });

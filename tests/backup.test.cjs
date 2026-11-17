@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { messageLocation, organize, verify, digest, backup, backupWithRetries } = require('./backup.cjs');
+const { messageLocation, organize, verify, digest, backup, backupWithRetries } = require('../engine/backup.cjs');
 const { setTimeout: wait } = require('node:timers/promises');
 const key = 'a'.repeat(64) + '-1';
 

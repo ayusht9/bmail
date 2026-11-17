@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 test('dashboard polling slows while idle, stays live during backups, and pauses when hidden or busy', async () => {
-  const { createDashboardPoller } = await import('./src/polling.js');
+  const { createDashboardPoller } = await import('../src/polling.js');
   const state = { hidden: false, busy: false, controlBusy: false, backupRunning: false };
   const timers = new Map();
   let nextId = 0;
