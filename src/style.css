@@ -939,10 +939,10 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
   .status-download progress { width: 80px; }
 }
 
-.new-mail-dot { display: inline-block; width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--accent); vertical-align: middle; }
-.folder-row > .new-mail-dot { margin-inline: 4px 6px; }
-.folder-table .new-mail-dot { margin-left: 8px; }
-.statusbar > .new-mail-dot { width: 8px; height: 8px; flex-basis: 8px; outline: 3px solid var(--selected); }
+.new-mail-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 21px; height: 20px; padding: 0 6px; flex-shrink: 0; border-radius: 10px; background: #0f766e; color: #fff; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; vertical-align: middle; }
+.folder-row > .new-mail-badge { margin-inline: 4px 6px; }
+.statusbar > .new-mail-badge { height: 18px; min-width: 20px; }
+
 
 .mail-table th button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; border: 0; background: transparent; font-weight: 600; padding: 3px 0; text-align: left; }
 .mail-table th button span { color: var(--muted); }
@@ -1025,3 +1025,5 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 
 .startup-loading { flex-direction: column; gap: 12px; }
 .startup-loading h1, .startup-loading p { margin: 0; }
+
+:root[data-theme="dark"] .new-mail-badge { background: #79e0c7; color: #103d43; }

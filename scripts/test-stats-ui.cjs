@@ -35,6 +35,7 @@ const assert = require('node:assert/strict');
       window.__TAURI_INTERNALS__ = { invoke: async (name, args) => {
         window.calls.push(name);
         if (name === 'finish_startup') return;
+        if (name === 'set_mail_badge') { (window.badgeUpdates ||= []).push(args); return; }
         if (name === 'export_mail') { window.exports.push(args); if (window.holdExport) await new Promise(resolve => { window.finishExport = resolve; }); if (window.failExport) throw 'Export failed'; return 'Download saved.'; }
         if (name === 'start_backup') {
           window.data.backupRunning = true;
@@ -79,11 +80,14 @@ const assert = require('node:assert/strict');
     const tab = name => page.getByRole('tab', { name, exact: true });
     const go = async name => { await tab(name).click(); await page.getByRole('tabpanel', { name, exact: true }).waitFor(); };
     const sidebar = page.getByRole('navigation', { name: 'Mailbox folders' });
-    await page.waitForFunction(() => document.querySelector('.statusbar .new-mail-dot'));
+    await page.waitForFunction(() => document.querySelector('.statusbar .new-mail-badge'));
     assert.equal(await page.evaluate(() => window.newMailChecks), 1);
-    assert.match(await page.locator('.statusbar .new-mail-dot').getAttribute('aria-label'), /3 new emails/);
-    assert.equal(await sidebar.locator('.folder-row[data-folder="INBOX"] .new-mail-dot').count(), 1);
-    assert.equal(await sidebar.locator('.folder-row[data-folder="Sent"] .new-mail-dot').count(), 0);
+    assert.equal(await page.locator('.statusbar .new-mail-badge').textContent(), '3');
+    await page.waitForFunction(() => window.badgeUpdates?.at(-1)?.count === 3);
+    assert.equal(await page.evaluate(() => window.badgeUpdates.at(-1).account), 'fixture@example.com');
+    assert.match(await page.locator('.statusbar .new-mail-badge').getAttribute('aria-label'), /3 new emails/);
+    assert.equal(await sidebar.locator('.folder-row[data-folder="INBOX"] .new-mail-badge').count(), 1);
+    assert.equal(await sidebar.locator('.folder-row[data-folder="Sent"] .new-mail-badge').count(), 0);
     assert.equal(await page.locator('.folder-table').count(), 0);
     await page.locator('.mail-table tbody tr').first().waitFor();
     for (const selector of ['.mail-table']) {
@@ -101,7 +105,7 @@ const assert = require('node:assert/strict');
     assert.equal(await page.locator('.status-message').textContent(), '');
 
     await page.getByRole('searchbox', { name: 'Filter folders' }).fill('INBOX');
-    assert.equal(await sidebar.locator('.new-mail-dot').count(), 1);
+    assert.equal(await sidebar.locator('.new-mail-badge').count(), 1);
     await page.getByRole('searchbox', { name: 'Filter folders' }).fill('');
     assert.equal(await page.getByRole('tab').count(), 5);
     assert.deepEqual(await page.getByRole('tab').allTextContents(), ['Home', 'Backup', 'Scheduler', 'Activity', 'Preferences']);
@@ -579,13 +583,13 @@ const assert = require('node:assert/strict');
     assert.equal(await page.locator('#toast').textContent(), '');
     await page.evaluate(() => { window.newMailFailure = ''; document.dispatchEvent(new Event('visibilitychange')); });
     assert.equal(await page.evaluate(() => window.newMailChecks), 1, 'Busy retries respect their cooldown');
-    await page.waitForFunction(() => window.newMailChecks === 2 && document.querySelector('.statusbar .new-mail-dot'));
+    await page.waitForFunction(() => window.newMailChecks === 2 && document.querySelector('.statusbar .new-mail-badge'));
     await page.evaluate(() => sessionStorage.setItem('fixture-new-mail-failure', 'Connection timed out'));
     await page.reload();
     await page.locator('.operation-error').getByText('Connection timed out', { exact: true }).waitFor();
     await page.evaluate(() => { window.newMailFailure = ''; sessionStorage.removeItem('fixture-new-mail-failure'); });
     await page.locator('.operation-error').getByRole('button', { name: 'Retry', exact: true }).click();
-    await page.waitForFunction(() => window.newMailChecks === 2 && !document.querySelector('.operation-error') && document.querySelector('.statusbar .new-mail-dot'));
+    await page.waitForFunction(() => window.newMailChecks === 2 && !document.querySelector('.operation-error') && document.querySelector('.statusbar .new-mail-badge'));
     assert.deepEqual(errors, []);
     assert.equal(await page.locator('.statusbar progress').count(), 0, 'Finished runs clear the status progress bar');
     console.log('Tabbed workspace passed: no duplicate panels, keyboard tabs, retained drafts, independent scheduled folders, calendar, retries, history, notifications and responsive layout.');

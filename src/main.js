@@ -9,7 +9,8 @@ import { historyPane } from './history.js';
 import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
 import { createNavigation } from './navigation.js';
-import { folderNavigation, savedMailPane, mailboxFolders, newMailDot } from './desktop.js';
+import { newMailBadge, normalizeNewMailCount, totalNewMail, createBadgeSync } from './notifications.js';
+import { folderNavigation, savedMailPane, mailboxFolders } from './desktop.js';
 import { progressPanel, statusDownloadProgress, backupControls } from './progress.js';
 import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, nextRuns, calendarMarkup, scheduleSummary, localDate, updateClock } from './scheduler.js';
 import { backupOptionsView, folderChoices, advancedFromForm } from './selection.js';
@@ -19,13 +20,15 @@ let dashboard;
 let busy = false;
 let controlBusy = false;
 let activeExports = 0;
+const syncMailBadge = createBadgeSync(invoke);
 const startupMailChecked = new Set();
 const newMailRetryAfter = new Map();
 const newMailByAccount = new Map();
 const mailIndicators = () => newMailByAccount.get(dashboard?.user) || new Map();
 
 function rememberNewMail(snapshot, account = dashboard.user) {
-  newMailByAccount.set(account, new Map((snapshot?.folders || []).map(folder => [folder.name, Math.max(0, Number(folder.newMessages) || 0)])));
+  newMailByAccount.set(account, new Map((snapshot?.folders || []).map(folder => [folder.name, normalizeNewMailCount(folder.newMessages)])));
+  if (account === dashboard?.user) void syncMailBadge(account, totalNewMail(mailIndicators()));
 }
 
 async function checkStartupMail() {
@@ -162,7 +165,7 @@ function folderStatus() {
 }
 
 function statusBarContents() {
-  return `<span class="status-message">${busy ? busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Checking mailbox...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailDot([...mailIndicators().values()].reduce((sum, count) => sum + count, 0), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>`;
+  return `<span class="status-message">${busy ? busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Checking mailbox...' : 'Working...' : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailBadge(totalNewMail(mailIndicators()), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>`;
 }
 
 function updateBackupControls() {
@@ -181,6 +184,7 @@ function updateBackupProgress() {
 }
 
 function updateStatusBar() {
+  if (dashboard) void syncMailBadge(dashboard.user, totalNewMail(mailIndicators()));
   const footer = document.querySelector('.statusbar');
   if (footer && dashboard) footer.innerHTML = statusBarContents();
 }
