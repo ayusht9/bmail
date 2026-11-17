@@ -20,3 +20,14 @@ workflow builds an installer artifact without publishing a release.
 
 Run `npm.cmd ci`, `npm.cmd test`, and `npm.cmd run build` for local checks.
 See the Windows guide for native runtime and installer prerequisites.
+
+## License
+
+Copyright (c) 2026 Ayush Kumar. Bmail is available under the [MIT License](LICENSE).
+You may use, modify, and redistribute it, including commercially, provided you
+retain the copyright and license notice in copies or substantial portions of the
+software. A visible credit in your app's interface is not required.
+
+Third-party components retain their own licenses and notices. Packaged builds
+include Bmail's license in `engine/LICENSE`, Node.js notices in
+`engine/NODE-LICENSE.txt`, and the production dependencies' distributed license files.
