@@ -8,6 +8,7 @@ const { normalizeSelection, searchForSelection, scheduledSelection } = require('
 const { RunInterrupted, readControl, createControl } = require('./backup-control.cjs');
 const { checkMailbox } = require('./backup-stats.cjs');
 const { recordRun, notifyRun } = require('./backup-history.cjs');
+const { dataDirectory: resolveDataDirectory } = require('./paths.cjs');
 let redactions = [];
 
 function safeError(error) {
@@ -399,7 +400,7 @@ async function backupWithRetries(makeClient, root, config, log = console.log, wa
 }
 
 async function main() {
-  const dataDirectory = process.env.MAIL_VAULT_DATA_DIR || __dirname;
+  const dataDirectory = resolveDataDirectory();
   const config = readJson(path.join(dataDirectory, 'backup-config.json'));
   if (process.argv.includes('--scheduled')) {
     const selected = scheduledSelection(config.backupOptions, readJson(path.join(dataDirectory, 'backup-schedule.json'), null));

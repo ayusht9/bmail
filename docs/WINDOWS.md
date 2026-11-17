@@ -19,7 +19,7 @@ npm.cmd run tauri:build
 Find the installer in `src-tauri/target/release/bundle/nsis/`.
 For development, run `npm.cmd run tauri:dev`.
 
-The build prepares `src-tauri/resources/engine/` from an explicit file allowlist,
+The build prepares `src-tauri/resources/engine/` from an explicit file allowlist in `engine/`,
 copies the build machine's Node executable, and installs only locked production
 dependencies. End users do not need Node.js, Rust, or the source repository.
 Build using a supported Node LTS release whose architecture matches the Windows

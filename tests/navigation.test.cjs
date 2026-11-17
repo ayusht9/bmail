@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const home = { tab: 'mailbox', folder: '', filter: '' };
-const create = async () => (await import('./src/navigation.js')).createNavigation(home);
+const create = async () => (await import('../src/navigation.js')).createNavigation(home);
 
 test('navigation restores filters and stops at history boundaries', async () => {
   const navigation = await create();
@@ -48,7 +48,7 @@ test('history retains the newest 100 destinations and resets on account changes'
 
 test('callers cannot mutate history through destination objects', async () => {
   const initial = { ...home };
-  const { createNavigation } = await import('./src/navigation.js');
+  const { createNavigation } = await import('../src/navigation.js');
   const navigation = createNavigation(initial);
   initial.folder = 'changed';
   navigation.remember('options', '', '');

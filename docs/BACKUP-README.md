@@ -27,13 +27,18 @@ The desktop app keeps configuration, encrypted credentials, messages, and logs
 in your Windows profile. Use **Set up mailbox** in the app before **Back up now**.
 For install scope, building the installer, and migrating source-folder backups,
 see [Windows installation](WINDOWS.md). The standalone scripts below continue to
-use this project directory by default.
+use the repository root for data by default, or `MAIL_VAULT_DATA_DIR` when set.
+Run the commands below from the repository root.
+
+If you registered a standalone scheduled task before the scripts moved into
+`engine/`, run `engine/Install-BackupSchedule.ps1` again to update its launcher
+path. Installed desktop app schedules keep their existing runtime paths.
 
 ## Activate
 
 1. In Zoho IMAP settings, enable **Include Archived emails** and expose every folder you want backed up under **Folder Settings**. IMAP can only back up what Zoho exposes.
 2. Generate a Zoho **application-specific password** in Zoho Accounts > Security (required with MFA). Keep it private; do not paste it into chat or any source file.
-3. Double-click `Setup-Backup.cmd` in this directory. Enter the password at the hidden local prompt. Setup performs the first full backup before it registers a scheduled task.
+3. Copy `engine/backup-config.example.json` to `backup-config.json` in the repository root and edit the mailbox settings. Double-click `engine/Setup-Backup.cmd`. Enter the password at the hidden local prompt. Setup performs the first full backup before it registers a scheduled task.
 
 The task runs weekly on **Monday at 11:00 in the Windows local timezone**. It runs as your current user, while signed in, with standard permissions. The computer must be on and have internet access; missed weekly runs are requested when available. Check Windows is set to India time if you want 11:00 IST. If task registration is refused by your organization's policy, manual backups still work; no schedule is active until setup reports success.
 
@@ -45,7 +50,7 @@ Credentials are encrypted using Windows DPAPI by `Export-Clixml`, with the crede
 
 Cloud file links do not download the linked files. Open `.eml` files with Thunderbird or another compatible email app. `backups/manifest.json` maps file paths and UIDs to Zoho folder names, and records file sizes, SHA-256 hashes and message metadata. `exports/` holds the original manual export ZIPs and their audit report; these archives contain older emails beyond the current mailbox and are kept separately from the incremental backups.
 
-To organize existing saved messages without connecting to Zoho, run `node .\backup.cjs --organize`. This verifies each email, saves and verifies its new copy, updates the manifest, and then removes the old copy. Original email contents and attachments are unchanged. It can safely be rerun after an interruption. Manual export ZIPs are left intact.
+To organize existing saved messages without connecting to Zoho, run `node .\engine\backup.cjs --organize`. This verifies each email, saves and verifies its new copy, updates the manifest, and then removes the old copy. Original email contents and attachments are unchanged. It can safely be rerun after an interruption. Manual export ZIPs are left intact.
 
 The backup opens each accessible folder in **read-only** mode, checks every existing local message, and downloads missing or damaged copies. Each message is persisted and verified before progress is recorded. Interrupted runs resume on the next run. Local emails remain after a message or folder is deleted from Zoho. Changes to IMAP UIDVALIDITY create a separate folder generation, preserving earlier backups. Folder moves may produce additional local copies.
 
@@ -54,20 +59,20 @@ The backup opens each accessible folder in **read-only** mode, checks every exis
 Run a backup manually from PowerShell:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Run-Backup.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\engine\Run-Backup.ps1
 ```
 
 Verify all previously recorded local email files without connecting to Zoho:
 
 ```powershell
-node .\backup.cjs --verify
+node .\engine\backup.cjs --verify
 ```
 
 Review `backups/last-run.json`: `success` must be `true`. It lists accessible folders and counts for the last run. Review `logs/` or Task Scheduler's **Last Run Result** if a scheduled backup fails. A successful run covers the folders exposed over IMAP, not any hidden or excluded folders. No background notification service is installed.
 
-Temporary socket/connection failures are retried up to three attempts, waiting 30 then 60 seconds between attempts. Completed downloads are reused. Failed runs record an error and the current folder/UID in `last-run.json`. Both standard output and standard error are captured in the run log. Setup reuses an existing encrypted credential; to replace it, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Setup-Backup.ps1 -ResetCredential`.
+Temporary socket/connection failures are retried up to three attempts, waiting 30 then 60 seconds between attempts. Completed downloads are reused. Failed runs record an error and the current folder/UID in `last-run.json`. Both standard output and standard error are captured in the run log. Setup reuses an existing encrypted credential; to replace it, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\engine\Setup-Backup.ps1 -ResetCredential`.
 
-Downloads fetch metadata separately and retrieve original email bytes in 256 KB partial requests, checking the returned UID and offsets. They continue through an actual zero-byte response at the end of the message: Zoho's reported RFC822.SIZE can underestimate the source length, so size alone is not a completion check. The manifest records both the reported size and actual saved bytes. IMAP compression is disabled for compatibility. Larger emails show transfer progress. First backups can be slow; leave the PC awake and online. After account access has been validated, `Install-BackupSchedule.ps1` can also register the task independently of an ongoing initial transfer. Start it in Task Scheduler to let the first backup continue independently of a terminal window. The task has a two-day execution limit to accommodate slow initial transfers and does not overlap itself.
+Downloads fetch metadata separately and retrieve original email bytes in 256 KB partial requests, checking the returned UID and offsets. They continue through an actual zero-byte response at the end of the message: Zoho's reported RFC822.SIZE can underestimate the source length, so size alone is not a completion check. The manifest records both the reported size and actual saved bytes. IMAP compression is disabled for compatibility. Larger emails show transfer progress. First backups can be slow; leave the PC awake and online. After account access has been validated, `engine/Install-BackupSchedule.ps1` can also register the task independently of an ongoing initial transfer. Start it in Task Scheduler to let the first backup continue independently of a terminal window. The task has a two-day execution limit to accommodate slow initial transfers and does not overlap itself.
 
 ## Recover Zoho storage
 

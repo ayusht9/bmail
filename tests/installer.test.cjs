@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
-const { digest } = require('./backup.cjs');
+const { digest } = require('../engine/backup.cjs');
 
 test('Stats and NewMail modes launch Node through the real PowerShell helper and preserves diagnostics', { skip: process.platform !== 'win32' }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-stats-launch-'));
@@ -14,8 +14,8 @@ test('Stats and NewMail modes launch Node through the real PowerShell helper and
   const env = { ...process.env, MAIL_VAULT_DATA_DIR: data };
   const secret = 'fixture-only-password';
   try {
-    for (const file of ['Run-Backup.ps1', 'Invoke-BackupProcess.ps1', 'Backup-Paths.ps1']) fs.copyFileSync(path.resolve(file), path.join(engine, file));
-    const saved = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('Save-Mailbox.ps1')],
+    for (const file of ['Run-Backup.ps1', 'Invoke-BackupProcess.ps1', 'Backup-Paths.ps1', 'Data-Directory.ps1']) fs.copyFileSync(path.resolve('engine', file), path.join(engine, file));
+    const saved = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('engine/Save-Mailbox.ps1')],
       { env, encoding: 'utf8', windowsHide: true, input: JSON.stringify({ user: 'fixture@example.com', host: 'imap.example.com', port: 993, password: secret }) });
     assert.equal(saved.status, 0, saved.stderr || saved.stdout);
     fs.writeFileSync(path.join(engine, 'backup.cjs'), `
@@ -55,11 +55,11 @@ test('installed engine verifies user data when launched from a different directo
       1: { file: 'message.eml', bytes: bytes.length, sha256: digest(bytes) },
     } } } }));
     const options = { cwd: root, env: { ...process.env, MAIL_VAULT_DATA_DIR: data }, encoding: 'utf8' };
-    const good = spawnSync(process.execPath, [path.resolve('backup.cjs'), '--verify'], options);
+    const good = spawnSync(process.execPath, [path.resolve('engine/backup.cjs'), '--verify'], options);
     assert.equal(good.status, 0, good.stderr);
     assert.equal(JSON.parse(good.stdout).checked, 1);
     fs.writeFileSync(path.join(backups, 'message.eml'), 'damaged');
-    const bad = spawnSync(process.execPath, [path.resolve('backup.cjs'), '--verify'], options);
+    const bad = spawnSync(process.execPath, [path.resolve('engine/backup.cjs'), '--verify'], options);
     assert.equal(bad.status, 1);
     assert.equal(JSON.parse(bad.stdout).invalid.length, 1);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
@@ -70,7 +70,7 @@ test('Gmail setup saves the IMAP preset and normalizes a grouped Google app pass
   const env = { ...process.env, MAIL_VAULT_DATA_DIR: root };
   try {
     const saved = spawnSync('powershell.exe', [
-      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('Save-Mailbox.ps1'),
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('engine/Save-Mailbox.ps1'),
     ], { env, encoding: 'utf8', windowsHide: true, input: JSON.stringify({
       user: 'fixture@gmail.com', host: 'imap.gmail.com', port: 993, password: 'abcd efgh ijkl mnop',
     }) });
@@ -93,7 +93,7 @@ test('mailbox setup encrypts the password and rejects mailbox identity changes',
   const settings = { user: 'test@example.com', host: 'imap.example.com', port: 993, password: secret };
   const options = { env: { ...process.env, MAIL_VAULT_DATA_DIR: root }, encoding: 'utf8', timeout: 30000 };
   const save = request => spawnSync('powershell.exe', [
-    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('Save-Mailbox.ps1'),
+    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('engine/Save-Mailbox.ps1'),
   ], { ...options, input: JSON.stringify(request) });
   try {
     const result = save(settings);
@@ -125,7 +125,7 @@ test('Gmail rejects SMTP port 25 and repairs a saved wrong port without changing
   const secret = 'abcd efgh ijkl mnop';
   const settings = { user: 'fixture@gmail.com', host: 'imap.gmail.com', port: 993, password: secret };
   const save = request => spawnSync('powershell.exe', [
-    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('Save-Mailbox.ps1'),
+    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('engine/Save-Mailbox.ps1'),
   ], { env: { ...process.env, MAIL_VAULT_DATA_DIR: root }, encoding: 'utf8', windowsHide: true, input: JSON.stringify(request) });
   try {
     const wrong = save({ ...settings, port: 25 });
@@ -161,7 +161,7 @@ test('new-mail checks report a busy mailbox lock before connecting to the server
     fs.mkdirSync(path.join(root, 'backups'));
     fs.writeFileSync(path.join(root, 'backup-config.json'), JSON.stringify({ user: 'fixture@example.com', host: 'imap.example.com', port: 993, backupDirectory: 'backups' }));
     fs.writeFileSync(path.join(root, 'backups', '.backup.lock'), JSON.stringify({ pid: process.pid }));
-    const result = spawnSync(process.execPath, [path.resolve('backup.cjs'), '--new-mail'], {
+    const result = spawnSync(process.execPath, [path.resolve('engine/backup.cjs'), '--new-mail'], {
       env: { ...process.env, MAIL_VAULT_DATA_DIR: root }, encoding: 'utf8', input: JSON.stringify({ user: 'fixture@example.com', password: 'fixture-test-secret' }), timeout: 10000,
     });
     assert.equal(result.status, 1);
@@ -173,7 +173,7 @@ test('new-mail checks report a busy mailbox lock before connecting to the server
 
 
 test('email reader decodes multipart saved mail and rejects unsaved or external paths', async () => {
-  const { readSavedMail } = require('./read-mail.cjs');
+  const { readSavedMail } = require('../engine/read-mail.cjs');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-reader-'));
   const outside = root + '.eml';
   try {
@@ -194,7 +194,7 @@ test('email reader decodes multipart saved mail and rejects unsaved or external 
 
 
 test('saved mail lists original sent dates and sizes for old backups and marks only intact copies', async () => {
-  const { listSavedMail } = require('./read-mail.cjs');
+  const { listSavedMail } = require('../engine/read-mail.cjs');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-mail-metadata-'));
   try {
     const source = Buffer.from('Date: Tue, 02 Jan 2024 12:30:00 +0530\r\nSubject: Old email\r\n\r\nMessage');
