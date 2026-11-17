@@ -1020,3 +1020,5 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .cancel-backup svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.5; fill: none; }
 
 .backup-page-actions { position: sticky; top: 39px; z-index: 2; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+
+.app-logo { display: block; width: 28px; height: 28px; flex-shrink: 0; }
