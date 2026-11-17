@@ -17,7 +17,7 @@ for (const file of [
   'Save-Mailbox.ps1',
   'backup-config.example.json',
 ]) fs.copyFileSync(path.join(root, 'engine', file), path.join(output, file));
-for (const file of ['package.json', 'package-lock.json']) {
+for (const file of ['LICENSE', 'package.json', 'package-lock.json']) {
   fs.copyFileSync(path.join(root, file), path.join(output, file));
 }
 fs.copyFileSync(process.execPath, path.join(output, 'node.exe'));

@@ -1,5 +1,7 @@
 {
   "name": "bmail",
+  "author": "Ayush Kumar",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "dev": "vite",
