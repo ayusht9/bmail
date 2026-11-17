@@ -92,7 +92,7 @@ when the day changes or a new calendar is rendered.
 
 Activity shows backup run history as a table with selected run details below it. Use the result filter to narrow the table.
 
-On startup, Bmail checks each configured account once when opened, after any active backup finishes. A small dot in the status bar and beside affected folders indicates new emails since the previous check. Hover over a dot for the count. The first check establishes a baseline; reset folder identifiers also establish a fresh baseline. Startup checks compare server message IDs without downloading mail or verifying local files. Use Check mailbox to refresh the indicators manually.
+On startup, Bmail checks each configured account once when opened, after any active backup finishes. Numeric badges in the status bar and beside affected folders show new emails since the previous check. The Windows taskbar shows the current account total as a numeric overlay (up to 99+), with the exact total in the window title and tray tooltip. Zero removes the badge. The first check establishes a baseline; reset folder identifiers also establish a fresh baseline. Startup checks compare server message IDs without downloading mail or verifying local files. Use Check mailbox to refresh the indicators manually.
 
 Saved mail loads on demand for the selected folder (or all folders) without the dashboard summary's ten-record limit. Subject, From, Folder, and Saved column headings toggle ascending/descending sorting; the active column shows an arrow. The list includes complete saved records from every UID generation and retains individual email downloads.
 

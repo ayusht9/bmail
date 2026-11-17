@@ -35,6 +35,12 @@ const assert = require('node:assert/strict');
       window.__TAURI_INTERNALS__ = { invoke: async (name, args) => {
         window.calls.push(name);
         if (name === 'finish_startup') return;
+        if (name === 'get_desktop_preferences') return { closeToTray: sessionStorage.getItem('fixture-close-to-tray') !== 'false' };
+        if (name === 'save_desktop_preferences') {
+          if (window.failPreferences) throw 'Could not save desktop preferences';
+          sessionStorage.setItem('fixture-close-to-tray', String(args.preferences.closeToTray));
+          return args.preferences;
+        }
         if (name === 'set_mail_badge') { (window.badgeUpdates ||= []).push(args); return; }
         if (name === 'export_mail') { window.exports.push(args); if (window.holdExport) await new Promise(resolve => { window.finishExport = resolve; }); if (window.failExport) throw 'Export failed'; return 'Download saved.'; }
         if (name === 'start_backup') {
@@ -76,6 +82,13 @@ const assert = require('node:assert/strict');
         throw 'Unexpected IPC command';
       } };
     });
+    await page.goto(`http://127.0.0.1:${server.address().port}/splash.html`);
+    assert.equal(await page.getByRole('heading', { name: 'Bmail', exact: true }).count(), 1);
+    assert.equal(await page.locator('.startup-screen img').evaluate(image => image.complete && image.naturalWidth > 0), true);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    assert.equal(await page.locator('.startup-progress span').evaluate(element => getComputedStyle(element).animationName), 'none');
+    if (process.env.BMAIL_SPLASH_SCREENSHOT) await page.screenshot({ path: process.env.BMAIL_SPLASH_SCREENSHOT });
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     const tab = name => page.getByRole('tab', { name, exact: true });
     const go = async name => { await tab(name).click(); await page.getByRole('tabpanel', { name, exact: true }).waitFor(); };
@@ -132,6 +145,18 @@ const assert = require('node:assert/strict');
     await sidebar.getByRole('button', { name: 'INBOX 3', exact: true }).click();
     assert.equal(await forward.isEnabled(), true, 'Selecting the current folder preserves forward history');
     await go('Preferences');
+    const closeBehavior = page.getByLabel('When I close Bmail', { exact: true });
+    assert.equal(await closeBehavior.inputValue(), 'tray');
+    await closeBehavior.selectOption('quit');
+    await page.waitForFunction(() => sessionStorage.getItem('fixture-close-to-tray') === 'false' && !document.querySelector('#close-behavior').disabled);
+    assert.equal(await closeBehavior.inputValue(), 'quit');
+    await page.evaluate(() => { window.failPreferences = true; });
+    await closeBehavior.selectOption('tray');
+    await page.getByRole('alert').filter({ hasText: 'Could not save desktop preferences' }).waitFor();
+    assert.equal(await closeBehavior.inputValue(), 'quit', 'Failed saves preserve the last saved behavior');
+    await page.evaluate(() => { window.failPreferences = false; });
+    await closeBehavior.selectOption('tray');
+    await page.waitForFunction(() => sessionStorage.getItem('fixture-close-to-tray') === 'true' && !document.querySelector('#close-behavior').disabled);
     assert.equal(await forward.isDisabled(), true, 'A new destination clears forward history');
     await back.click();
     await page.locator('.status-folder').filter({ hasText: /^INBOX:/ }).waitFor();

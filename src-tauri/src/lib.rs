@@ -9,6 +9,7 @@ mod export;
 mod mail;
 mod startup;
 mod notifications;
+mod desktop;
 use std::sync::Mutex;
 
 #[derive(Default)]
@@ -324,6 +325,7 @@ async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings, pro
             return Err(message.into());
         }
         select_account(&base, &settings.user)?;
+        let _ = notifications::apply(&app, &settings.user, 0);
         Ok("Mailbox saved. You can start your first backup.".into())
     }).await.map_err(|_| "Mailbox setup was interrupted".to_owned())?
 }
@@ -337,7 +339,9 @@ fn switch_account(app: tauri::AppHandle, email: String, process: tauri::State<Ba
     let base = base_root(&app)?;
     if !account_list(&base).contains(&email) { return Err("That account has not been added to Bmail.".into()); }
     select_account(&base, &email)?;
-    notifications::apply(&app, &email, 0)
+    // A cosmetic taskbar failure must not turn a successful account switch into an error.
+    let _ = notifications::apply(&app, &email, 0);
+    Ok(())
 }
 
 fn powershell(engine: &Path, data: &Path, script: &str) -> Result<std::process::Output, String> {
@@ -577,10 +581,12 @@ pub fn run() {
         .manage(cache::DashboardCache::default())
         .setup(|app| {
             initialize_profiles(app.handle()).map_err(std::io::Error::other)?;
+            desktop::initialize(app.handle())?;
             startup::install_deadline(app.handle());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
+        .on_window_event(desktop::handle_window_event)
+        .invoke_handler(tauri::generate_handler![desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }

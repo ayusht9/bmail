@@ -36,6 +36,29 @@ not connect to your mailbox: choose **Back up now** to start, and **Install
 schedule** when ready. Use **Update app password** to replace a saved password.
 An existing profile keeps its mailbox identity to protect earlier backups.
 
+## Startup, new-mail counts, and the system tray
+
+Bmail shows a branded splash while opening your local mailbox. The main window
+appears when the initial dashboard is ready, including any startup error and a
+retry control. A startup deadline prevents the splash from remaining indefinitely.
+
+Folder badges show the number of new emails found since the previous mailbox
+check. The status bar shows the current account's total. The Windows taskbar uses
+a numeric overlay (up to `99+`); the window title and tray tooltip retain the exact
+total. These are new-mail check counts, not unread counts. Switching accounts
+updates the total; zero removes the badge.
+
+By default, closing the window keeps Bmail in the Windows system tray. Click the
+tray icon to reopen it, or right-click it for **Open Bmail** and **Quit Bmail**.
+Change **Preferences > Window behavior > When I close Bmail** to **Quit Bmail**
+if you prefer closing the window to exit. This setting applies to all accounts
+on this device and survives restarts. Backups already running continue independently
+when the dashboard exits.
+
+Run `npm.cmd run test:desktop:lifecycle` to verify the native splash, account
+count isolation, tray hide/restore, quit behavior, and saved preference using an
+isolated profile without mailbox connections.
+
 ## Progress and backup controls
 
 Choose **Choose what to back up** to select folders, an inclusive received-date

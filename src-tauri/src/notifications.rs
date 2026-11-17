@@ -62,6 +62,12 @@ pub fn apply(app: &tauri::AppHandle, account: &str, count: u32) -> Result<(), St
             format!("Bmail ({count} new emails)")
         }).map_err(|e| e.to_string())?;
     }
+    if let Some(tray) = app.tray_by_id("bmail") {
+        let label = if account.is_empty() { "Bmail".to_owned() } else {
+            format!("Bmail — {account}\n{count} new emails since the previous check")
+        };
+        tray.set_tooltip(Some(label)).map_err(|e| e.to_string())?;
+    }
     *app.state::<MailBadgeState>().0.lock().map_err(|_| "Mail count is unavailable")? = (account.to_owned(), count);
     Ok(())
 }

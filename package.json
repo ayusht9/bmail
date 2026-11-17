@@ -13,6 +13,7 @@
     "prepare:runtime": "node scripts/prepare-runtime.cjs",
     "test": "node --test tests/*.test.cjs",
     "test:desktop:setup": "tauri build --config src-tauri/tauri.setup-test.conf.json --no-bundle && node scripts/test-desktop-setup.cjs",
+    "test:desktop:lifecycle": "tauri build --debug --config src-tauri/tauri.lifecycle-test.conf.json --no-bundle && node scripts/test-desktop-lifecycle.cjs",
     "test:profiles": "node scripts/test-profiles.cjs",
     "verify": "node engine/backup.cjs --verify",
     "test:stats:ui": "node scripts/test-stats-ui.cjs",

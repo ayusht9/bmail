@@ -1027,3 +1027,9 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .startup-loading h1, .startup-loading p { margin: 0; }
 
 :root[data-theme="dark"] .new-mail-badge { background: #79e0c7; color: #103d43; }
+
+.preferences-page h3 { margin: 28px 0 0; font-size: 15px; }
+.preferences-page #close-behavior { width: min(100%, 320px); }
+.preferences-page p { line-height: 1.5; }
+.preferences-page .preferences-error { color: var(--error); }
+.preferences-status:empty { display: none; }

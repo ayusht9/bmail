@@ -18,6 +18,7 @@ docs/        Setup and feature guides
 | Area | Entry points and responsibilities |
 | --- | --- |
 | Desktop UI | `src/main.js` coordinates application state, Tauri calls, rendering, and events. |
+| Desktop integration | `src/preferences.js` renders desktop settings. Native `desktop.rs`, `notifications.rs`, and `startup.rs` own tray behavior, taskbar counts, and splash readiness. |
 | Navigation | `src/navigation.js` owns bounded back/forward history and saved folder filters; `src/workspace.js` renders tabs. |
 | Mail views | `src/desktop.js` renders folders and saved mail; `src/reader.js` sanitizes and renders message content. |
 | Backup UI | `src/selection.js`, `src/progress.js`, and `src/history.js` handle backup options, progress, and activity views. |

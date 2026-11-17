@@ -9,6 +9,7 @@ import { historyPane } from './history.js';
 import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
 import { createNavigation } from './navigation.js';
+import { preferencesView } from './preferences.js';
 import { newMailBadge, normalizeNewMailCount, totalNewMail, createBadgeSync } from './notifications.js';
 import { folderNavigation, savedMailPane, mailboxFolders } from './desktop.js';
 import { progressPanel, statusDownloadProgress, backupControls } from './progress.js';
@@ -20,6 +21,38 @@ let dashboard;
 let busy = false;
 let controlBusy = false;
 let activeExports = 0;
+let desktopPreferences = null;
+let preferencesSaving = false;
+let preferencesError = '';
+
+async function loadDesktopPreferences() {
+  try {
+    desktopPreferences = await invoke('get_desktop_preferences');
+    preferencesError = '';
+  } catch (error) { preferencesError = String(error); }
+  if (dashboard && activeTab === 'preferences') render();
+}
+
+async function saveCloseBehavior(value) {
+  preferencesSaving = true;
+  preferencesError = '';
+  render();
+  let saved = false;
+  try {
+    desktopPreferences = await invoke('save_desktop_preferences', { preferences: { closeToTray: value === 'tray' } });
+    saved = true;
+  } catch (error) { preferencesError = String(error); }
+  finally {
+    preferencesSaving = false;
+    if (activeTab === 'preferences') {
+      render();
+      document.querySelector('#close-behavior')?.focus({ preventScroll: true });
+    }
+    if (saved) toast('Window preference saved.');
+    dashboardPoller?.reschedule();
+  }
+}
+
 const syncMailBadge = createBadgeSync(invoke);
 const startupMailChecked = new Set();
 const newMailRetryAfter = new Map();
@@ -213,7 +246,7 @@ function render() {
   if (activeTab === 'mailbox') loadSavedMail();
   const folderKey = JSON.stringify([dashboard.user, selectedFolder]);
   if (messageFolderKey !== folderKey) { messageFolderKey = folderKey; selectedMessage = { file: '', message: null, loading: false, error: '' }; }
-  const workspaceBody = activeTab === 'preferences' ? `<section class="preferences-page" aria-labelledby="preferences-title"><h2 id="preferences-title">Appearance</h2><label for="theme-preference">Theme</label><select id="theme-preference" aria-describedby="theme-description">${[['auto','Auto'],['light','Light'],['dark','Dark']].map(([value,label]) => `<option value="${value}" ${themePreference() === value ? 'selected' : ''}>${label}</option>`).join('')}</select><p id="theme-description">Auto follows your Windows appearance. Your choice is saved on this device.</p></section>`
+  const workspaceBody = activeTab === 'preferences' ? preferencesView(themePreference(), desktopPreferences, preferencesSaving, preferencesError, escapeHtml)
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions">${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}</div>${dashboard.backupRunning ? progressPanel(dashboard, escapeHtml, formatNumber) : ''}${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
     : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
@@ -381,6 +414,7 @@ app.addEventListener('click', event => {
     return;
   }
   if (busy && ['select-tab','select-folder','selection','schedule','reset-selection','schedule-day','schedule-prev','schedule-next'].includes(action)) return;
+  if (action === 'retry-preferences') { void loadDesktopPreferences(); return; }
   if (action === 'navigate-back' || action === 'navigate-forward') { moveNavigation(action === 'navigate-back' ? -1 : 1); return; }
   if (action === 'new-mail') { startupMailChecked.delete(dashboard.user); newMailRetryAfter.delete(dashboard.user); checkStartupMail(); return; }
   if (action === 'select-message') { openMessage(button.dataset.file); return; }
@@ -451,6 +485,7 @@ app.addEventListener('input', event => {
 });
 
 app.addEventListener('change', event => {
+  if (event.target.id === 'close-behavior') { void saveCloseBehavior(event.target.value); return; }
   if (event.target.id === 'theme-preference') { setTheme(event.target.value); return; }
   if (event.target.id === 'history-filter') { historyFilter = event.target.value; render(); return; }
   if (event.target.closest('#scheduler-form')) { updateSchedulePreview(); return; }
@@ -731,14 +766,14 @@ app.addEventListener('submit', async event => {
 
 dashboardPoller = createDashboardPoller({
   refresh: () => refresh(true),
-  state: () => ({ hidden: document.hidden, busy, controlBusy, backupRunning: Boolean(dashboard?.backupRunning) }),
+  state: () => ({ hidden: document.hidden && !desktopPreferences?.closeToTray, busy, controlBusy, backupRunning: Boolean(dashboard?.backupRunning) }),
 });
 document.addEventListener('visibilitychange', () => dashboardPoller.wake());
 window.addEventListener('pagehide', () => dashboardPoller.stop());
 installColumnResizing(app);
 installPaneResizing(app);
 render();
-refresh().finally(() => {
+Promise.all([refresh(), loadDesktopPreferences()]).finally(() => {
   dashboardPoller.start();
   void invoke('finish_startup').catch(error => console.error('Could not finish startup:', error));
 });
