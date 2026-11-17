@@ -1,0 +1,34 @@
+# Working on Bmail
+
+Start feature branches from `dev` using `feature/<name>`. Commit completed work
+and merge it back to `dev` with a merge commit. Reserve `main` for releases.
+See [AGENTS.md](AGENTS.md) for repository workflow requirements.
+
+## Code map
+
+| Area | Entry points and responsibilities |
+| --- | --- |
+| Desktop UI | `src/main.js` coordinates application state, Tauri calls, rendering, and events. |
+| Navigation | `src/navigation.js` owns bounded back/forward history and saved folder filters; `src/workspace.js` renders tabs. |
+| Mail views | `src/desktop.js` renders folders and saved mail; `src/reader.js` sanitizes and renders message content. |
+| Backup UI | `src/selection.js`, `src/progress.js`, and `src/history.js` handle backup options, progress, and activity views. |
+| Scheduling | `src/scheduler.js` handles schedule normalization, previews, and form data. |
+| UI infrastructure | `src/polling.js`, `src/panes.js`, `src/columns.js`, and `src/theme.js` handle refresh timing, resizing, and appearance. |
+| Native app | `src-tauri/src/lib.rs` exposes Tauri commands and coordinates desktop processes. Sibling modules handle profiles, cache, mail, and exports. |
+| Backup engine | `backup.cjs` runs the Node.js engine. `backup-selection.cjs`, `backup-control.cjs`, `backup-progress.cjs`, `backup-history.cjs`, and `backup-stats.cjs` provide focused helpers. |
+| Windows integration | Root PowerShell scripts handle setup, credentials, scheduled tasks, and backup launch. `scripts/` contains build and verification utilities. |
+
+## Refactoring and validation
+
+Keep state transitions separate from DOM updates and native calls where practical.
+Pass the data a helper needs explicitly; keep application orchestration in the
+entry point. Preserve account isolation, interrupted-run recovery, and message
+sanitization when moving code.
+
+Run `npm.cmd test` and `npm.cmd run build` before merging. The test command runs
+Node's test runner against the explicit test files in `package.json`; add new
+test files there. Navigation tests run without a browser or Tauri runtime.
+For native and packaging prerequisites, see [WINDOWS.md](WINDOWS.md).
+
+Do not commit credentials, personal configuration, email backups, logs, or
+generated runtime resources.
