@@ -449,14 +449,14 @@ async function main() {
     try {
       await client.connect();
       if (process.argv.includes('--new-mail')) {
-        await checkMailbox(client, root, null, { readJson, atomicWrite, newMailOnly: true });
+        await checkMailbox(client, root, null, { readJson, atomicWrite, newMailOnly: true, indexMessages: true });
         console.log('New mail check complete.');
         return;
       }
       if (process.argv.includes('--check-mailbox')) {
         const manifest = readJson(path.join(root, 'manifest.json'), null);
         if (manifest && (manifest.user !== config.user || manifest.host !== config.host)) throw new Error('Backup identity does not match configuration');
-        const stats = await checkMailbox(client, root, manifest, { readJson, atomicWrite, validateRecord });
+        const stats = await checkMailbox(client, root, manifest, { readJson, atomicWrite, validateRecord, indexMessages: true });
         console.log(`Mailbox checked: ${stats.savedMessages}/${stats.totalServerMessages} saved; ${stats.missingMessages} still to back up.`);
         return;
       }
@@ -472,7 +472,7 @@ async function main() {
     const client = makeClient();
     try {
       await client.connect();
-      await checkMailbox(client, root, readJson(path.join(root, 'manifest.json')), { readJson, atomicWrite, validateRecord });
+      await checkMailbox(client, root, readJson(path.join(root, 'manifest.json')), { readJson, atomicWrite, validateRecord, indexMessages: true });
     } catch { console.log('Backup saved. Mailbox coverage could not refresh; use Check mailbox to try again.'); }
     finally { try { client.close(); } finally { release(); } }
   }

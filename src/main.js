@@ -62,6 +62,7 @@ const newMailByAccount = new Map();
 const mailIndicators = () => newMailByAccount.get(dashboard?.user) || new Map();
 
 function rememberNewMail(snapshot, account = dashboard.user) {
+  savedMail.key = '';
   newMailByAccount.set(account, new Map((snapshot?.folders || []).map(folder => [folder.name, normalizeNewMailCount(folder.newMessages)])));
   if (account === dashboard?.user) void syncMailBadge(account, totalNewMail(mailIndicators()));
 }
@@ -100,17 +101,24 @@ let savedMail = { key: '', rows: [], loading: false, error: '' };
 let selectedMessage = { file: '', message: null, loading: false, error: '' };
 let messageFolderKey = '';
 
-function mailList() { return savedMailPane(savedMail, selectedFolder, mailSort, escapeHtml, formatDate, selectedMessage.file); }
+function mailList() { return savedMailPane(savedMail, selectedFolder, mailSort, escapeHtml, formatDate, selectedMessage.id || selectedMessage.file); }
 function updateReader() {
   const pane = document.querySelector('.reading-pane');
   if (pane && activeTab === 'mailbox') pane.outerHTML = readingPane(selectedMessage, escapeHtml, formatDate);
 }
-function openMessage(file) {
+function openMessage(file, id = file) {
+  const row = savedMail.rows.find(message => (message.id || message.file) === id);
+  if (row && !row.backedUp) {
+    selectedMessage = { id, file: '', unavailable: true, onServer: row.onServer, message: row };
+    updateReader();
+    document.querySelectorAll('.mail-table tbody tr').forEach(element => element.classList.toggle('selected', element.dataset.id === id));
+    return;
+  }
   if (!file) return;
-  const request = { file, message: null, loading: true, error: '' };
+  const request = { id, file, message: null, loading: true, error: '' };
   selectedMessage = request;
   updateReader();
-  document.querySelectorAll('.mail-table tbody tr').forEach(row => row.classList.toggle('selected', row.dataset.file === file));
+  document.querySelectorAll('.mail-table tbody tr').forEach(row => row.classList.toggle('selected', row.dataset.id === id));
   invoke('get_saved_message', { file }).then(message => { request.message = message; }).catch(error => { request.error = String(error); }).finally(() => {
     request.loading = false;
     if (selectedMessage === request) updateReader();
@@ -120,7 +128,7 @@ function openMessage(file) {
 let mailSort = { column: 'sentAt', direction: 'desc' };
 
 function loadSavedMail() {
-  const key = JSON.stringify([dashboard.user, selectedFolder, dashboard.localStats]);
+  const key = JSON.stringify([dashboard.user, selectedFolder, dashboard.localStats, dashboard.mailIndexStamp]);
   if (savedMail.key === key) return;
   const request = { key, rows: [], loading: true, error: '' };
   savedMail = request;
@@ -421,7 +429,7 @@ app.addEventListener('click', event => {
   if (action === 'retry-preferences') { void loadDesktopPreferences(); return; }
   if (action === 'navigate-back' || action === 'navigate-forward') { moveNavigation(action === 'navigate-back' ? -1 : 1); return; }
   if (action === 'new-mail') { startupMailChecked.delete(dashboard.user); newMailRetryAfter.delete(dashboard.user); checkStartupMail(); return; }
-  if (action === 'select-message') { openMessage(button.dataset.file); return; }
+  if (action === 'select-message') { openMessage(button.dataset.file, button.dataset.id); return; }
   if (action === 'retry-message') { openMessage(selectedMessage.file); return; }
   if (action === 'retry-mail') { savedMail.key = ''; render(); return; }
   if (action === 'sort-mail') {

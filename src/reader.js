@@ -16,6 +16,7 @@ export function emailDocument(html) {
 }
 
 export function readingPane(state, escape, date) {
+  if (state.unavailable) return `<section class="reading-pane" aria-label="Email preview"><header class="reading-header"><h2>${escape(state.message.subject || 'No subject')}</h2><p>${escape(state.message.sender || 'Unknown sender')}</p></header><div class="server-mail-notice"><h3>Not backed up</h3><p>${state.onServer ? 'This message is on the server. Back it up to read the full message and download it here.' : 'The local backup is missing or damaged. Check the mailbox and back up this folder again.'}</p><button data-action="selection">Choose backup options</button></div></section>`;
   if (!state.file) return '<section class="reading-pane reading-empty" aria-label="Email preview"><h2>Select an email to read</h2><p>Choose a message from the list above.</p></section>';
   if (state.loading) return `<section class="reading-pane" aria-label="Email preview" aria-busy="true"><p class="empty-pane">${loadingIndicator('Opening email?')}</p></section>`;
   if (state.error) return `<section class="reading-pane" aria-label="Email preview"><p class="empty-pane" role="alert">${escape(state.error)} <button data-action="retry-message">Retry</button></p></section>`;

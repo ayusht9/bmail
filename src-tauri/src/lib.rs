@@ -65,6 +65,7 @@ struct Dashboard {
     accounts: Vec<String>,
     data_directory: String,
     migration_notice: Option<String>,
+    mail_index_stamp: Option<String>,
 }
 
 fn data_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -244,6 +245,7 @@ fn read_dashboard(app: &tauri::AppHandle, force: bool) -> Result<Dashboard, Stri
     let history = cache.json(&history_path, force).filter(Value::is_array);
     let history_error = if history_path.exists() && history.is_none() { Some("Backup history could not be read. The existing file was kept.".to_owned()) } else { None };
     Ok(Dashboard {
+        mail_index_stamp: fs::metadata(backup_root.join("mail-index.json")).ok().and_then(|meta| meta.modified().ok().and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok()).map(|time| format!("{}:{}", meta.len(), time.as_nanos()))),
         host: config.get("host").and_then(Value::as_str).unwrap_or("imap.gmail.com").to_owned(),
         port: config.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).unwrap_or(993),
         credential_ready: config.get("user").and_then(Value::as_str).is_some() && root.join(".private/zoho-credential.xml").is_file(),
@@ -255,7 +257,7 @@ fn read_dashboard(app: &tauri::AppHandle, force: bool) -> Result<Dashboard, Stri
         local_stats: summary.map_or_else(|| local_statistics(None), |summary| summary.local_stats),
         mailbox_status: cache.project(&backup_root.join("mailbox-status.json"), force, |mut status| {
             if let Some(folders) = status.get_mut("folders").and_then(Value::as_array_mut) {
-                for folder in folders { if let Some(folder) = folder.as_object_mut() { folder.remove("uids"); } }
+                for folder in folders { if let Some(folder) = folder.as_object_mut() { folder.remove("uids"); folder.remove("newUids"); } }
             }
             status
         }),
