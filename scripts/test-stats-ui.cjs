@@ -3,6 +3,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
+const { paginateMail } = require('../engine/mail-page.cjs');
 
 (async () => {
   const root = path.resolve('dist');
@@ -21,6 +22,7 @@ const assert = require('node:assert/strict');
     const page = await browser.newPage({ viewport: { width: 1120, height: 780 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    await page.exposeFunction('fixtureMailPage', (rows, options) => paginateMail(rows, options));
     await page.addInitScript(() => {
       if (window.top !== window) return;
       window.calls = []; window.exports = []; window.failExport = false;
@@ -59,7 +61,7 @@ const assert = require('node:assert/strict');
           return 'Control applied';
         }
         if (name === 'get_saved_message') { if (window.failReader) throw 'Saved email is unavailable'; window.lastReadFile = args.file; return { subject: 'Preview subject', from: 'Sender <sender@example.com>', to: 'reader@example.com', date: '2026-11-16T09:00:00Z', html: '<p>Hello from the selected email</p><script>window.previewInjected=true</script><img src="https://tracking.invalid/pixel"><a href="javascript:alert(1)">link</a>', text: '', attachments: [] }; }
-        if (name === 'get_saved_mail') return structuredClone(window.data.localStats.recent.filter(mail => !args.folder || mail.folder === args.folder));
+        if (name === 'get_mail_page') return window.fixtureMailPage(window.data.localStats.recent.filter(mail => !args.folder || mail.folder === args.folder), args);
         if (name === 'get_dashboard') { window.dashboardForces.push(args?.force); return structuredClone(window.data); }
         if (name === 'manage_schedule') {
           if (window.failSchedule) throw 'Windows scheduler unavailable';
@@ -610,6 +612,32 @@ const assert = require('node:assert/strict');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await sidebarDivider.dblclick(); await mailDivider.dblclick();
     await page.evaluate(() => {
+      window.data.localStats.recent = Array.from({ length: 123 }, (_, index) => ({ id: `page-${index + 1}`, file: `page-${index + 1}.eml`, folder: 'INBOX', subject: `Page message ${index + 1}`, sender: 'pagination@example.test', sentAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString(), bytes: index, backedUp: true }));
+    });
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await go('Home');
+    await page.waitForFunction(() => document.querySelectorAll('.mail-table tbody tr').length === 50);
+    const pager = page.getByRole('navigation', { name: 'Mail pagination', exact: true });
+    assert.match(await pager.textContent(), /1-50 of 123 messages/);
+    assert.equal(await pager.getByRole('button', { name: 'Previous page', exact: true }).isDisabled(), true);
+    await pager.getByRole('button', { name: 'Next page', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.mail-page-summary')?.textContent === '51-100 of 123 messages');
+    await pager.getByRole('button', { name: 'Last page', exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.mail-table tbody tr').length === 23);
+    assert.equal(await pager.getByRole('button', { name: 'Next page', exact: true }).isDisabled(), true);
+    await page.getByLabel('Per page', { exact: true }).selectOption('25');
+    await page.waitForFunction(() => document.querySelector('.mail-page-summary')?.textContent === '1-25 of 123 messages');
+    await page.locator('[data-action="sort-mail"][data-column="subject"]').click();
+    await page.waitForFunction(() => document.querySelector('.mail-table tbody tr:first-child .mail-subject')?.textContent === 'Page message 1');
+    await pager.getByRole('button', { name: 'Next page', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.mail-table tbody tr:first-child .mail-subject')?.textContent === 'Page message 26');
+    await sidebar.locator('[data-action="select-folder"][data-folder="Sent"]').click();
+    await page.waitForFunction(() => document.querySelector('.mail-page-summary')?.textContent === '0 messages');
+    await sidebar.locator('[data-action="select-folder"][data-folder=""]').click();
+    await page.waitForFunction(() => document.querySelector('.mail-page-summary')?.textContent === '1-25 of 123 messages');
+    await page.getByLabel('Per page', { exact: true }).selectOption('50');
+    await page.waitForFunction(() => document.querySelectorAll('.mail-table tbody tr').length === 50);
+    await page.evaluate(() => {
       window.data.localStats.recent = [
         { id: 'server-new', file: '', folder: 'INBOX', subject: 'New server mail', sender: 'sender@example.test', isNew: true, onServer: true, backedUp: false },
         { id: 'server-old', file: '', folder: 'INBOX', subject: 'Existing server mail', sender: 'sender@example.test', isNew: false, onServer: true, backedUp: false },
@@ -627,6 +655,7 @@ const assert = require('node:assert/strict');
     await page.getByRole('region', { name: 'Email preview' }).getByRole('heading', { name: 'Not backed up', exact: true }).waitFor();
     assert.equal(await page.locator('.mail-table tbody tr').filter({ hasText: 'Existing server mail' }).locator('.state-new').count(), 0);
     assert.equal(await page.locator('.mail-table tbody tr').filter({ hasText: 'New saved mail' }).locator('.mail-state').count(), 2);
+    if (process.env.BMAIL_MAIL_SCREENSHOT) await page.screenshot({ path: process.env.BMAIL_MAIL_SCREENSHOT });
     await page.evaluate(() => sessionStorage.setItem('fixture-new-mail-failure', 'NEW_MAIL_CHECK_BUSY'));
     await page.reload();
     await page.waitForFunction(() => window.newMailChecks === 1 && document.querySelector('.status-message')?.textContent === '');

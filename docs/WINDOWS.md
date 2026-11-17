@@ -38,9 +38,11 @@ An existing profile keeps its mailbox identity to protect earlier backups.
 
 ## Startup, new-mail counts, and the system tray
 
-Bmail shows a branded splash while opening your local mailbox. The main window
+Bmail combines its title bar and toolbar into one draggable header with minimize, maximize/restore, and close controls. The centered envelope logo uses the existing colors and is packaged as a same-origin asset so the desktop content policy can load it.
+
+Bmail shows a branded splash with a loading spinner while opening your local mailbox. The main window
 appears when the initial dashboard is ready, including any startup error and a
-retry control. A startup deadline prevents the splash from remaining indefinitely.
+retry control. Spinners also indicate mail list, mailbox check, and message preview loading. A startup deadline prevents the splash from remaining indefinitely.
 
 Folder badges show the number of new emails found since the previous mailbox
 check. The status bar shows the current account's total. The Windows taskbar uses

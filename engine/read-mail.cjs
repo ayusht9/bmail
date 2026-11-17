@@ -3,6 +3,7 @@ const path = require('node:path');
 const { simpleParser } = require('mailparser');
 const { dataDirectory } = require('./paths.cjs');
 const { readMailIndex } = require('./mail-index.cjs');
+const { paginateMail } = require('./mail-page.cjs');
 
 async function readSavedMail(root, file) {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, ''));
@@ -73,10 +74,11 @@ async function listSavedMail(root, selected) {
 
 async function listMailbox(root, selected) {
   const saved = await listSavedMail(root, selected);
-  const rows = new Map(saved.map(row => [row.id, { ...row, onServer: false, isNew: false }]));
   const folders = readMailIndex(root, (filename, fallback) => {
     try { return JSON.parse(fs.readFileSync(filename, 'utf8')); } catch { return fallback; }
   });
+  const checked = Object.keys(folders).length > 0;
+  const rows = new Map(saved.map(row => [row.id, { ...row, onServer: checked ? false : null, isNew: false }]));
   for (const [key, folder] of Object.entries(folders)) {
     if (selected && folder.name !== selected) continue;
     const newUids = new Set(folder.newUids || []);
@@ -90,12 +92,18 @@ async function listMailbox(root, selected) {
   return [...rows.values()];
 }
 
+async function listMailPage(root, options = {}) {
+  return paginateMail(await listMailbox(root, options.folder), options);
+}
+
 if (require.main === module) (async () => {
   const data = dataDirectory();
   const config = JSON.parse(fs.readFileSync(path.join(data, 'backup-config.json'), 'utf8').replace(/^\uFEFF/, ''));
   let input = ''; for await (const chunk of process.stdin) input += chunk;
-  const { file, folder } = JSON.parse(input);
+  const request = JSON.parse(input);
   const root = path.resolve(data, config.backupDirectory || 'backups');
-  console.log(JSON.stringify(process.argv.includes('--list') ? await listMailbox(root, folder) : await readSavedMail(root, file)));
+  console.log(JSON.stringify(process.argv.includes('--list')
+    ? request.paginated ? await listMailPage(root, request) : await listMailbox(root, request.folder)
+    : await readSavedMail(root, request.file)));
 })().catch(error => { console.error(error.message); process.exitCode = 1; });
-module.exports = { readSavedMail, listSavedMail, listMailbox };
+module.exports = { readSavedMail, listSavedMail, listMailbox, listMailPage };

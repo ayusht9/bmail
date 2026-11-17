@@ -588,7 +588,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(desktop::handle_window_event)
-        .invoke_handler(tauri::generate_handler![desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
+        .invoke_handler(tauri::generate_handler![mail::get_mail_page, desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }

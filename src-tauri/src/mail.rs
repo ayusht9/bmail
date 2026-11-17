@@ -1,6 +1,14 @@
 use serde_json::{Value, json};
 
 #[tauri::command]
+pub async fn get_mail_page(app: tauri::AppHandle, folder: Option<String>, page: Option<u32>, page_size: Option<u32>, sort_column: Option<String>, sort_direction: Option<String>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        read_with_node(&app, json!({"folder": folder, "page": page.unwrap_or(1), "pageSize": page_size.unwrap_or(50),
+            "sortColumn": sort_column.unwrap_or_else(|| "sentAt".into()), "sortDirection": sort_direction.unwrap_or_else(|| "desc".into()), "paginated": true}), true)
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub async fn get_saved_mail(app: tauri::AppHandle, folder: Option<String>) -> Result<Vec<Value>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let result = read_with_node(&app, json!({"folder": folder}), true)?;
