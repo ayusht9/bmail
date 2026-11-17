@@ -7,6 +7,7 @@ import { workspaceTabs, workspaceTabStrip } from './workspace.js';
 import { historyPane } from './history.js';
 import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
+import { createNavigation } from './navigation.js';
 import { folderNavigation, savedMailPane, mailboxFolders, newMailDot } from './desktop.js';
 import { progressPanel, statusDownloadProgress, backupControls } from './progress.js';
 import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, nextRuns, calendarMarkup, scheduleSummary, localDate, updateClock } from './scheduler.js';
@@ -99,32 +100,21 @@ function loadSavedMail() {
 let operationFailure = null;
 let busyAction = '';
 let activeTab = 'mailbox';
-let navigationHistory = [{ tab: 'mailbox', folder: '', filter: '' }];
-let navigationIndex = 0;
+const navigation = createNavigation({ tab: 'mailbox', folder: '', filter: '' });
 let navigationAccount;
 
 function rememberNavigation(tab, folder = selectedFolder) {
-  const current = navigationHistory[navigationIndex];
-  current.filter = folderFilter;
-  if (current.tab === tab && current.folder === folder) return;
-  navigationHistory = navigationHistory.slice(0, navigationIndex + 1);
-  navigationHistory.push({ tab, folder, filter: folderFilter });
-  if (navigationHistory.length > 100) navigationHistory.shift();
-  navigationIndex = navigationHistory.length - 1;
+  navigation.remember(tab, folder, folderFilter);
 }
 
 function resetNavigation() {
-  navigationHistory = [{ tab: activeTab, folder: selectedFolder, filter: folderFilter }];
-  navigationIndex = 0;
+  navigation.reset({ tab: activeTab, folder: selectedFolder, filter: folderFilter });
 }
 
 async function moveNavigation(direction) {
-  const next = navigationIndex + direction;
-  if (busy || next < 0 || next >= navigationHistory.length) return;
+  if (busy || !navigation.canMove(direction)) return;
   captureTabDraft();
-  navigationHistory[navigationIndex].filter = folderFilter;
-  navigationIndex = next;
-  const destination = navigationHistory[next];
+  const destination = navigation.move(direction, folderFilter);
   selectedFolder = destination.folder;
   folderFilter = destination.filter;
   await selectTab(destination.tab, false);
@@ -248,8 +238,8 @@ function render() {
       </aside>
       <main class="mail-workspace">
         <div class="workspace-navigation"><nav class="navigation-buttons" aria-label="Navigation history">
-          <button type="button" data-action="navigate-back" aria-label="Back" title="Back" ${busy || navigationIndex === 0 ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m9 4-6 6 6 6M3 10h14"/></svg></button>
-          <button type="button" data-action="navigate-forward" aria-label="Forward" title="Forward" ${busy || navigationIndex === navigationHistory.length - 1 ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m11 4 6 6-6 6M3 10h14"/></svg></button>
+          <button type="button" data-action="navigate-back" aria-label="Back" title="Back" ${busy || !navigation.canMove(-1) ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m9 4-6 6 6 6M3 10h14"/></svg></button>
+          <button type="button" data-action="navigate-forward" aria-label="Forward" title="Forward" ${busy || !navigation.canMove(1) ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m11 4 6 6-6 6M3 10h14"/></svg></button>
         </nav>${workspaceTabStrip(activeTab, busy)}</div>
         ${!['mailbox', 'activity'].includes(activeTab) ? `<section class="run-banner ${state}" aria-label="Backup status"><h2>${statusTitle}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span></section>` : ''}
         ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'new-mail' ? 'New mail check failed' : operationFailure.action === 'stats' ? 'Mailbox check failed' : 'Action failed'}</strong><p>${escapeHtml(operationFailure.message)}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}

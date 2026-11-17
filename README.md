@@ -8,6 +8,7 @@ live progress, pause/resume/stop controls, and full-mailbox coverage statistics.
 - [Download the Windows installer](https://github.com/ayusht9/bmail/releases/latest)
 - [Release notes](RELEASES.md)
 - [Windows setup and development](WINDOWS.md)
+- [Code map and contribution guide](CONTRIBUTING.md)
 - [Backup engine documentation](BACKUP-README.md)
 - [Backup statistics](STATS.md)
 - [Scheduler, advanced preferences, notifications and history](SCHEDULER.md)
