@@ -36,6 +36,11 @@ not connect to your mailbox: choose **Back up now** to start, and **Install
 schedule** when ready. Use **Update app password** to replace a saved password.
 An existing profile keeps its mailbox identity to protect earlier backups.
 
+Use the Sync icon beside the Account label to check the selected mailbox and
+update its mail list. Hover over the icon for its label. Local progress and data
+refresh automatically, so there is no separate Refresh button. Open the Backup
+tab to use **Open backup folder**.
+
 ## Startup, new-mail counts, and the system tray
 
 Bmail combines its title bar and toolbar into one draggable header with minimize, maximize/restore, and close controls. The centered envelope logo uses the existing colors and is packaged as a same-origin asset so the desktop content policy can load it.

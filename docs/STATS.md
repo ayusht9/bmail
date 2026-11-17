@@ -30,7 +30,7 @@ controlling backups continue to use current files and process state.
 The dashboard polls local data every 10 seconds while idle and every 2 seconds
 during a backup. It pauses automatic calls while hidden and skips them during
 UI operations, then refreshes immediately when visible again. These are local
-desktop IPC calls, not mail-provider API calls. **Check mailbox** still performs
+desktop IPC calls, not mail-provider API calls. **Sync** still performs
 a fresh read-only server inventory and local file verification; cached summaries
 are never used to claim that an unchecked server message is backed up.
 
@@ -46,7 +46,7 @@ Totals count each saved folder copy; Gmail labels may contain the same email in
 several folders. Retained messages from deleted server mail or older UIDVALIDITY
 generations remain included in local totals.
 
-**Check mailbox** connects read-only, enumerates every accessible folder and all
+**Sync** connects read-only, enumerates every accessible folder and all
 message UIDs, and verifies matching local files against their recorded size and
 SHA-256. It downloads no message bodies. It ignores the current backup selection
 so a partial date range, selected folders, or a download limit cannot be mistaken
@@ -69,7 +69,7 @@ copies. **Downloaded last run** may include replacement downloads for repaired
 files; it is separate from newly discovered server mail.
 
 Snapshots are stored in each account's backup directory as `mailbox-status.json`.
-No network checks occur on the dashboard refresh timer. Use Check mailbox to find
+No network checks occur on the dashboard refresh timer. Use Sync to find
 mail received since the previous check. Email credentials, backups, and snapshots
 stay outside source control.
 
@@ -92,7 +92,7 @@ when the day changes or a new calendar is rendered.
 
 Activity shows backup run history as a table with selected run details below it. Use the result filter to narrow the table.
 
-On startup, Bmail checks each configured account once when opened, after any active backup finishes. Numeric badges in the status bar and beside affected folders show new emails since the previous check. The Windows taskbar shows the current account total as a numeric overlay (up to 99+), with the exact total in the window title and tray tooltip. Zero removes the badge. The first check establishes a baseline; reset folder identifiers also establish a fresh baseline. Startup checks compare server message IDs and cache message envelopes (subject, sender, sent date, and size). They do not download message bodies or verify local files. The first header index can take longer for large mailboxes; later checks fetch only missing headers. Use Check mailbox to refresh the indicators manually.
+On startup, Bmail checks each configured account once when opened, after any active backup finishes. Numeric badges in the status bar and beside affected folders show new emails since the previous check. The Windows taskbar shows the current account total as a numeric overlay (up to 99+), with the exact total in the window title and tray tooltip. Zero removes the badge. The first check establishes a baseline; reset folder identifiers also establish a fresh baseline. Startup checks compare server message IDs and cache message envelopes (subject, sender, sent date, and size). They do not download message bodies or verify local files. The first header index can take longer for large mailboxes; later checks fetch only missing headers. Use Sync to refresh the indicators manually.
 
 The mail list combines server headers from the latest successful check with saved copies, including older UID generations and messages removed from the server. It loads 50 messages per page by default; choose 25, 50, or 100 using Per page. First, Previous, Next, and Last controls show the message range and total. Subject, From, Folder, Sent, and Size headings sort the full list before pagination. Changing folder, account, sort order, or page size resets to page one. Server-only messages show their metadata and explain that a backup is needed before reading the body or downloading a local copy.
 
