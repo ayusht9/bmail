@@ -8,6 +8,7 @@ mod cache;
 mod export;
 mod mail;
 mod startup;
+mod notifications;
 use std::sync::Mutex;
 
 #[derive(Default)]
@@ -335,7 +336,8 @@ fn switch_account(app: tauri::AppHandle, email: String, process: tauri::State<Ba
     }
     let base = base_root(&app)?;
     if !account_list(&base).contains(&email) { return Err("That account has not been added to Bmail.".into()); }
-    select_account(&base, &email)
+    select_account(&base, &email)?;
+    notifications::apply(&app, &email, 0)
 }
 
 fn powershell(engine: &Path, data: &Path, script: &str) -> Result<std::process::Output, String> {
@@ -571,13 +573,14 @@ fn open_directory(app: tauri::AppHandle, kind: String) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .manage(BackupProcess::default())
+        .manage(notifications::MailBadgeState::default())
         .manage(cache::DashboardCache::default())
         .setup(|app| {
             initialize_profiles(app.handle()).map_err(std::io::Error::other)?;
             startup::install_deadline(app.handle());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
+        .invoke_handler(tauri::generate_handler![notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }
