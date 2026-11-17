@@ -187,7 +187,7 @@ function updateStatusBar() {
 
 function render() {
   if (!dashboard) {
-    app.innerHTML = '<main class="loading"><span class="spinner"></span>Reading your backup…</main>';
+    app.innerHTML = `<main class="loading startup-loading"><img src="${logoUrl}" width="72" height="72" alt=""><h1>Bmail</h1><p role="status">Opening your local mailbox?</p><button data-action="refresh">Retry startup</button></main>`;
     return;
   }
   if (navigationAccount !== dashboard.user) {
@@ -329,7 +329,7 @@ async function refresh(background = false, force = false) {
     if (focusAction === 'sort-mail') document.querySelector(`[data-action="sort-mail"][data-column="${focusColumn}"]`)?.focus({ preventScroll: true });
     if (focusAction && !['select-folder','select-tab','sort-mail'].includes(focusAction)) [...document.querySelectorAll('[data-action]')].find(el => el.dataset.action === focusAction)?.focus({ preventScroll: true });
   } catch (error) {
-    if (!background) app.innerHTML = `<main class="fatal"><h1>Bmail could not start</h1><p>${escapeHtml(error)}</p></main>`;
+    if (!background) app.innerHTML = `<main class="fatal"><h1>Bmail could not start</h1><p>${escapeHtml(error)}</p><button data-action="refresh">Retry startup</button></main>`;
   } finally { refreshing = false; finished(); dashboardPoller?.reschedule(); void checkStartupMail(); }
 }
 
@@ -734,5 +734,8 @@ window.addEventListener('pagehide', () => dashboardPoller.stop());
 installColumnResizing(app);
 installPaneResizing(app);
 render();
-refresh().finally(() => dashboardPoller.start());
+refresh().finally(() => {
+  dashboardPoller.start();
+  void invoke('finish_startup').catch(error => console.error('Could not finish startup:', error));
+});
 setInterval(updateClock, 1000);
