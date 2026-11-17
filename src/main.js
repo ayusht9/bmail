@@ -1,4 +1,5 @@
 import './style.css';
+import logoUrl from '../src-tauri/icons/app.svg';
 import { paneDivider, installPaneResizing, paneResizeActive } from './panes.js';
 import { installColumnResizing, columnResizeActive } from './columns.js';
 import { themePreference, setTheme } from './theme.js';
@@ -217,7 +218,7 @@ function render() {
 
   app.innerHTML = `
     <header class="app-toolbar">
-      <div class="app-name"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 6l9 7 9-7"/></svg><strong>Bmail</strong></div>
+      <div class="app-name"><img class="app-logo" src="${logoUrl}" alt="" width="28" height="28"><strong>Bmail</strong></div>
       <button data-action="stats" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'stats' ? 'Checking mailbox...' : 'Check mailbox'}</button>
       <span class="toolbar-separator"></span>
       <button data-action="open-backups">Open backup folder</button>
