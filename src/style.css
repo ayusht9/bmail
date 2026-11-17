@@ -1033,3 +1033,20 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .preferences-page p { line-height: 1.5; }
 .preferences-page .preferences-error { color: var(--error); }
 .preferences-status:empty { display: none; }
+
+/* One draggable bar combines application actions and native window controls. */
+.app-toolbar { padding-right: 0; user-select: none; }
+.app-name { width: 180px; }
+.app-name img, .app-name strong { pointer-events: none; }
+.toolbar-spacer { align-self: stretch; min-width: 20px; }
+.window-controls { display: flex; align-self: stretch; margin-left: 8px; flex-shrink: 0; }
+.app-toolbar .window-controls button { display: grid; place-items: center; width: 44px; min-height: 46px; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.window-controls svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.2; }
+.app-toolbar .window-controls button:hover { background: var(--hover); }
+.app-toolbar .window-controls .window-close:hover { background: #c42b1c; color: white; }
+@media (max-width: 1050px) { .app-name { width: 140px; } }
+@media (max-width: 850px) { .app-name { width: auto; } .app-name strong { display: block; } }
+
+.window-controls { margin-block: -7px; }
+.app-toolbar .window-controls button { min-height: 48px; }
+.app-toolbar + .loading, .app-toolbar + .fatal { min-height: calc(100dvh - 49px); }

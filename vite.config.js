@@ -11,6 +11,8 @@ export default defineConfig({
   },
   envPrefix: ['VITE_', 'TAURI_'],
   build: {
+    // The desktop CSP allows same-origin images; embedded data URLs are blocked.
+    assetsInlineLimit: 0,
     target: process.env.TAURI_ENV_PLATFORM === 'windows' ? 'chrome105' : 'safari13',
     rollupOptions: { input: { main: 'index.html', splash: 'splash.html' } },
   }

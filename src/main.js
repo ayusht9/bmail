@@ -10,6 +10,7 @@ import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
 import { createNavigation } from './navigation.js';
 import { preferencesView } from './preferences.js';
+import { windowControls, controlWindow, startupHeader } from './window-chrome.js';
 import { newMailBadge, normalizeNewMailCount, totalNewMail, createBadgeSync } from './notifications.js';
 import { folderNavigation, savedMailPane, mailboxFolders } from './desktop.js';
 import { progressPanel, statusDownloadProgress, backupControls } from './progress.js';
@@ -224,7 +225,7 @@ function updateStatusBar() {
 
 function render() {
   if (!dashboard) {
-    app.innerHTML = `<main class="loading startup-loading"><img src="${logoUrl}" width="72" height="72" alt=""><h1>Bmail</h1><p role="status">Opening your local mailbox?</p><button data-action="refresh">Retry startup</button></main>`;
+    app.innerHTML = `${startupHeader(logoUrl)}<main class="loading startup-loading"><img src="${logoUrl}" width="72" height="72" alt=""><h1>Bmail</h1><p role="status">Opening your local mailbox?</p><button data-action="refresh">Retry startup</button></main>`;
     return;
   }
   if (navigationAccount !== dashboard.user) {
@@ -254,13 +255,14 @@ function render() {
 
 
   app.innerHTML = `
-    <header class="app-toolbar">
-      <div class="app-name"><img class="app-logo" src="${logoUrl}" alt="" width="28" height="28"><strong>Bmail</strong></div>
+    <header class="app-toolbar" data-tauri-drag-region>
+      <div class="app-name" data-tauri-drag-region><img data-tauri-drag-region class="app-logo" src="${logoUrl}" alt="" width="28" height="28"><strong data-tauri-drag-region>Bmail</strong></div>
       <button data-action="stats" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'stats' ? 'Checking mailbox...' : 'Check mailbox'}</button>
       <span class="toolbar-separator"></span>
       <button data-action="open-backups">Open backup folder</button>
-      <div class="toolbar-spacer"></div>
+      <div class="toolbar-spacer" data-tauri-drag-region></div>
       <button data-action="refresh" ${busy ? 'disabled' : ''}>Refresh</button>
+      ${windowControls()}
     </header>
     <div class="desktop-layout">
       <aside class="folder-sidebar" aria-label="Accounts and folders">
@@ -366,7 +368,7 @@ async function refresh(background = false, force = false) {
     if (focusAction === 'sort-mail') document.querySelector(`[data-action="sort-mail"][data-column="${focusColumn}"]`)?.focus({ preventScroll: true });
     if (focusAction && !['select-folder','select-tab','sort-mail'].includes(focusAction)) [...document.querySelectorAll('[data-action]')].find(el => el.dataset.action === focusAction)?.focus({ preventScroll: true });
   } catch (error) {
-    if (!background) app.innerHTML = `<main class="fatal"><h1>Bmail could not start</h1><p>${escapeHtml(error)}</p><button data-action="refresh">Retry startup</button></main>`;
+    if (!background) app.innerHTML = `${startupHeader(logoUrl)}<main class="fatal"><h1>Bmail could not start</h1><p>${escapeHtml(error)}</p><button data-action="refresh">Retry startup</button></main>`;
   } finally { refreshing = false; finished(); dashboardPoller?.reschedule(); void checkStartupMail(); }
 }
 
@@ -398,6 +400,7 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (action.startsWith('window-')) { void controlWindow(action).catch(error => toast(String(error), true)); return; }
   if (action === 'backup-preset') {
     const form = document.querySelector('#selection-form');
     const custom = button.dataset.preset === 'custom';
