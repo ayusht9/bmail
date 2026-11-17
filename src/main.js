@@ -126,20 +126,41 @@ function openMessage(file, id = file) {
 }
 
 let mailSort = { column: 'sentAt', direction: 'desc' };
+let mailPage = 1;
+let mailPageSize = 50;
+let mailPageContext = '';
+try {
+  const saved = Number(localStorage.getItem('bmail-mail-page-size'));
+  if ([25, 50, 100].includes(saved)) mailPageSize = saved;
+} catch { /* Keep the default if storage is unavailable. */ }
 
-function loadSavedMail() {
-  const key = JSON.stringify([dashboard.user, selectedFolder, dashboard.localStats, dashboard.mailIndexStamp]);
+function reloadMailList(focusSelector) {
+  savedMail.key = '';
+  loadSavedMail(focusSelector);
+  const pane = document.querySelector('.mail-pane');
+  if (pane) pane.outerHTML = mailList();
+}
+
+
+function loadSavedMail(focusSelector) {
+  const context = JSON.stringify([dashboard.user, selectedFolder]);
+  if (mailPageContext !== context) { mailPage = 1; mailPageContext = context; }
+  const key = JSON.stringify([context, dashboard.localStats, dashboard.mailIndexStamp, mailPage, mailPageSize, mailSort]);
   if (savedMail.key === key) return;
-  const request = { key, rows: [], loading: true, error: '' };
+  const request = { key, rows: [], loading: true, error: '', page: mailPage, pageSize: mailPageSize, pages: savedMail.pages || 1, total: savedMail.total || 0 };
   savedMail = request;
-  invoke('get_saved_mail', { folder: selectedFolder || null })
-    .then(rows => { request.rows = rows; })
+  invoke('get_mail_page', { folder: selectedFolder || null, page: mailPage, pageSize: mailPageSize, sortColumn: mailSort.column, sortDirection: mailSort.direction })
+    .then(result => {
+      Object.assign(request, result);
+      if (savedMail === request) mailPage = result.page;
+    })
     .catch(error => { request.error = String(error); })
     .finally(() => {
       request.loading = false;
       if (savedMail === request && activeTab === 'mailbox' && !document.querySelector('dialog[open]')) {
         const pane = document.querySelector('.mail-pane');
         if (pane) pane.outerHTML = mailList();
+        if (focusSelector) document.querySelector(focusSelector)?.focus({ preventScroll: true });
       }
     });
 }
@@ -208,7 +229,7 @@ function folderStatus() {
 }
 
 function statusBarContents() {
-  return `<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail?' : busyAction === 'stats' ? 'Checking mailbox?' : 'Working?') : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailBadge(totalNewMail(mailIndicators()), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>`;
+  return `<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Checking mailbox...' : 'Working...') : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailBadge(totalNewMail(mailIndicators()), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>`;
 }
 
 function updateBackupControls() {
@@ -234,7 +255,7 @@ function updateStatusBar() {
 
 function render() {
   if (!dashboard) {
-    app.innerHTML = `${startupHeader(logoUrl)}<main class="loading startup-loading"><img src="${logoUrl}" width="72" height="72" alt=""><h1>Bmail</h1>${loadingIndicator('Opening your local mailbox?')}<button data-action="refresh">Retry startup</button></main>`;
+    app.innerHTML = `${startupHeader(logoUrl)}<main class="loading startup-loading"><img src="${logoUrl}" width="72" height="72" alt=""><h1>Bmail</h1>${loadingIndicator('Opening your local mailbox...')}<button data-action="refresh">Retry startup</button></main>`;
     return;
   }
   if (navigationAccount !== dashboard.user) {
@@ -432,12 +453,18 @@ app.addEventListener('click', event => {
   if (action === 'select-message') { openMessage(button.dataset.file, button.dataset.id); return; }
   if (action === 'retry-message') { openMessage(selectedMessage.file); return; }
   if (action === 'retry-mail') { savedMail.key = ''; render(); return; }
+  if (action === 'mail-page') {
+    if (savedMail.loading) return;
+    mailPage = Number(button.dataset.page);
+    reloadMailList(`[data-action="mail-page"][aria-label="${button.getAttribute('aria-label')}"]`);
+    return;
+  }
   if (action === 'sort-mail') {
     const column = button.dataset.column;
     if (!['subject', 'sender', 'folder', 'sentAt', 'bytes'].includes(column)) return;
     mailSort = { column, direction: mailSort.column === column && mailSort.direction === 'asc' ? 'desc' : 'asc' };
-    document.querySelector('.mail-pane').outerHTML = mailList();
-    document.querySelector(`[data-action="sort-mail"][data-column="${column}"]`)?.focus({ preventScroll: true });
+    mailPage = 1;
+    reloadMailList(`[data-action="sort-mail"][data-column="${column}"]`);
     return;
   }
   if (action === 'select-tab') { selectTab(button.dataset.tab); return; }
@@ -497,6 +524,13 @@ app.addEventListener('input', event => {
 });
 
 app.addEventListener('change', event => {
+  if (event.target.id === 'mail-page-size') {
+    mailPageSize = Number(event.target.value);
+    mailPage = 1;
+    try { localStorage.setItem('bmail-mail-page-size', String(mailPageSize)); } catch {}
+    reloadMailList('#mail-page-size');
+    return;
+  }
   if (event.target.id === 'close-behavior') { void saveCloseBehavior(event.target.value); return; }
   if (event.target.id === 'theme-preference') { setTheme(event.target.value); return; }
   if (event.target.id === 'history-filter') { historyFilter = event.target.value; render(); return; }

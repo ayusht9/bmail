@@ -92,9 +92,9 @@ when the day changes or a new calendar is rendered.
 
 Activity shows backup run history as a table with selected run details below it. Use the result filter to narrow the table.
 
-On startup, Bmail checks each configured account once when opened, after any active backup finishes. Numeric badges in the status bar and beside affected folders show new emails since the previous check. The Windows taskbar shows the current account total as a numeric overlay (up to 99+), with the exact total in the window title and tray tooltip. Zero removes the badge. The first check establishes a baseline; reset folder identifiers also establish a fresh baseline. Startup checks compare server message IDs without downloading mail or verifying local files. Use Check mailbox to refresh the indicators manually.
+On startup, Bmail checks each configured account once when opened, after any active backup finishes. Numeric badges in the status bar and beside affected folders show new emails since the previous check. The Windows taskbar shows the current account total as a numeric overlay (up to 99+), with the exact total in the window title and tray tooltip. Zero removes the badge. The first check establishes a baseline; reset folder identifiers also establish a fresh baseline. Startup checks compare server message IDs and cache message envelopes (subject, sender, sent date, and size). They do not download message bodies or verify local files. The first header index can take longer for large mailboxes; later checks fetch only missing headers. Use Check mailbox to refresh the indicators manually.
 
-Saved mail loads on demand for the selected folder (or all folders) without the dashboard summary's ten-record limit. Subject, From, Folder, and Saved column headings toggle ascending/descending sorting; the active column shows an arrow. The list includes complete saved records from every UID generation and retains individual email downloads.
+The mail list combines server headers from the latest successful check with saved copies, including older UID generations and messages removed from the server. It loads 50 messages per page by default; choose 25, 50, or 100 using Per page. First, Previous, Next, and Last controls show the message range and total. Subject, From, Folder, Sent, and Size headings sort the full list before pagination. Changing folder, account, sort order, or page size resets to page one. Server-only messages show their metadata and explain that a backup is needed before reading the body or downloading a local copy.
 
 The folder and mail tables begin directly with column headers. Drag a header edge to resize its column, or focus the divider and press Left/Right (Shift for larger steps). Column widths are saved on this device and survive sorting, navigation, and restarts.
 
@@ -115,3 +115,12 @@ Drag the divider at the sidebar edge to change the navigation width. Drag the ho
 Tab title/account headers are hidden. Activity now contains only the full-width backup history table, with a resizable details pane underneath. Select a run by clicking its row or activating its date button with the keyboard; selection and result filters persist when switching tabs. The separate activity-log feed has been removed.
 
 Start, Pause/Resume, Stop, and Cancel controls live in the Backup tab alongside detailed run progress. Home keeps the compact status-bar progress. Controls remain visible when idle, with unavailable actions disabled, and prevent duplicate requests while a command is pending.
+
+
+Each message has an explicit Backed up or Not backed up label. New is a separate
+label based on UIDs discovered since the preceding mailbox check, so a newly
+discovered message can also be backed up. The first check and a UIDVALIDITY reset
+establish a baseline and do not label all mail New. Local only marks saved mail
+absent from the most recent complete server index. The header cache and saved
+copies are isolated by account and UID generation; a failed check retains the
+previous complete index.

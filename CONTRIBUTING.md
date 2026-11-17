@@ -25,7 +25,7 @@ docs/        Setup and feature guides
 | Scheduling | `src/scheduler.js` handles schedule normalization, previews, and form data. |
 | UI infrastructure | `src/polling.js`, `src/panes.js`, `src/columns.js`, and `src/theme.js` handle refresh timing, resizing, and appearance. |
 | Native app | `src-tauri/src/lib.rs` exposes Tauri commands and coordinates desktop processes. Sibling modules handle profiles, cache, mail, and exports. |
-| Backup engine | `engine/backup.cjs` runs the Node.js engine. Sibling modules handle selection, controls, progress, history, statistics, and data paths. |
+| Backup engine | `engine/backup.cjs` runs the Node.js engine. Sibling modules handle selection, controls, progress, history, statistics, server header indexing, mail pagination, and data paths. |
 | Windows integration | PowerShell scripts in `engine/` handle setup, credentials, scheduled tasks, and backup launch. `scripts/` contains build and verification utilities. |
 
 ## Refactoring and validation
