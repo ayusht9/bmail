@@ -52,7 +52,8 @@ retry control. Spinners also indicate mail list, mailbox check, and message prev
 Folder badges show the number of new emails found since the previous mailbox
 check. The status bar keeps folder coverage and the schedule aligned to the right,
 without a separate new-mail count. The Windows taskbar uses
-a numeric overlay (up to `99+`); the window title and tray tooltip retain the exact
+a numeric badge drawn into the upper-right of the running app icon (up to
+`99+`); the window title and tray tooltip retain the exact
 total. These are new-mail check counts, not unread counts. Switching accounts
 updates the total; zero removes the badge.
 

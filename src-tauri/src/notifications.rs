@@ -20,7 +20,7 @@ fn glyph(character: char) -> [u8; 5] {
     }
 }
 
-fn badge_pixels(count: u32) -> Vec<u8> {
+pub(crate) fn badge_pixels(count: u32) -> Vec<u8> {
     let mut pixels = vec![0; 32 * 32 * 4];
     for y in 0..32 {
         for x in 0..32 {
@@ -55,9 +55,12 @@ fn badge_pixels(count: u32) -> Vec<u8> {
 pub fn apply(app: &tauri::AppHandle, account: &str, count: u32) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         #[cfg(target_os = "windows")]
-        window.set_overlay_icon(if count == 0 { None } else {
-            Some(tauri::image::Image::new_owned(badge_pixels(count), 32, 32))
-        }).map_err(|e| e.to_string())?;
+        {
+            // Windows fixes overlay placement at the lower-right. Use a composed
+            // taskbar icon to position the count in the upper-right instead.
+            window.set_overlay_icon(None).map_err(|e| e.to_string())?;
+            crate::taskbar::apply(app, &window, count)?;
+        }
         window.set_title(&if count == 0 { "Bmail".into() } else {
             format!("Bmail ({count} new emails)")
         }).map_err(|e| e.to_string())?;
