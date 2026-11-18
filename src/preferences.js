@@ -1,4 +1,4 @@
-import { appearancePreference } from './appearance.js';
+import { appearancePreference, fontFamilies, fontSizes } from './appearance.js';
 
 export function preferencesView(theme, preferences, saving, error, escape) {
   const appearance = appearancePreference();
@@ -8,6 +8,11 @@ export function preferencesView(theme, preferences, saving, error, escape) {
     <label for="theme-preference">Theme</label>
     <select id="theme-preference" aria-describedby="theme-description">${[['auto','Auto'],['light','Light'],['dark','Dark']].map(([value, label]) => `<option value="${value}" ${theme === value ? 'selected' : ''}>${label}</option>`).join('')}</select>
     <p id="theme-description">Auto follows your Windows appearance. Your choice is saved on this device.</p>
+    <label for="font-family-preference">Font</label>
+    <select id="font-family-preference">${Object.entries(fontFamilies).map(([key, font]) => `<option value="${key}" ${appearance.fontFamily === key ? 'selected' : ''}>${font.label}</option>`).join('')}</select>
+    <label for="font-size-preference">Font size</label>
+    <select id="font-size-preference" aria-describedby="font-description">${fontSizes.map(size => `<option value="${size}" ${appearance.fontSize === size ? 'selected' : ''}>${size} px${size === 13 ? ' (default)' : ''}</option>`).join('')}</select>
+    <p id="font-description">Updates the interface and default email reading text immediately. Saved on this device.</p>
     <h3>Email reading</h3>
     <label for="email-image-preference">Email images</label>
     <select id="email-image-preference" aria-describedby="email-image-description">${[['hidden', 'Hide images'], ['embedded', 'Show embedded images only'], ['remote', 'Show embedded and remote HTTPS images']].map(([value, label]) => `<option value="${value}" ${appearance.imageMode === value ? 'selected' : ''}>${label}</option>`).join('')}</select>

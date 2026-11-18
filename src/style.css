@@ -67,7 +67,7 @@ button.primary:hover:not(:disabled) {
   gap:8px;
   width:200px;
   flex-shrink:0;
-  font-size:15px;
+  font-size:calc(15px * var(--app-font-scale, 1));
 }
 .app-name svg {
   width:25px;
@@ -105,7 +105,7 @@ button.primary:hover:not(:disabled) {
   display:block;
   color:var(--muted);
   margin-bottom:5px;
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
 }
 .account-switcher select {
   width:100%;
@@ -122,7 +122,7 @@ button.primary:hover:not(:disabled) {
   padding:0 12px;
 }
 .sidebar-heading h2 {
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
   font-weight:600;
   color:var(--muted);
   margin:6px 0;
@@ -130,7 +130,7 @@ button.primary:hover:not(:disabled) {
 .icon-button {
   background:transparent;
   border-color:transparent;
-  font-size:20px;
+  font-size:calc(20px * var(--app-font-scale, 1));
   padding:0 6px;
 }
 .filter-field {
@@ -187,7 +187,7 @@ button.primary:hover:not(:disabled) {
 .sidebar-empty {
   color:var(--muted);
   padding:8px 14px;
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
 }
 .sidebar-tools {
   padding:7px;
@@ -217,18 +217,18 @@ button.primary:hover:not(:disabled) {
 }
 .workspace-heading h1 {
   margin:0;
-  font-size:18px;
+  font-size:calc(18px * var(--app-font-scale, 1));
   font-weight:600;
   overflow-wrap:anywhere;
 }
 .workspace-heading p {
   margin:3px 0 0;
   color:var(--muted);
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
 }
 .connection-status {
   color:var(--muted);
-  font-size:11px;
+  font-size:calc(11px * var(--app-font-scale, 1));
   white-space:nowrap;
 }
 .run-banner {
@@ -241,13 +241,13 @@ button.primary:hover:not(:disabled) {
   border-bottom:1px solid var(--soft);
 }
 .run-banner h2 {
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
   margin:0;
   font-weight:600;
 }
 .run-banner span {
   color:var(--muted);
-  font-size:11px;
+  font-size:calc(11px * var(--app-font-scale, 1));
 }
 .run-banner.attention {
   background:var(--warning-soft);
@@ -262,12 +262,12 @@ button.primary:hover:not(:disabled) {
   border-bottom:1px solid var(--line);
 }
 .pane-title h2 {
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
   font-weight:600;
   margin:0;
 }
 .pane-title span {
-  font-size:11px;
+  font-size:calc(11px * var(--app-font-scale, 1));
   color:var(--muted);
 }
 .table-wrap {
@@ -278,7 +278,7 @@ table {
   border-collapse:collapse;
   text-align:left;
   table-layout:fixed;
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
 }
 thead {
   position:sticky;
@@ -347,11 +347,11 @@ tbody tr.selected {
   padding:14px 12px;
   margin:0;
   color:var(--muted);
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
   white-space:normal;
 }
 .pane-hint {
-  font-size:11px;
+  font-size:calc(11px * var(--app-font-scale, 1));
   padding-top:8px;
 }
 .inspector {
@@ -364,7 +364,7 @@ tbody tr.selected {
   border-bottom:1px solid var(--soft);
 }
 .coverage-status h3 {
-  font-size:13px;
+  font-size:calc(13px * var(--app-font-scale, 1));
   font-weight:600;
   margin:0 0 8px;
 }
@@ -373,7 +373,7 @@ tbody tr.selected {
 }
 .coverage-status p {
   color:var(--muted);
-  font-size:11px;
+  font-size:calc(11px * var(--app-font-scale, 1));
   margin:6px 0 0;
 }
 progress {
@@ -394,7 +394,7 @@ progress {
 }
 .stats-list dt {
   color:var(--tone-4a5462);
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
 }
 .stats-list dd {
   margin:0;
@@ -405,7 +405,7 @@ progress {
   margin:0;
   padding:10px 12px;
   border-top:1px solid var(--soft);
-  font-size:11px;
+  font-size:calc(11px * var(--app-font-scale, 1));
 }
 .check-dates div+div {
   margin-top:9px;
@@ -425,16 +425,16 @@ summary {
 }
 .selection-summary h2,.storage-summary h2 {
   margin:0;
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
   font-weight:600;
 }
 .selection-summary p,.storage-summary p {
-  font-size:11px;
+  font-size:calc(11px * var(--app-font-scale, 1));
   color:var(--muted);
   overflow-wrap:anywhere;
 }
 .selection-summary button,.storage-summary button {
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
 }
 .statusbar {
   height:26px;
@@ -444,7 +444,7 @@ summary {
   padding:0 12px;
   border-top:1px solid var(--line);
   background:var(--sidebar);
-  font-size:11px;
+  font-size:calc(11px * var(--app-font-scale, 1));
   color:var(--tone-526070);
 }
 .statusbar > .status-message {
@@ -461,7 +461,7 @@ summary {
   overflow-wrap:anywhere;
   max-height:100px;
   overflow:auto;
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
   margin:4px 0 8px;
 }
 .operation-error button+button {
@@ -472,7 +472,7 @@ summary {
   margin:0;
   border-bottom:1px solid var(--tone-e5d3a6);
   background:var(--warning-bg);
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
 }
 .notice.error {
   background:var(--error-bg);
@@ -491,17 +491,17 @@ summary {
   gap:12px;
 }
 .panel-head h2 {
-  font-size:13px;
+  font-size:calc(13px * var(--app-font-scale, 1));
   margin:0;
 }
 .run-state {
-  font-size:11px;
+  font-size:calc(11px * var(--app-font-scale, 1));
   color:var(--accent);
 }
 .progress-heading {
   display:flex;
   justify-content:space-between;
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
   gap:12px;
 }
 .progress-actions {
@@ -515,7 +515,7 @@ summary {
   border-color:var(--tone-d5a6a3);
 }
 .progress-detail,.muted {
-  font-size:11px;
+  font-size:calc(11px * var(--app-font-scale, 1));
   color:var(--muted);
   margin:6px 0;
 }
@@ -526,12 +526,12 @@ summary {
   margin:10px 0;
 }
 .run-stats dt {
-  font-size:11px;
+  font-size:calc(11px * var(--app-font-scale, 1));
   color:var(--muted);
 }
 .run-stats dd {
   margin:3px 0 0;
-  font-size:13px;
+  font-size:calc(13px * var(--app-font-scale, 1));
   font-variant-numeric:tabular-nums;
 }
 dialog {
@@ -549,17 +549,17 @@ dialog::backdrop {
   background:#202b3d55;
 }
 dialog h2 {
-  font-size:18px;
+  font-size:calc(18px * var(--app-font-scale, 1));
   font-weight:600;
   margin:0 0 8px;
 }
 dialog p {
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
 }
 dialog label {
   display:block;
   margin:13px 0 5px;
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
   font-weight:600;
 }
 dialog input:not([type="checkbox"]),dialog select {
@@ -629,7 +629,7 @@ dialog input[readonly] {
   border-radius:3px;
   opacity:0;
   pointer-events:none;
-  font-size:12px;
+  font-size:calc(12px * var(--app-font-scale, 1));
 }
 #toast.show {
   opacity:1;
@@ -673,7 +673,7 @@ dialog input[readonly] {
   }
   .app-toolbar button {
     padding:5px 7px;
-    font-size:12px;
+    font-size:calc(12px * var(--app-font-scale, 1));
   }
   .toolbar-separator {
     display:none;
@@ -718,48 +718,48 @@ dialog input[readonly] {
 .scheduler-clock #clock-hour { stroke: var(--tone-34465d); stroke-width: 3; stroke-linecap: round; }
 .scheduler-clock #clock-minute { stroke: var(--tone-34465d); stroke-width: 2; stroke-linecap: round; }
 .scheduler-clock #clock-second { stroke: var(--accent); stroke-width: 1; }
-.scheduler-clock time { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.scheduler-clock time { font-size:calc(20px * var(--app-font-scale, 1)); font-weight: 600; font-variant-numeric: tabular-nums; }
 .scheduler-clock small { color: var(--muted); }
 .calendar-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-.calendar-heading button { border-color: transparent; background: transparent; padding: 3px 9px; font-size: 19px; }
-.calendar-heading strong { font-size: 13px; }
+.calendar-heading button { border-color: transparent; background: transparent; padding: 3px 9px; font-size:calc(19px * var(--app-font-scale, 1)); }
+.calendar-heading strong { font-size:calc(13px * var(--app-font-scale, 1)); }
 .schedule-calendar { table-layout: fixed; }
 .schedule-calendar th, .schedule-calendar td { padding: 2px; border: 0; text-align: center; background: transparent; }
 .schedule-calendar thead { background: transparent; position: static; }
-.schedule-calendar th { color: var(--muted); font-size: 11px; }
+.schedule-calendar th { color: var(--muted); font-size:calc(11px * var(--app-font-scale, 1)); }
 .schedule-calendar tbody tr:hover { background: transparent; }
-.schedule-calendar button { width: 100%; min-height: 29px; position: relative; padding: 3px 0 6px; border: 1px solid transparent; background: transparent; font-size: 12px; }
+.schedule-calendar button { width: 100%; min-height: 29px; position: relative; padding: 3px 0 6px; border: 1px solid transparent; background: transparent; font-size:calc(12px * var(--app-font-scale, 1)); }
 .schedule-calendar button.outside { color: var(--tone-9099a5); }
 .schedule-calendar button.today { border-color: var(--accent); }
 .schedule-calendar button.scheduled::after { content: ''; width: 3px; height: 3px; position: absolute; bottom: 3px; left: calc(50% - 1.5px); border-radius: 50%; background: var(--accent); }
 .schedule-calendar button.chosen { background: var(--accent); color: var(--surface); }
 .schedule-calendar button.chosen::after { background: var(--surface); }
-.calendar-legend { color: var(--muted); font-size: 11px; }
+.calendar-legend { color: var(--muted); font-size:calc(11px * var(--app-font-scale, 1)); }
 #schedule-upcoming { margin-top: 16px; border-top: 1px solid var(--line); }
-#schedule-upcoming h3 { font-size: 12px; font-weight: 600; }
-#schedule-upcoming ol { margin: 8px 0; padding-left: 20px; font-size: 11px; font-variant-numeric: tabular-nums; }
+#schedule-upcoming h3 { font-size:calc(12px * var(--app-font-scale, 1)); font-weight: 600; }
+#schedule-upcoming ol { margin: 8px 0; padding-left: 20px; font-size:calc(11px * var(--app-font-scale, 1)); font-variant-numeric: tabular-nums; }
 #schedule-upcoming li { margin: 5px 0; }
 .scheduler-fields { min-width: 0; }
 .scheduler-fields > .folder-choice { margin-top: 0; }
 .schedule-weekdays { display: flex; flex-wrap: wrap; gap: 8px; border: 1px solid var(--line); margin: 12px 0 0; padding: 8px; }
 .schedule-weekdays[hidden] { display: none; }
-.schedule-weekdays legend { font-size: 12px; }
-.schedule-weekdays label { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; margin: 0; font-weight: 400; }
+.schedule-weekdays legend { font-size:calc(12px * var(--app-font-scale, 1)); }
+.schedule-weekdays label { display: inline-flex; align-items: center; gap: 4px; font-size:calc(11px * var(--app-font-scale, 1)); margin: 0; font-weight: 400; }
 .scheduler-advanced, .advanced-backup { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
-.scheduler-advanced summary, .advanced-backup summary { font-weight: 600; font-size: 12px; }
-.schedule-status { background: var(--tone-edf2f8); border: 1px solid var(--tone-d8e0eb); padding: 10px; margin-top: 12px; font-size: 12px; }
+.scheduler-advanced summary, .advanced-backup summary { font-weight: 600; font-size:calc(12px * var(--app-font-scale, 1)); }
+.schedule-status { background: var(--tone-edf2f8); border: 1px solid var(--tone-d8e0eb); padding: 10px; margin-top: 12px; font-size:calc(12px * var(--app-font-scale, 1)); }
 .schedule-status p { margin: 5px 0 0; }
 #schedule-error { color: var(--error); }
-.advanced-backup h3 { font-size: 13px; margin-top: 18px; }
+.advanced-backup h3 { font-size:calc(13px * var(--app-font-scale, 1)); margin-top: 18px; }
 .backup-presets { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0; }
 .history-pane .table-wrap { max-height: 38dvh; min-height: 140px; }
-.history-pane .pane-title label { font-size: 12px; }
+.history-pane .pane-title label { font-size:calc(12px * var(--app-font-scale, 1)); }
 .history-pane select { border: 1px solid var(--line); padding: 3px; border-radius: 3px; margin-left: 5px; }
-.history-pane td button { border: 0; background: transparent; color: var(--accent); padding: 0; text-align: left; min-height: 20px; font-size: 12px; }
-.history-details { padding: 12px; border-top: 1px solid var(--line); font-size: 12px; }
-.history-details h3 { font-size: 13px; margin: 0 0 12px; }
+.history-pane td button { border: 0; background: transparent; color: var(--accent); padding: 0; text-align: left; min-height: 20px; font-size:calc(12px * var(--app-font-scale, 1)); }
+.history-details { padding: 12px; border-top: 1px solid var(--line); font-size:calc(12px * var(--app-font-scale, 1)); }
+.history-details h3 { font-size:calc(13px * var(--app-font-scale, 1)); margin: 0 0 12px; }
 .history-details dl { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.history-details dt { color: var(--muted); font-size: 11px; }
+.history-details dt { color: var(--muted); font-size:calc(11px * var(--app-font-scale, 1)); }
 .history-details dd { margin: 3px 0 0; }
 .advanced-backup textarea { width: 100%; resize: vertical; border: 1px solid var(--input-border); border-radius: 3px; padding: 7px 8px; font: inherit; }
 .scheduler-dialog .dialog-actions { position: sticky; bottom: -22px; padding: 14px 0; background: var(--tone-f8f9fb); border-top: 1px solid var(--line); flex-wrap: wrap; }
@@ -773,17 +773,17 @@ dialog input[readonly] {
 [role="tabpanel"][hidden] { display: none; }
 [role="tabpanel"] { min-width: 0; }
 .scheduler-page, .backup-options-page { padding: 18px 22px; max-width: 1060px; }
-.scheduler-page h2, .backup-options-page h2 { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
-.scheduler-page h3, .backup-options-page h3 { font-size: 13px; }
-.scheduler-page p, .backup-options-page p { font-size: 12px; }
-.scheduler-page label:not(.folder-choice), .backup-options-page label:not(.folder-choice) { display: block; font-size: 12px; font-weight: 600; margin: 13px 0 5px; }
+.scheduler-page h2, .backup-options-page h2 { font-size:calc(18px * var(--app-font-scale, 1)); font-weight: 600; margin: 0 0 8px; }
+.scheduler-page h3, .backup-options-page h3 { font-size:calc(13px * var(--app-font-scale, 1)); }
+.scheduler-page p, .backup-options-page p { font-size:calc(12px * var(--app-font-scale, 1)); }
+.scheduler-page label:not(.folder-choice), .backup-options-page label:not(.folder-choice) { display: block; font-size:calc(12px * var(--app-font-scale, 1)); font-weight: 600; margin: 13px 0 5px; }
 .scheduler-page input:not([type="checkbox"]), .scheduler-page select, .backup-options-page input:not([type="checkbox"]), .backup-options-page select { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid var(--input-border); border-radius: 3px; background: var(--surface); color: inherit; }
 .backup-options-page { max-width: 780px; }
 .scheduler-page .scheduler-layout { grid-template-columns: 258px minmax(0, 1fr); }
 .scheduler-page .dialog-actions, .backup-options-page .dialog-actions { position: sticky; bottom: 0; padding: 14px 0; background: var(--surface); border-top: 1px solid var(--line); flex-wrap: wrap; }
 .scheduled-folder-selection { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 8px; }
 #schedule-folder-choices { border: 1px solid var(--line); max-height: 210px; overflow: auto; padding: 8px 12px; margin: 12px 0; }
-#schedule-folder-choices legend { font-size: 12px; }
+#schedule-folder-choices legend { font-size:calc(12px * var(--app-font-scale, 1)); }
 .scheduler-page .schedule-weekdays label { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-weight: 400; }
 .overview-page { max-width: 900px; margin: 20px; }
 .overview-page .backup-statistics { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); }
@@ -898,7 +898,7 @@ button.primary, .schedule-calendar button.chosen { background: #176bcc; color: #
 button.primary:hover:not(:disabled) { background: #145caf; }
 .schedule-calendar button.chosen::after { background: #fff; }
 .preferences-page { padding: 22px; max-width: 640px; }
-.preferences-page h2 { margin-top: 0; font-size: 18px; }
+.preferences-page h2 { margin-top: 0; font-size:calc(18px * var(--app-font-scale, 1)); }
 .preferences-page label { display: block; margin: 18px 0 6px; font-weight: 600; }
 .preferences-page select { width: 220px; padding: 7px 10px; border: 1px solid var(--input-border); border-radius: 3px; background: var(--surface); color: var(--text); }
 .preferences-page p { color: var(--muted); }
@@ -936,7 +936,7 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
   .status-download progress { width: 80px; }
 }
 
-.new-mail-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 21px; height: 20px; padding: 0 6px; flex-shrink: 0; border-radius: 10px; background: #0f766e; color: #fff; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; vertical-align: middle; }
+.new-mail-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 21px; height: 20px; padding: 0 6px; flex-shrink: 0; border-radius: 10px; background: #0f766e; color: #fff; font-size:calc(11px * var(--app-font-scale, 1)); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; vertical-align: middle; }
 .folder-row > .new-mail-badge { margin-inline: 4px 6px; }
 .statusbar > .new-mail-badge { height: 18px; min-width: 20px; }
 
@@ -971,17 +971,17 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .mail-subject { border: 0; background: transparent; padding: 0; color: inherit; text-align: left; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mail-table tbody tr { cursor: pointer; }
 .reading-empty { display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--muted); }
-.reading-empty h2 { font-size: 16px; font-weight: 500; margin: 0 0 5px; }
+.reading-empty h2 { font-size:calc(16px * var(--app-font-scale, 1)); font-weight: 500; margin: 0 0 5px; }
 .reading-empty p { margin: 0; }
 .reading-header { padding: 18px 24px; border-bottom: 1px solid var(--line); }
-.reading-header h2 { margin: 0 0 14px; font-size: 20px; overflow-wrap: anywhere; }
-.reading-header dl { margin: 0; font-size: 12px; }
+.reading-header h2 { margin: 0 0 14px; font-size:calc(20px * var(--app-font-scale, 1)); overflow-wrap: anywhere; }
+.reading-header dl { margin: 0; font-size:calc(12px * var(--app-font-scale, 1)); }
 .reading-header dl > div { display: flex; gap: 12px; margin-top: 4px; }
 .reading-header dt { min-width: 34px; color: var(--muted); }
 .reading-header dd { margin: 0; overflow-wrap: anywhere; }
-.reading-attachments { color: var(--muted); margin-bottom: 0; font-size: 12px; }
+.reading-attachments { color: var(--muted); margin-bottom: 0; font-size:calc(12px * var(--app-font-scale, 1)); }
 .email-body { display: block; width: 100%; height: 420px; border: 0; background: white; }
-.email-text { white-space: pre-wrap; overflow-wrap: anywhere; padding: 20px 24px; margin: 0; font: 14px/1.7 'Segoe UI', sans-serif; }
+.email-text { white-space: pre-wrap; overflow-wrap: anywhere; padding: 20px 24px; margin: 0; font: calc(14px * var(--app-font-scale, 1))/1.7 var(--app-font-family, "Segoe UI", sans-serif); }
 .status-folder { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .statusbar { gap: 12px; }
 @media(max-width: 1050px) { .statusbar:has(.status-download) .status-schedule { display: none; } }
@@ -1025,7 +1025,7 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 
 :root[data-theme="dark"] .new-mail-badge { background: #79e0c7; color: #103d43; }
 
-.preferences-page h3 { margin: 28px 0 0; font-size: 15px; }
+.preferences-page h3 { margin: 28px 0 0; font-size:calc(15px * var(--app-font-scale, 1)); }
 .preferences-page #close-behavior { width: min(100%, 320px); }
 .preferences-page p { line-height: 1.5; }
 .preferences-page .preferences-error { color: var(--error); }
@@ -1052,12 +1052,12 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .loading-indicator .spinner { display: inline-block; flex: 0 0 16px; }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none !important; } }
 
-.mail-legend { display: flex; gap: 18px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+.mail-legend { display: flex; gap: 18px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size:calc(11px * var(--app-font-scale, 1)); color: var(--muted); }
 .mail-legend > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .mail-legend i { width: 8px; height: 8px; border-radius: 2px; background: #a6b2c0; }
 .mail-legend .legend-new { background: #176bcc; } .mail-legend .legend-backed-up { background: #0f766e; }
 .mail-states { display: flex; gap: 5px; margin-top: 4px; overflow: hidden; }
-.mail-state { display: inline-block; font-size: 10px; font-weight: 600; line-height: 17px; padding: 0 5px; border-radius: 3px; white-space: nowrap; }
+.mail-state { display: inline-block; font-size:calc(10px * var(--app-font-scale, 1)); font-weight: 600; line-height: 17px; padding: 0 5px; border-radius: 3px; white-space: nowrap; }
 .state-new { color: #154d99; background: #deebff; } .state-backed-up { color: #115d50; background: #dcefe8; }
 .state-not-backed-up, .state-local-only { color: #4d5b69; background: #e9edf2; }
 .mail-table tr.new-mail .mail-subject { font-weight: 700; }
@@ -1069,13 +1069,13 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .mailbox-panes .mail-pane { display: flex; flex-direction: column; }
 .mailbox-panes .mail-pane .table-wrap { flex: 1; min-height: 0; height: auto; }
 .mail-legend { flex-shrink: 0; }
-.mail-pagination { display: flex; align-items: center; gap: 10px; flex-shrink: 0; padding: 6px 10px; border-top: 1px solid var(--line); background: var(--surface); font-size: 11px; }
+.mail-pagination { display: flex; align-items: center; gap: 10px; flex-shrink: 0; padding: 6px 10px; border-top: 1px solid var(--line); background: var(--surface); font-size:calc(11px * var(--app-font-scale, 1)); }
 .mail-pagination label { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .mail-pagination select { padding: 3px 5px; background: var(--surface); color: var(--text); border: 1px solid var(--input-border); border-radius: 3px; }
 .mail-page-summary { flex: 1; min-width: 0; white-space: nowrap; }
 .mail-page-position { white-space: nowrap; color: var(--muted); }
 .mail-page-buttons { display: flex; gap: 3px; }
-.mail-page-buttons button { width: 28px; padding: 2px; font-size: 17px; line-height: 20px; }
+.mail-page-buttons button { width: 28px; padding: 2px; font-size:calc(17px * var(--app-font-scale, 1)); line-height: 20px; }
 @media (max-width: 950px) { .mail-page-position { display: none; } .mail-pagination { gap: 6px; } }
 
 .mail-page-size-control { display: flex; align-items: center; gap: 5px; }
@@ -1087,3 +1087,5 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .backup-page-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
 
 .preferences-page #email-image-preference { width: min(100%, 360px); }
+
+.mail-pagination { flex-wrap: wrap; }

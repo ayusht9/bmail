@@ -273,6 +273,17 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.reload();
     await page.getByRole('tab', { name: 'Preferences', exact: true }).click();
     assert.equal(await page.getByLabel('Theme', { exact: true }).inputValue(), 'auto');
+    await page.getByLabel('Font', { exact: true }).selectOption('georgia');
+    await page.getByLabel('Font size', { exact: true }).selectOption('18');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).fontSize), '18px');
+    assert.match(await page.evaluate(() => getComputedStyle(document.querySelector('.app-name')).fontFamily), /Georgia/);
+    await page.reload();
+    await go('Preferences');
+    assert.equal(await page.getByLabel('Font', { exact: true }).inputValue(), 'georgia');
+    assert.equal(await page.getByLabel('Font size', { exact: true }).inputValue(), '18');
+    await page.getByLabel('Font', { exact: true }).selectOption('system');
+    await page.getByLabel('Font size', { exact: true }).selectOption('13');
+
     await page.getByLabel('Theme', { exact: true }).selectOption('light');
     await page.emulateMedia({ colorScheme: 'dark' });
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
