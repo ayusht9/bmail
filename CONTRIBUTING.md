@@ -23,6 +23,7 @@ docs/        Setup and feature guides
 | Mail views | `src/desktop.js` renders folders and saved mail; `src/reader.js` sanitizes and renders message content. |
 | Backup UI | `src/selection.js`, `src/progress.js`, and `src/history.js` handle backup options, progress, and activity views. |
 | Scheduling | `src/scheduler.js` handles schedule normalization, previews, and form data. |
+| Appearance and notifications | `src/appearance.js` owns image and font preferences; `src/folder-icons.js` maps folder icons. `src/notification-store.js` keeps bounded account history, and `src/notification-center.js` renders toasts and the bell panel. |
 | UI infrastructure | `src/polling.js`, `src/panes.js`, `src/columns.js`, and `src/theme.js` handle refresh timing, resizing, and appearance. |
 | Native app | `src-tauri/src/lib.rs` exposes Tauri commands and coordinates desktop processes. Sibling modules handle profiles, cache, mail, and exports. |
 | Backup engine | `engine/backup.cjs` runs the Node.js engine. Sibling modules handle selection, controls, progress, history, statistics, server header indexing, mail pagination, and data paths. |

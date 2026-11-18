@@ -11,6 +11,7 @@ import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
 import { createNavigation } from './navigation.js';
 import { preferencesView } from './preferences.js';
+import { createNotificationCenter } from './notification-center.js';
 import { setAppearance } from './appearance.js';
 import { windowControls, controlWindow, startupHeader } from './window-chrome.js';
 import { newMailBadge, normalizeNewMailCount, totalNewMail, createBadgeSync } from './notifications.js';
@@ -21,6 +22,13 @@ import { backupOptionsView, folderChoices, advancedFromForm } from './selection.
 
 const app = document.querySelector('#app');
 let dashboard;
+const notificationCenter = createNotificationCenter({
+  account: () => dashboard?.user || '',
+  escape: value => escapeHtml(value),
+  date: value => formatDate(value),
+  onChange: () => updateStatusBar(),
+});
+
 let busy = false;
 let controlBusy = false;
 let activeExports = 0;
@@ -66,6 +74,10 @@ function rememberNewMail(snapshot, account = dashboard.user) {
   savedMail.key = '';
   newMailByAccount.set(account, new Map((snapshot?.folders || []).map(folder => [folder.name, normalizeNewMailCount(folder.newMessages)])));
   if (account === dashboard?.user) void syncMailBadge(account, totalNewMail(mailIndicators()));
+  const count = totalNewMail(mailIndicators());
+  if (account === dashboard?.user && count > 0) notificationCenter.notify(`${count} new email${count === 1 ? '' : 's'} found in your mailbox.`, {
+    level: 'info', transient: false, key: `mail:${snapshot.checkedAt || JSON.stringify(snapshot.folders)}`,
+  });
 }
 
 async function checkStartupMail() {
@@ -230,7 +242,7 @@ function folderStatus() {
 }
 
 function statusBarContents() {
-  return `<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Syncing mailbox...' : 'Working...') : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailBadge(totalNewMail(mailIndicators()), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>`;
+  return `<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Syncing mailbox...' : 'Working...') : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailBadge(totalNewMail(mailIndicators()), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>${notificationCenter.bell()}`;
 }
 
 function updateBackupControls() {
@@ -318,7 +330,7 @@ function render() {
       </main>
     </div>
     <footer class="statusbar">${statusBarContents()}</footer>
-    <div id="toast" role="status"></div>
+    ${notificationCenter.shell()}
     <dialog id="mailbox-dialog" aria-labelledby="setup-title" aria-describedby="setup-description">
       <form id="mailbox-form">
         <h2 id="setup-title">${hasAccount ? 'Update app password' : 'Set up your mailbox'}</h2>
@@ -346,14 +358,11 @@ function render() {
   `;
   updateProviderHelp();
   if (activeTab === 'scheduler') initializeSchedulerView();
+  notificationCenter.mount();
 }
 
-function toast(message, isError = false) {
-  const element = document.querySelector('#toast');
-  if (!element) return;
-  element.textContent = message;
-  element.className = `show ${isError ? 'error' : ''}`;
-  setTimeout(() => element.className = '', 4500);
+function toast(message, isError = false, account = dashboard?.user || '') {
+  notificationCenter.notify(message, { level: isError ? 'error' : 'success', account });
 }
 
 let refreshing = false;
@@ -372,7 +381,15 @@ async function refresh(background = false, force = false) {
     if (force) savedMail.key = '';
     next.newMailFolders = [...(newMailByAccount.get(next.user)?.keys() || [])];
     const unchanged = JSON.stringify(next) === JSON.stringify(dashboard);
+    const finishedBackup = dashboard?.user === next.user && dashboard.backupRunning && !next.backupRunning;
     dashboard = next;
+    if (finishedBackup) {
+      const run = next.lastRun || {};
+      const outcome = ['stopped', 'cancelled'].includes(next.progress?.state) ? next.progress.state : run.outcome || (run.success ? 'completed' : 'failed');
+      const message = outcome === 'completed' ? `Backup completed. ${run.downloaded || next.progress?.downloaded || 0} emails saved.`
+        : outcome === 'failed' ? `Backup failed. ${run.error?.message || 'See Activity for details.'}` : `Backup ${outcome}. Saved mail is kept.`;
+      notificationCenter.notify(message, { level: outcome === 'failed' ? 'error' : outcome === 'completed' ? 'success' : 'info', key: `backup:${run.runId || next.progress?.runId || run.finishedAt}:${outcome}` });
+    }
     updateBackupControls();
     updateBackupProgress();
     updateStatusBar();
@@ -427,6 +444,7 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (notificationCenter.handle(action, button)) return;
   if (action.startsWith('window-')) { void controlWindow(action).catch(error => toast(String(error), true)); return; }
   if (action === 'backup-preset') {
     const form = document.querySelector('#selection-form');
@@ -476,12 +494,13 @@ app.addEventListener('click', event => {
   if (action === 'schedule-day') { const date = button.dataset.date; document.querySelector('#schedule-date').value = date; schedulerFocusDate = date; schedulerMonth = new Date(`${date}T00:00:00`); updateSchedulePreview(); document.querySelector(`.schedule-calendar [data-date="${date}"]`)?.focus(); return; }
   if (action === 'download-email' || action === 'download-folder') {
     if (button.disabled) return;
+    const exportAccount = dashboard.user;
     button.disabled = true;
     activeExports++;
     updateStatusBar();
     invoke('export_mail', { folder: button.dataset.folder || null, file: button.dataset.file || null })
-      .then(message => { if (message) toast(message); })
-      .catch(error => toast(String(error), true))
+      .then(message => { if (message) toast(message, false, exportAccount); })
+      .catch(error => toast(String(error), true, exportAccount))
       .finally(() => { activeExports--; updateStatusBar(); button.disabled = false; });
     return;
   }
