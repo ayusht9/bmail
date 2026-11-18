@@ -119,6 +119,8 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     assert.match(await page.locator('.statusbar .new-mail-badge').getAttribute('aria-label'), /3 new emails/);
     assert.equal(await sidebar.locator('.folder-row[data-folder="INBOX"] .new-mail-badge').count(), 1);
     assert.equal(await sidebar.locator('.folder-row[data-folder="Sent"] .new-mail-badge').count(), 0);
+    assert.equal(await sidebar.locator('.folder-row[data-folder="INBOX"] svg[data-folder-icon]').getAttribute('data-folder-icon'), 'inbox');
+    assert.equal(await sidebar.locator('.folder-row[data-folder="Sent"] svg[data-folder-icon]').getAttribute('data-folder-icon'), 'sent');
     assert.equal(await page.locator('.folder-table').count(), 0);
     await page.locator('.mail-table tbody tr').first().waitFor();
     for (const selector of ['.mail-table']) {

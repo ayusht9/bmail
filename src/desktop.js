@@ -2,6 +2,7 @@ import { loadingIndicator } from './loading.js';
 import { mailPagination } from './mail-pagination.js';
 import { tableStart, columnHandle } from './columns.js';
 import { newMailBadge } from './notifications.js';
+import { folderIcon } from './folder-icons.js';
 
 export function downloadButton(action, attributes, label, escape, disabled = false) {
   return `<button class="download-icon" data-action="${action}" ${attributes} title="${escape(label)}" aria-label="${escape(label)}" ${disabled ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M10 2v10m-4-4 4 4 4-4M3 13v4h14v-4"/></svg></button>`;
@@ -22,7 +23,7 @@ export function folderNavigation(dashboard, selected, filter, escape, number, ne
   const counts = new Map();
   for (const folder of dashboard.localStats?.folders || []) counts.set(folder.name, (counts.get(folder.name) || 0) + folder.messages);
   return mailboxFolders(dashboard).filter(name => name.toLowerCase().includes(filter.toLowerCase())).map(name =>
-    `<div class="folder-row" data-folder="${escape(name)}"><button class="folder-item ${selected === name ? 'selected' : ''}" data-action="select-folder" data-folder="${escape(name)}" aria-pressed="${selected === name}"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M2 5h6l2 2h8v9H2z"/></svg><span>${escape(name)}</span><small>${number(counts.get(name) || 0)}</small></button>${newMailBadge(newMail.get(name), escape, name)}${downloadButton('download-folder', `data-folder="${escape(name)}"`, `Download ${name} (.zip)`, escape, !counts.get(name))}</div>`).join('');
+    `<div class="folder-row" data-folder="${escape(name)}"><button class="folder-item ${selected === name ? 'selected' : ''}" data-action="select-folder" data-folder="${escape(name)}" aria-pressed="${selected === name}">${folderIcon(name)}<span>${escape(name)}</span><small>${number(counts.get(name) || 0)}</small></button>${newMailBadge(newMail.get(name), escape, name)}${downloadButton('download-folder', `data-folder="${escape(name)}"`, `Download ${name} (.zip)`, escape, !counts.get(name))}</div>`).join('');
 }
 
 export function mailSize(bytes = 0) {
