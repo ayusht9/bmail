@@ -14,7 +14,7 @@ import { preferencesView } from './preferences.js';
 import { createNotificationCenter } from './notification-center.js';
 import { setAppearance } from './appearance.js';
 import { windowControls, controlWindow, startupHeader } from './window-chrome.js';
-import { newMailBadge, normalizeNewMailCount, totalNewMail, createBadgeSync } from './notifications.js';
+import { normalizeNewMailCount, totalNewMail, createBadgeSync } from './notifications.js';
 import { folderNavigation, savedMailPane, mailboxFolders } from './desktop.js';
 import { progressPanel, statusDownloadProgress, backupControls } from './progress.js';
 import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, nextRuns, calendarMarkup, scheduleSummary, localDate, updateClock } from './scheduler.js';
@@ -242,7 +242,7 @@ function folderStatus() {
 }
 
 function statusBarContents() {
-  return `<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Syncing mailbox...' : 'Working...') : dashboard.backupRunning ? 'Backup active' : ''}</span>${newMailBadge(totalNewMail(mailIndicators()), escapeHtml)}${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span>${notificationCenter.bell()}`;
+  return `<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Syncing mailbox...' : 'Working...') : dashboard.backupRunning ? 'Backup active' : ''}</span>${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-summary"><span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span></span>`;
 }
 
 function updateBackupControls() {
@@ -264,6 +264,8 @@ function updateStatusBar() {
   if (dashboard) void syncMailBadge(dashboard.user, totalNewMail(mailIndicators()));
   const footer = document.querySelector('.statusbar');
   if (footer && dashboard) footer.innerHTML = statusBarContents();
+  const bell = document.querySelector('.navbar-notifications');
+  if (bell) bell.innerHTML = notificationCenter.bell();
 }
 
 function render() {
@@ -301,6 +303,7 @@ function render() {
     <header class="app-toolbar" data-tauri-drag-region>
       <div class="app-name" data-tauri-drag-region><img data-tauri-drag-region class="app-logo" src="${logoUrl}" alt="" width="28" height="28"><strong data-tauri-drag-region>Bmail</strong></div>
       <div class="toolbar-spacer" data-tauri-drag-region></div>
+      <div class="navbar-notifications">${notificationCenter.bell()}</div>
       ${windowControls()}
     </header>
     <div class="desktop-layout">

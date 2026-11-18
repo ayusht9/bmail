@@ -50,7 +50,8 @@ appears when the initial dashboard is ready, including any startup error and a
 retry control. Spinners also indicate mail list, mailbox check, and message preview loading. A startup deadline prevents the splash from remaining indefinitely.
 
 Folder badges show the number of new emails found since the previous mailbox
-check. The status bar shows the current account's total. The Windows taskbar uses
+check. The status bar keeps folder coverage and the schedule aligned to the right,
+without a separate new-mail count. The Windows taskbar uses
 a numeric overlay (up to `99+`); the window title and tray tooltip retain the exact
 total. These are new-mail check counts, not unread counts. Switching accounts
 updates the total; zero removes the badge.
@@ -83,7 +84,7 @@ standard folder icon.
 
 ## In-app notifications
 
-The status-bar bell opens recent notifications for the selected account. Its
+The bell at the right of the navbar opens recent notifications for the selected account in a panel directly below the bell. Its
 badge counts unread notifications, separately from new-email folder badges.
 Use Mark all read, individual read controls, or Clear all to manage the list.
 Escape closes the panel and returns focus to the bell. Up to 100 recent messages
