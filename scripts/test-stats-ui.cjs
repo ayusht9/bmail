@@ -11,7 +11,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     const file = path.resolve(root, '.' + new URL(request.url, 'http://localhost').pathname);
     if (file !== root && !file.startsWith(root + path.sep)) { response.writeHead(403).end(); return; }
     const target = file === root ? path.join(root, 'index.html') : file;
-    response.setHeader('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'");
+    response.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; connect-src 'self'");
     response.setHeader('Content-Type', target.endsWith('.js') ? 'text/javascript' : target.endsWith('.css') ? 'text/css' : target.endsWith('.svg') ? 'image/svg+xml' : 'text/html');
     fs.createReadStream(target).on('error', () => response.writeHead(404).end()).pipe(response);
   });
@@ -61,7 +61,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
           if (['stop', 'cancel'].includes(args.command)) { window.data.backupRunning = false; window.data.progress.state = args.command === 'stop' ? 'stopped' : 'cancelled'; }
           return 'Control applied';
         }
-        if (name === 'get_saved_message') { if (window.failReader) throw 'Saved email is unavailable'; window.lastReadFile = args.file; return { subject: 'Preview subject', from: 'Sender <sender@example.com>', to: 'reader@example.com', date: '2026-11-16T09:00:00Z', html: '<p>Hello from the selected email</p><script>window.previewInjected=true</script><img src="https://tracking.invalid/pixel"><a href="javascript:alert(1)">link</a>', text: '', attachments: [] }; }
+        if (name === 'get_saved_message') { if (window.failReader) throw 'Saved email is unavailable'; window.lastReadFile = args.file; return { subject: 'Preview subject', from: 'Sender <sender@example.com>', to: 'reader@example.com', date: '2026-11-16T09:00:00Z', html: '<p>Hello from the selected email</p><script>window.previewInjected=true</script><img alt="Remote logo" src="https://tracking.invalid/pixel"><img alt="Embedded logo" src="data:image/png;base64,iVBORw0KGgo="><a href="javascript:alert(1)">link</a>', text: '', attachments: [] }; }
         if (name === 'get_mail_page') return window.fixtureMailPage(window.data.localStats.recent.filter(mail => !args.folder || mail.folder === args.folder), args);
         if (name === 'get_dashboard') { window.dashboardForces.push(args?.force); return structuredClone(window.data); }
         if (name === 'manage_schedule') {
@@ -197,6 +197,21 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     assert.doesNotMatch(content, /<script|https:\/\/tracking|javascript:/);
     await page.frameLocator('iframe[title="Email content"]').getByText('Hello from the selected email', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.previewInjected), undefined);
+    assert.match(content, /data:image\/png/);
+    await go('Preferences');
+    await page.getByLabel('Email images', { exact: true }).selectOption('hidden');
+    await go('Home');
+    assert.match(await frame.getAttribute('srcdoc'), /Image hidden: Embedded logo/);
+    assert.doesNotMatch(await frame.getAttribute('srcdoc'), /<img/);
+    await go('Preferences');
+    await page.getByLabel('Email images', { exact: true }).selectOption('remote');
+    await go('Home');
+    assert.match(await frame.getAttribute('srcdoc'), /https:\/\/tracking.invalid/);
+    assert.match(await frame.getAttribute('srcdoc'), /img-src data: https:/);
+    await go('Preferences');
+    await page.getByLabel('Email images', { exact: true }).selectOption('embedded');
+    await go('Home');
+
     assert.equal(await page.locator('.workspace-heading, .run-banner, .folder-pane').count(), 0, 'Mailbox starts directly with the email list');
     assert.match(await page.locator('.status-folder').textContent(), /saved.*on server.*remaining/);
     const listBox = await recent.boundingBox(); const readerBox = await reader.boundingBox();

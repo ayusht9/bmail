@@ -1,6 +1,7 @@
 import { loadingIndicator } from './loading.js';
+import { appearancePreference } from './appearance.js';
 
-export function emailDocument(html) {
+export function emailDocument(html, { imageMode = 'embedded' } = appearancePreference()) {
   const template = document.createElement('template');
   template.innerHTML = html;
   const content = template.content;
@@ -10,9 +11,16 @@ export function emailDocument(html) {
       const name = attribute.name.toLowerCase();
       if (name.startsWith('on') || ['href', 'srcset', 'action', 'formaction', 'target', 'background', 'srcdoc', 'xlink:href'].includes(name)) element.removeAttribute(attribute.name);
     }
-    if (element.hasAttribute('src') && !(element.tagName === 'IMG' && /^data:image\/(png|jpeg|gif|webp);base64,/i.test(element.getAttribute('src')))) element.removeAttribute('src');
+    if (element.hasAttribute('src')) {
+      const source = element.getAttribute('src');
+      const embedded = /^data:image\/(png|jpeg|gif|webp);base64,/i.test(source);
+      const remote = imageMode === 'remote' && /^https:\/\//i.test(source);
+      if (element.tagName !== 'IMG' || imageMode === 'hidden' || !(embedded || remote)) element.removeAttribute('src');
+    }
   });
-  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"><style>body{font:14px/1.6 'Segoe UI',sans-serif;margin:20px;color:#202630;background:white;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style></head><body>${template.innerHTML}</body></html>`;
+  if (imageMode === 'hidden') content.querySelectorAll('img').forEach(image => image.replaceWith(document.createTextNode(image.alt ? `[Image hidden: ${image.alt}]` : '[Image hidden]')));
+  const imagePolicy = imageMode === 'hidden' ? "'none'" : imageMode === 'remote' ? 'data: https:' : 'data:';
+  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src ${imagePolicy}; base-uri 'none'; form-action 'none'"><style>body{font:14px/1.6 'Segoe UI',sans-serif;margin:20px;color:#202630;background:white;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style></head><body>${template.innerHTML}</body></html>`;
 }
 
 export function readingPane(state, escape, date) {
