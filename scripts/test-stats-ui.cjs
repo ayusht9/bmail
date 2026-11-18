@@ -103,6 +103,11 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.getByRole('button', { name: 'Maximize or restore window', exact: true }).click();
     const tab = name => page.getByRole('tab', { name, exact: true });
     const go = async name => { await tab(name).click(); await page.getByRole('tabpanel', { name, exact: true }).waitFor(); };
+    const dismissToasts = async () => {
+      while (await page.locator('#toast [data-action="toast-dismiss"]').count()) {
+        await page.locator('#toast [data-action="toast-dismiss"]').last().click();
+      }
+    };
     const refreshLocal = async () => {
       const before = await page.evaluate(() => window.dashboardForces.length);
       await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
@@ -246,7 +251,24 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     assert.deepEqual(await page.evaluate(() => window.exports[1]), { folder: 'INBOX', file: null });
     await page.evaluate(() => { window.failExport = true; });
     await sidebar.getByRole('button', { name: 'Download INBOX (.zip)', exact: true }).click();
-    await page.waitForFunction(() => document.querySelector('#toast')?.textContent === 'Export failed' || [...document.querySelectorAll('[role="status"], .toast')].some(el => el.textContent === 'Export failed'));
+    await page.locator('#toast .toast-message').getByText('Export failed', { exact: true }).waitFor();
+    const failedToast = page.locator('#toast .toast').filter({ hasText: 'Export failed' });
+    assert.equal(await failedToast.getAttribute('role'), 'alert');
+    assert.equal(await failedToast.locator('.toast-kind').count(), 1);
+    await failedToast.getByRole('button', { name: 'Dismiss notification', exact: true }).click();
+    await page.locator('.statusbar [data-action="notifications-open"]').click();
+    const notificationPanel = page.getByRole('dialog', { name: 'Notifications', exact: true });
+    await notificationPanel.getByText('Export failed', { exact: true }).waitFor();
+    if (process.env.BMAIL_NOTIFICATIONS_SCREENSHOT) await page.screenshot({ path: process.env.BMAIL_NOTIFICATIONS_SCREENSHOT });
+    assert.ok(await notificationPanel.locator('.notification-item.unread').count() > 0);
+    await notificationPanel.getByRole('button', { name: 'Mark all read', exact: true }).click();
+    assert.equal(await notificationPanel.locator('.notification-item.unread').count(), 0);
+    assert.equal(await page.locator('.statusbar .notification-count').count(), 0);
+    await page.keyboard.press('Escape');
+    assert.equal(await notificationPanel.isVisible(), false);
+    assert.equal(await page.locator('[data-action="notifications-open"]').evaluate(button => button === document.activeElement), true);
+    await dismissToasts();
+
     await page.evaluate(() => { window.failExport = false; });
     await sidebar.getByRole('button', { name: 'INBOX 3', exact: true }).click();
     await page.locator('.status-folder').filter({ hasText: /^INBOX:/ }).waitFor();
@@ -279,10 +301,19 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     assert.match(await page.evaluate(() => getComputedStyle(document.querySelector('.app-name')).fontFamily), /Georgia/);
     await page.reload();
     await go('Preferences');
+    await page.locator('.statusbar [data-action="notifications-open"]').click();
+    await page.getByRole('dialog', { name: 'Notifications', exact: true }).getByText('Export failed', { exact: true }).waitFor();
+    await page.getByRole('dialog', { name: 'Notifications', exact: true }).getByRole('button', { name: 'Clear all', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Notifications', exact: true }).getByRole('heading', { name: 'No notifications yet', exact: true }).waitFor();
+    await page.keyboard.press('Escape');
     assert.equal(await page.getByLabel('Font', { exact: true }).inputValue(), 'georgia');
     assert.equal(await page.getByLabel('Font size', { exact: true }).inputValue(), '18');
     await page.getByLabel('Font', { exact: true }).selectOption('system');
     await page.getByLabel('Font size', { exact: true }).selectOption('13');
+    if (process.env.BMAIL_PREFERENCES_SCREENSHOT) {
+      await page.locator('#toast .toast').last().evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
+      await page.screenshot({ path: process.env.BMAIL_PREFERENCES_SCREENSHOT });
+    }
 
     await page.getByLabel('Theme', { exact: true }).selectOption('light');
     await page.emulateMedia({ colorScheme: 'dark' });
@@ -310,10 +341,10 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.getByRole('button', { name: 'Sync', exact: true }).click();
     await page.getByRole('alert').getByText('Connection failed', { exact: true }).waitFor();
     await go('Home');
-    assert.equal(await page.getByRole('alert').isVisible(), true);
+    assert.equal(await page.locator('.operation-error').isVisible(), true);
     await page.evaluate(() => { window.failCheck = false; });
     await page.getByRole('button', { name: 'Retry', exact: true }).click();
-    await page.getByRole('alert').waitFor({ state: 'hidden' });
+    await page.locator('.operation-error').waitFor({ state: 'hidden' });
     // Tabs use manual keyboard activation and do not fetch data on arrow focus.
     await tab('Home').focus(); await tab('Home').press('ArrowRight');
     assert.equal(await tab('Backup').evaluate(element => element === document.activeElement), true);
@@ -394,6 +425,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await scheduler.getByRole('button', { name: 'Save schedule', exact: true }).click();
     await scheduler.getByText('Windows: Disabled', { exact: true }).waitFor();
     await page.evaluate(() => { window.failSchedule = true; });
+    await dismissToasts();
     await scheduler.getByRole('button', { name: 'Refresh status', exact: true }).click();
     await scheduler.getByText('Windows scheduler unavailable', { exact: true }).waitFor();
     await page.evaluate(() => { window.failSchedule = false; });

@@ -66,6 +66,35 @@ Run `npm.cmd run test:desktop:lifecycle` to verify the native splash, account
 count isolation, tray hide/restore, quit behavior, and saved preference using an
 isolated profile without mailbox connections.
 
+## Reading and appearance preferences
+
+Preferences includes a Font selector and Font size (12-20 px). Changes apply
+immediately to the interface and default email reading text and are saved on
+this device. Email images can be hidden, restricted to embedded images (the
+default), or expanded to include remote HTTPS images. Remote images can contact
+the sender's servers. Hidden images are replaced by their alternative text.
+The reading pane remains sandboxed, and scripts, forms, and unsafe image types
+remain blocked in every image mode.
+
+Common folders use dedicated icons: Inbox, Sent, Drafts, Trash, Spam, Archive,
+Starred, Important, Outbox, and Templates. Provider paths such as
+`[Gmail]/Sent Mail` and `INBOX.Drafts` are recognized. Custom folders keep a
+standard folder icon.
+
+## In-app notifications
+
+The status-bar bell opens recent notifications for the selected account. Its
+badge counts unread notifications, separately from new-email folder badges.
+Use Mark all read, individual read controls, or Clear all to manage the list.
+Escape closes the panel and returns focus to the bell. Up to 100 recent messages
+per account are saved on this device, with a total limit of 500.
+
+Toasts show success, information, and error icons with a dismiss button. They
+pause while hovered or focused and expire automatically; dismissing a toast
+keeps its message in the bell's history. New-mail discoveries and backup
+completion updates also appear there. Windows desktop-alert preferences remain
+in the advanced Backup options.
+
 ## Progress and backup controls
 
 Choose **Choose what to back up** to select folders, an inclusive received-date
