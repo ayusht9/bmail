@@ -20,6 +20,18 @@ export function createNotificationCenter({ account, escape, date, onChange }) {
   let currentAccount = '';
   let opened = false;
 
+  function positionPanel() {
+    const button = document.querySelector('.navbar-notifications .notification-bell');
+    const dialog = document.querySelector('#notification-dialog');
+    if (!button || !dialog) return;
+    const bounds = button.getBoundingClientRect();
+    const top = Math.max(8, Math.min(window.innerHeight - 80, bounds.bottom + 8));
+    dialog.style.top = `${top}px`;
+    dialog.style.right = `${Math.max(12, window.innerWidth - bounds.right)}px`;
+    dialog.style.maxHeight = `${Math.max(60, Math.min(580, window.innerHeight - top - 12))}px`;
+  }
+  window.addEventListener('resize', () => { if (opened) positionPanel(); });
+
   function bell() {
     const count = store.unread(account());
     return `<button type="button" class="notification-bell" data-action="notifications-open" aria-label="Notifications${count ? `, ${count} unread` : ''}" title="Notifications" aria-haspopup="dialog" aria-expanded="${opened}" aria-controls="notification-dialog">${svg('<path d="M4 8a6 6 0 0 1 12 0v5l2 2H2l2-2Zm4 9h4"/>')}${count ? `<span class="notification-count">${count > 99 ? '99+' : count}</span>` : ''}</button>`;
@@ -65,6 +77,7 @@ export function createNotificationCenter({ account, escape, date, onChange }) {
     if (opened && dialog) {
       const focusAction = dialog.contains(document.activeElement) ? document.activeElement?.dataset?.action : null;
       dialog.innerHTML = panel();
+      positionPanel();
       if (!dialog.open) dialog.showModal();
       if (focusAction) (dialog.querySelector(`[data-action="${focusAction}"]:not(:disabled)`) || dialog.querySelector('[data-action="notifications-close"]'))?.focus({ preventScroll: true });
     }
