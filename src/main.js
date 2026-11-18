@@ -11,6 +11,7 @@ import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
 import { createNavigation } from './navigation.js';
 import { preferencesView } from './preferences.js';
+import { setAppearance } from './appearance.js';
 import { windowControls, controlWindow, startupHeader } from './window-chrome.js';
 import { newMailBadge, normalizeNewMailCount, totalNewMail, createBadgeSync } from './notifications.js';
 import { folderNavigation, savedMailPane, mailboxFolders } from './desktop.js';
@@ -528,6 +529,7 @@ app.addEventListener('change', event => {
     return;
   }
   if (event.target.id === 'close-behavior') { void saveCloseBehavior(event.target.value); return; }
+  if (event.target.id === 'email-image-preference') { setAppearance({ imageMode: event.target.value }); updateReader(); toast('Image preference saved.'); return; }
   if (event.target.id === 'theme-preference') { setTheme(event.target.value); return; }
   if (event.target.id === 'history-filter') { historyFilter = event.target.value; render(); return; }
   if (event.target.closest('#scheduler-form')) { updateSchedulePreview(); return; }
