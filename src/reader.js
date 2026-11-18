@@ -1,7 +1,8 @@
 import { loadingIndicator } from './loading.js';
-import { appearancePreference } from './appearance.js';
+import { appearancePreference, normalizeAppearance, fontFamilies } from './appearance.js';
 
-export function emailDocument(html, { imageMode = 'embedded' } = appearancePreference()) {
+export function emailDocument(html, preferences = appearancePreference()) {
+  const { imageMode, fontFamily, fontSize } = normalizeAppearance(preferences);
   const template = document.createElement('template');
   template.innerHTML = html;
   const content = template.content;
@@ -20,7 +21,7 @@ export function emailDocument(html, { imageMode = 'embedded' } = appearancePrefe
   });
   if (imageMode === 'hidden') content.querySelectorAll('img').forEach(image => image.replaceWith(document.createTextNode(image.alt ? `[Image hidden: ${image.alt}]` : '[Image hidden]')));
   const imagePolicy = imageMode === 'hidden' ? "'none'" : imageMode === 'remote' ? 'data: https:' : 'data:';
-  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src ${imagePolicy}; base-uri 'none'; form-action 'none'"><style>body{font:14px/1.6 'Segoe UI',sans-serif;margin:20px;color:#202630;background:white;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style></head><body>${template.innerHTML}</body></html>`;
+  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src ${imagePolicy}; base-uri 'none'; form-action 'none'"><style>body{font:${fontSize + 1}px/1.6 ${fontFamilies[fontFamily].css};margin:20px;color:#202630;background:white;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style></head><body>${template.innerHTML}</body></html>`;
 }
 
 export function readingPane(state, escape, date) {

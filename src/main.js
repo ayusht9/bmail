@@ -529,6 +529,12 @@ app.addEventListener('change', event => {
     return;
   }
   if (event.target.id === 'close-behavior') { void saveCloseBehavior(event.target.value); return; }
+  if (event.target.id === 'font-family-preference' || event.target.id === 'font-size-preference') {
+    setAppearance(event.target.id === 'font-family-preference' ? { fontFamily: event.target.value } : { fontSize: Number(event.target.value) });
+    updateReader();
+    toast('Font preference saved.');
+    return;
+  }
   if (event.target.id === 'email-image-preference') { setAppearance({ imageMode: event.target.value }); updateReader(); toast('Image preference saved.'); return; }
   if (event.target.id === 'theme-preference') { setTheme(event.target.value); return; }
   if (event.target.id === 'history-filter') { historyFilter = event.target.value; render(); return; }
