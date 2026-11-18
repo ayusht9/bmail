@@ -9,6 +9,7 @@ mod export;
 mod mail;
 mod startup;
 mod notifications;
+mod taskbar;
 mod desktop;
 use std::sync::Mutex;
 
@@ -580,6 +581,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(BackupProcess::default())
         .manage(notifications::MailBadgeState::default())
+        .manage(taskbar::TaskbarIconState::default())
         .manage(cache::DashboardCache::default())
         .setup(|app| {
             initialize_profiles(app.handle()).map_err(std::io::Error::other)?;
