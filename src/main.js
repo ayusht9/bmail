@@ -210,17 +210,42 @@ let dashboardPoller;
 let schedulerMonth = new Date();
 let schedulerFocusDate = '';
 let schedulerBusy = false;
-const providerForHost = host => host?.toLowerCase() === 'imap.gmail.com' ? 'google' : host?.toLowerCase() === 'imappro.zoho.in' ? 'zoho' : 'other';
+const outlookHost = host => ['outlook.office365.com', 'imap-mail.outlook.com'].includes(host?.trim().toLowerCase());
+const providerForHost = host => outlookHost(host) ? 'outlook' : host?.toLowerCase() === 'imap.gmail.com' ? 'google' : host?.toLowerCase() === 'imappro.zoho.in' ? 'zoho' : 'other';
+
+async function startOutlookSignIn(button) {
+  const form = button.form;
+  const clientId = form.elements.client_id.value.trim();
+  const status = document.querySelector('#outlook-sign-in-status');
+  form.elements.device_code.value = '';
+  button.disabled = true;
+  status.textContent = 'Starting Microsoft sign-in...';
+  try {
+    const response = await invoke('begin_outlook_sign_in', { clientId });
+    if (!form.isConnected || form.elements.client_id.value.trim() !== clientId || !outlookHost(form.elements.host.value)) return;
+    form.elements.device_code.value = response.device_code;
+    form.elements.device_interval.value = response.interval || 10;
+    status.textContent = `Visit ${response.verification_uri} in your browser and enter ${response.user_code}. Then select Save mailbox to finish sign-in. This code expires in ${Math.floor(response.expires_in / 60)} minutes.`;
+  } catch (error) { status.textContent = String(error); }
+  finally { button.disabled = false; }
+}
 
 function updateProviderHelp() {
   const google = document.querySelector('#mail-provider').value === 'google';
+  const outlook = document.querySelector('#mail-provider').value === 'outlook';
+  document.querySelector('#outlook-auth').hidden = !outlook;
+  document.querySelector('#outlook-client-id').required = outlook;
+  const password = document.querySelector('#mail-password');
+  password.required = !outlook;
+  password.hidden = outlook;
+  document.querySelector('label[for="mail-password"]').style.display = outlook ? 'none' : '';
   document.querySelector('#provider-help').textContent = google
     ? 'Turn on Google 2-Step Verification, then create an app password. Use that 16-character password here. Some work or school accounts do not allow app passwords.'
-    : 'Use the application-specific password supplied by your email provider.';
+    : outlook ? 'Enable IMAP in Outlook settings. Start Microsoft sign-in, visit the address below and enter the code, then save this mailbox. Sign in as the email address entered above.' : 'Use the application-specific password supplied by your email provider.';
   document.querySelector('[data-action="google-help"]').hidden = !google;
   const port = document.querySelector('#mail-port');
-  port.readOnly = google;
-  if (google) port.value = '993';
+  port.readOnly = google || outlook;
+  if (google || outlook) port.value = '993';
 }
 
 const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, char => ({
@@ -325,7 +350,7 @@ function render() {
         </nav>${workspaceTabStrip(activeTab, busy)}</div>
         ${!['mailbox', 'activity'].includes(activeTab) ? `<section class="run-banner ${state}" aria-label="Backup status"><h2>${statusTitle}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span></section>` : ''}
         ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'new-mail' ? 'New mail check failed' : operationFailure.action === 'stats' ? 'Mailbox sync failed' : 'Action failed'}</strong><p>${escapeHtml(operationFailure.message)}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
-        ${!dashboard.credentialReady ? `<aside class="notice">Save an account and app password to start backing up. <button data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
+        ${!dashboard.credentialReady ? `<aside class="notice">Connect an account to start backing up. <button data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
         ${run?.error ? `<aside class="notice error">${escapeHtml(run.error.message || 'Backup failed')}. Completed downloads are retained.</aside>` : ''}
         ${dashboard.launchError ? `<aside class="notice error">${escapeHtml(dashboard.launchError)}</aside>` : ''}
         ${dashboard.migrationNotice ? `<aside class="notice">${escapeHtml(dashboard.migrationNotice)}</aside>` : ''}
@@ -336,11 +361,12 @@ function render() {
     ${notificationCenter.shell()}
     <dialog id="mailbox-dialog" aria-labelledby="setup-title" aria-describedby="setup-description">
       <form id="mailbox-form">
-        <h2 id="setup-title">${hasAccount ? 'Update app password' : 'Set up your mailbox'}</h2>
-        <p id="setup-description">Use your IMAP server and application-specific password. Your password is encrypted for this Windows user.</p>
+        <h2 id="setup-title">${hasAccount ? (outlookHost(mailHost) ? 'Sign in to Microsoft again' : 'Update app password') : 'Set up your mailbox'}</h2>
+        <p id="setup-description">Connect with Microsoft sign-in or your IMAP server and application-specific password. Credentials are encrypted for this Windows user.</p>
         <label for="mail-provider">Email provider</label>
         <select id="mail-provider" ${hasAccount ? 'disabled' : ''}>
           <option value="google" ${providerForHost(mailHost) === 'google' ? 'selected' : ''}>Google / Gmail</option>
+          <option value="outlook" ${providerForHost(mailHost) === 'outlook' ? 'selected' : ''}>Microsoft Outlook / Hotmail / Microsoft 365</option>
           <option value="zoho" ${providerForHost(mailHost) === 'zoho' ? 'selected' : ''}>Zoho India</option>
           <option value="other" ${providerForHost(mailHost) === 'other' ? 'selected' : ''}>Other IMAP server</option>
         </select>
@@ -354,6 +380,15 @@ function render() {
         <button type="button" class="text-button" data-action="google-help" hidden>How to create a Google app password</button>
         <label for="mail-password">Application-specific password</label>
         <input id="mail-password" name="password" type="password" autocomplete="new-password" aria-describedby="provider-help" required>
+        <div id="outlook-auth" hidden>
+          <label for="outlook-client-id">Microsoft application (client) ID</label>
+          <input id="outlook-client-id" name="client_id" type="text" placeholder="App registration client ID" aria-describedby="outlook-registration-help">
+          <p id="outlook-registration-help">Use an app registration allowing personal and organizational accounts, public client flows, and delegated IMAP.AccessAsUser.All permission. No client secret is needed.</p>
+          <button type="button" data-action="outlook-sign-in">Start Microsoft sign-in</button>
+          <p id="outlook-sign-in-status" role="status"></p>
+          <input name="device_code" type="hidden">
+          <input name="device_interval" type="hidden" value="10">
+        </div>
         <p id="setup-error" role="alert"></p>
         <div class="dialog-actions"><button type="button" class="ghost" data-action="cancel-setup">Cancel</button><button class="primary" type="submit">Save mailbox</button></div>
       </form>
@@ -514,6 +549,7 @@ app.addEventListener('click', event => {
   else if (['pause', 'resume', 'stop', 'cancel'].includes(action)) controlBackup(action, button.dataset.runId);
   else if (action === 'selection') selectTab('options');
   else if (action === 'load-folders') loadFolders();
+  else if (action === 'outlook-sign-in') startOutlookSignIn(button);
   else if (action === 'google-help') invoke('open_google_help').catch(error => toast(String(error), true));
   else if (action === 'cancel-setup') {
     document.querySelector('#mail-password').value = '';
@@ -565,9 +601,13 @@ app.addEventListener('change', event => {
   if (event.target.id === 'all-folders') {
     document.querySelector('#folder-choices').disabled = event.target.checked;
   }
+  if (event.target.id === 'outlook-client-id' || event.target.id === 'mail-provider') {
+    document.querySelector('[name="device_code"]').value = '';
+    document.querySelector('#outlook-sign-in-status').textContent = '';
+  }
   if (event.target.id === 'mail-provider') {
     const provider = event.target.value;
-    document.querySelector('#mail-host').value = provider === 'google' ? 'imap.gmail.com' : provider === 'zoho' ? 'imappro.zoho.in' : '';
+    document.querySelector('#mail-host').value = provider === 'google' ? 'imap.gmail.com' : provider === 'outlook' ? 'outlook.office365.com' : provider === 'zoho' ? 'imappro.zoho.in' : '';
     document.querySelector('#mail-port').value = '993';
     updateProviderHelp();
   } else if (event.target.id === 'mail-host') {
@@ -579,6 +619,8 @@ app.addEventListener('change', event => {
 app.addEventListener('cancel', event => {
     if (event.target.id === 'mailbox-dialog' && !busy) {
     document.querySelector('#mail-password').value = '';
+    document.querySelector('[name="device_code"]').value = '';
+    document.querySelector('#outlook-sign-in-status').textContent = '';
     addingAccount = false;
   }
 }, true);
@@ -803,15 +845,21 @@ app.addEventListener('submit', async event => {
   const values = new FormData(form);
   const settings = {
     user: values.get('user').trim(), host: values.get('host').trim(),
-    port: Number(values.get('port')), password: values.get('password'),
+    port: Number(values.get('port')), password: values.get('password') || '',
+    client_id: values.get('client_id')?.trim() || '', device_code: values.get('device_code') || '',
+    device_interval: Number(values.get('device_interval')) || 10,
   };
+  if (outlookHost(settings.host) && !settings.device_code) {
+    document.querySelector('#setup-error').textContent = 'Start Microsoft sign-in first.';
+    return;
+  }
   busy = true;
   const dialog = document.querySelector('#mailbox-dialog');
   const preventCancel = event => event.preventDefault();
   dialog.addEventListener('cancel', preventCancel);
   const enabledControls = [...form.querySelectorAll('button, input, select')].filter(element => !element.disabled);
   enabledControls.forEach(element => element.disabled = true);
-  form.querySelector('[type="submit"]').textContent = 'Saving...';
+  form.querySelector('[type="submit"]').textContent = outlookHost(settings.host) ? 'Waiting for Microsoft approval...' : 'Saving...';
   document.querySelector('#setup-error').textContent = '';
   try {
     const result = await invoke('configure_mailbox', { settings });
@@ -827,6 +875,8 @@ app.addEventListener('submit', async event => {
     document.querySelector('#setup-error').scrollIntoView({ block: 'nearest' });
   } finally {
     settings.password = '';
+    settings.device_code = '';
+    form.querySelector('[name="device_code"]').value = '';
     values.delete('password');
     form.querySelector('[name="password"]').value = '';
     enabledControls.forEach(element => element.disabled = false);

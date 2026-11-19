@@ -424,15 +424,15 @@ async function main() {
   let input = '';
   for await (const chunk of process.stdin) input += chunk;
   const credentials = JSON.parse(input.replace(/^\uFEFF/, ''));
-  redactions = [credentials.password];
-  if (!credentials.password || credentials.user !== config.user) throw new Error('Credentials do not match account');
+  redactions = [credentials.password, credentials.accessToken].filter(Boolean);
+  if (!(config.authType === 'oauth2' ? credentials.accessToken : credentials.password) || credentials.user !== config.user) throw new Error('Credentials do not match account');
   const { ImapFlow } = require('imapflow');
   const advanced = normalizeSelection(config.backupOptions).advanced;
   const makeClient = () => {
     const client = new ImapFlow({
     host: config.host, port: config.port, secure: true,
     tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' },
-    auth: { user: credentials.user, pass: credentials.password },
+    auth: config.authType === 'oauth2' ? { user: credentials.user, accessToken: credentials.accessToken } : { user: credentials.user, pass: credentials.password },
     logger: false, disableAutoIdle: true, disableBinary: true, disableCompression: true,
       connectionTimeout: advanced.connectionTimeoutSeconds * 1000, socketTimeout: advanced.socketTimeoutSeconds * 1000
     });
@@ -479,7 +479,7 @@ async function main() {
 }
 if (require.main === module) main().catch(error => {
   console.error('Backup failed. No server emails were deleted.');
-  console.error(error.authenticationFailed ? 'Authentication rejected: check your email provider app password and IMAP access settings.' : JSON.stringify(safeError(error)));
+  console.error(error.authenticationFailed ? 'Authentication rejected: sign in again or check your email provider app password and IMAP access settings.' : JSON.stringify(safeError(error)));
   process.exitCode = 1;
 });
 module.exports = { backup, backupWithRetries, fetchCompleteMessage, verify, digest, readJson, messageLocation, organize, atomicWrite, validateRecord };

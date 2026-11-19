@@ -31,3 +31,5 @@ software. A visible credit in your app's interface is not required.
 Third-party components retain their own licenses and notices. Packaged builds
 include Bmail's license in `engine/LICENSE`, Node.js notices in
 `engine/NODE-LICENSE.txt`, and the production dependencies' distributed license files.
+
+For Outlook.com, Hotmail, and Microsoft 365, see [Outlook setup](docs/OUTLOOK.md).

@@ -39,6 +39,12 @@ const { paginateMail } = require('../engine/mail-page.cjs');
         window.calls.push(name);
         if (name.startsWith('plugin:window|')) return;
         if (name === 'finish_startup') return;
+        if (name === 'begin_outlook_sign_in') {
+          window.microsoftClientId = args.clientId;
+          return { device_code: 'fixture-device', user_code: 'TEST-CODE', verification_uri: 'https://microsoft.com/devicelogin', expires_in: 900, interval: 5 };
+        }
+        if (name === 'configure_mailbox') { window.mailboxSettings = { ...args.settings }; return 'Mailbox saved'; }
+
         if (name === 'open_directory') { window.openedDirectory = args.kind; return; }
         if (name === 'get_desktop_preferences') return { closeToTray: sessionStorage.getItem('fixture-close-to-tray') !== 'false' };
         if (name === 'save_desktop_preferences') {
@@ -756,6 +762,24 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.evaluate(() => { window.newMailFailure = ''; sessionStorage.removeItem('fixture-new-mail-failure'); });
     await page.locator('.operation-error').getByRole('button', { name: 'Retry', exact: true }).click();
     await page.waitForFunction(() => window.newMailChecks === 2 && !document.querySelector('.operation-error') && document.querySelector('.folder-row[data-folder="INBOX"] .new-mail-badge'));
+    await page.locator('[data-action="add-account"]').click();
+    await page.locator('#mail-provider').selectOption('outlook');
+    assert.equal(await page.locator('#mail-host').inputValue(), 'outlook.office365.com');
+    assert.equal(await page.locator('#mail-port').inputValue(), '993');
+    assert.equal(await page.locator('#mail-password').isVisible(), false);
+    assert.equal(await page.locator('label[for="mail-password"]').isVisible(), false);
+    await page.locator('#mail-user').fill('fixture@outlook.com');
+    await page.locator('#outlook-client-id').fill('11111111-1111-1111-1111-111111111111');
+    await page.locator('#mailbox-form [type="submit"]').click();
+    await page.getByText('Start Microsoft sign-in first.', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Start Microsoft sign-in', exact: true }).click();
+    await page.locator('#outlook-sign-in-status').filter({ hasText: 'TEST-CODE' }).waitFor();
+    await page.locator('#mailbox-form [type="submit"]').click();
+    await page.waitForFunction(() => window.mailboxSettings?.device_code === 'fixture-device');
+    assert.deepEqual(await page.evaluate(() => window.mailboxSettings), {
+      user: 'fixture@outlook.com', host: 'outlook.office365.com', port: 993,
+      password: '', client_id: '11111111-1111-1111-1111-111111111111', device_code: 'fixture-device', device_interval: 5,
+    });
     assert.deepEqual(errors, []);
     assert.equal(await page.locator('.statusbar progress').count(), 0, 'Finished runs clear the status progress bar');
     console.log('Tabbed workspace passed: no duplicate panels, keyboard tabs, retained drafts, independent scheduled folders, calendar, retries, history, notifications and responsive layout.');
