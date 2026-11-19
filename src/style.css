@@ -1031,10 +1031,6 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .loading-indicator .spinner { display: inline-block; flex: 0 0 16px; }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none !important; } }
 
-.mail-legend { display: flex; gap: 18px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size:calc(11px * var(--app-font-scale, 1)); color: var(--muted); }
-.mail-legend > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.mail-legend i { width: 8px; height: 8px; border-radius: 2px; background: #a6b2c0; }
-.mail-legend .legend-new { background: #176bcc; } .mail-legend .legend-backed-up { background: #0f766e; }
 .mail-states { display: flex; gap: 5px; margin-top: 4px; overflow: hidden; }
 .mail-state { display: inline-block; font-size:calc(10px * var(--app-font-scale, 1)); font-weight: 600; line-height: 17px; padding: 0 5px; border-radius: 3px; white-space: nowrap; }
 .state-new { color: #154d99; background: #deebff; } .state-backed-up { color: #115d50; background: #dcefe8; }
@@ -1047,7 +1043,6 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 
 .mailbox-panes .mail-pane { display: flex; flex-direction: column; }
 .mailbox-panes .mail-pane .table-wrap { flex: 1; min-height: 0; height: auto; }
-.mail-legend { flex-shrink: 0; }
 .mail-pagination { display: flex; align-items: center; gap: 10px; flex-shrink: 0; padding: 6px 10px; border-top: 1px solid var(--line); background: var(--surface); font-size:calc(11px * var(--app-font-scale, 1)); }
 .mail-pagination label { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .mail-pagination select { padding: 3px 5px; background: var(--surface); color: var(--text); border: 1px solid var(--input-border); border-radius: 3px; }
