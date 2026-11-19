@@ -26,3 +26,11 @@ Refresh tokens are encrypted with Windows DPAPI for the current Windows user, in
 If Microsoft revokes access, use mailbox setup to sign in again with the client ID. Organization policies can block device-code sign-in or require administrator approval. Sovereign Microsoft cloud endpoints and on-premises Exchange are not covered by this preset.
 
 Protocol references: [Microsoft IMAP OAuth](https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth), [device-code sign-in](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code), [Outlook IMAP settings](https://support.microsoft.com/en-gb/outlook/pop-imap-and-smtp-settings-for-outlook-com).
+
+## Wrong server saved under Other IMAP server
+
+An email domain such as `outlook.in` is not the IMAP server. Use `outlook.office365.com`, TLS port `993`, with Microsoft sign-in. Choosing Other IMAP server does not enable app-password access to Outlook.
+
+Bmail recognizes common Outlook, Hotmail, and Live email domains entered in the server field. For an existing profile that saved one of these domains and has no backup manifest, Account settings shows the correct server and Microsoft sign-in. Complete sign-in and save to repair the profile while keeping the email address, backup directory, and preferences. Profiles with an existing backup manifest retain their original server identity.
+
+The client ID comes from the app registration described above. This build cannot provide one automatically; an Outlook app password is not a client ID.

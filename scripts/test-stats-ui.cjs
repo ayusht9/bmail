@@ -780,6 +780,24 @@ const { paginateMail } = require('../engine/mail-page.cjs');
       user: 'fixture@outlook.com', host: 'outlook.office365.com', port: 993,
       password: '', client_id: '11111111-1111-1111-1111-111111111111', device_code: 'fixture-device', device_interval: 5,
     });
+    await page.waitForFunction(() => !document.querySelector('#mailbox-dialog').open);
+    await page.evaluate(() => { window.data.host = 'outlook.in'; window.data.hasManifest = false; });
+    await refreshLocal();
+    await page.locator('[data-action="setup"]').first().click();
+    assert.equal(await page.locator('#mail-provider').inputValue(), 'outlook');
+    assert.equal(await page.locator('#mail-host').inputValue(), 'outlook.office365.com');
+    assert.equal(await page.locator('#mail-password').isVisible(), false);
+    await page.getByText('The saved server was an Outlook email domain.', { exact: false }).waitFor();
+    assert.match(await page.locator('#provider-help').textContent(), /App passwords cannot be used/);
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.locator('[data-action="add-account"]').click();
+    await page.locator('#mail-provider').selectOption('other');
+    await page.locator('#mail-host').fill('outlook.in');
+    await page.locator('#mail-host').press('Tab');
+    assert.equal(await page.locator('#mail-provider').inputValue(), 'outlook');
+    assert.equal(await page.locator('#mail-host').inputValue(), 'outlook.office365.com');
+    assert.equal(await page.locator('#mail-password').isVisible(), false);
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     assert.deepEqual(errors, []);
     assert.equal(await page.locator('.statusbar progress').count(), 0, 'Finished runs clear the status progress bar');
     console.log('Tabbed workspace passed: no duplicate panels, keyboard tabs, retained drafts, independent scheduled folders, calendar, retries, history, notifications and responsive layout.');

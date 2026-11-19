@@ -78,3 +78,65 @@ test('Outlook setup encrypts refresh tokens and launcher rotates them before pas
     assert.doesNotMatch(saved.stdout + launched.stdout + launched.stderr, /fixture-(access|refresh|new-access|rotated)/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('Outlook email domains select Microsoft sign-in while custom IMAP hosts stay custom', async () => {
+  const { outlookHost, outlookAddressHost, providerForHost } = await import('../src/mail-providers.js');
+  for (const host of ['outlook.in', 'OUTLOOK.COM', ' hotmail.com ', 'live.in', 'hotmail.co.uk']) {
+    assert.equal(outlookHost(host), true);
+    assert.equal(outlookAddressHost(host), true);
+    assert.equal(providerForHost(host), 'outlook');
+  }
+  assert.equal(providerForHost('outlook.office365.com'), 'outlook');
+  assert.equal(outlookAddressHost('outlook.office365.com'), false);
+  for (const host of ['imap.example.com', 'outlook.com.example.com', 'notoutlook.in', undefined]) assert.equal(outlookHost(host), false);
+});
+
+test('wrong Outlook server fails immediately with recovery instructions instead of a network timeout', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-outlook-host-'));
+  try {
+    fs.writeFileSync(path.join(root, 'backup-config.json'), JSON.stringify({ user: 'fixture@outlook.in', host: 'outlook.in', port: 993, backupDirectory: 'backups' }));
+    const result = spawnSync(process.execPath, [path.resolve('engine/backup.cjs'), '--new-mail'], { env: { ...process.env, MAIL_VAULT_DATA_DIR: root }, input: '{}', encoding: 'utf8', timeout: 10000 });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Open Account settings/);
+    assert.match(result.stderr, /outlook.office365.com/);
+    assert.doesNotMatch(result.stderr, /ETIMEDOUT/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('saved wrong Outlook host can be corrected only for the same mailbox without an existing manifest', { skip: process.platform !== 'win32' }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-outlook-repair-'));
+  const configPath = path.join(root, 'backup-config.json');
+  const initial = { user: 'fixture@outlook.in', host: 'outlook.in', port: 993, backupDirectory: 'custom-backups', backupOptions: { folders: ['INBOX'], advanced: { retryAttempts: 2, excludedFolders: ['Spam'] } } };
+  const request = { user: initial.user, host: 'outlook.office365.com', port: 993, password: '', client_id: '11111111-1111-1111-1111-111111111111', device_code: 'fixture-device', device_interval: 5 };
+  const run = settings => spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `
+    function Start-Sleep {}
+    function Invoke-RestMethod { return @{ access_token = 'fixture-access'; refresh_token = 'fixture-refresh' } }
+    & ${psQuote(path.resolve('engine/Save-Mailbox.ps1'))}
+  `], { input: JSON.stringify(settings), env: { ...process.env, MAIL_VAULT_DATA_DIR: root }, encoding: 'utf8', timeout: 15000, windowsHide: true });
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(initial));
+    const rejected = run({ ...request, host: 'outlook.in', client_id: '', device_code: '', password: 'fixture-app-password' });
+    assert.equal(rejected.status, 1);
+    assert.equal(JSON.parse(rejected.stdout).errorCode, 'OUTLOOK_SIGN_IN_REQUIRED');
+    assert.deepEqual(JSON.parse(fs.readFileSync(configPath)), initial);
+    assert.equal(fs.existsSync(path.join(root, '.private/zoho-credential.xml')), false);
+    const mismatch = run({ ...request, user: 'different@outlook.in' });
+    assert.equal(mismatch.status, 1);
+    assert.equal(JSON.parse(mismatch.stdout).errorCode, 'MAILBOX_IDENTITY_MISMATCH');
+    fs.mkdirSync(path.join(root, initial.backupDirectory));
+    fs.writeFileSync(path.join(root, initial.backupDirectory, 'manifest.json'), 'unreadable existing manifest');
+    const protectedResult = run(request);
+    assert.equal(protectedResult.status, 1);
+    assert.equal(JSON.parse(protectedResult.stdout).errorCode, 'MAILBOX_IDENTITY_MISMATCH');
+    assert.deepEqual(JSON.parse(fs.readFileSync(configPath)), initial);
+    fs.unlinkSync(path.join(root, initial.backupDirectory, 'manifest.json'));
+    const repaired = run(request);
+    assert.equal(repaired.status, 0, repaired.stderr || repaired.stdout);
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8').replace(/^\uFEFF/, ''));
+    assert.equal(config.host, 'outlook.office365.com');
+    assert.equal(config.authType, 'oauth2');
+    assert.equal(config.user, initial.user);
+    assert.equal(config.backupDirectory, initial.backupDirectory);
+    assert.deepEqual(config.backupOptions, initial.backupOptions);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
