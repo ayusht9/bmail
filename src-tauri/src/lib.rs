@@ -4,6 +4,7 @@ use serde_json::Value;
 use std::{fs, path::{Path, PathBuf}, process::Command};
 use tauri::Manager;
 mod profile;
+mod microsoft;
 mod cache;
 mod export;
 mod mail;
@@ -285,7 +286,7 @@ struct MailboxSettings {
     host: String,
     port: u16,
     password: String,
-    #[serde(default)]
+    #[serde(default, skip_deserializing)]
     client_id: String,
     #[serde(default)]
     device_code: String,
@@ -294,10 +295,13 @@ struct MailboxSettings {
 }
 
 #[tauri::command]
-async fn begin_outlook_sign_in(app: tauri::AppHandle, client_id: String) -> Result<Value, String> {
-    if client_id.len() != 36 || !client_id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
-        return Err("Enter the Microsoft application (client) ID from your app registration.".into());
-    }
+fn get_microsoft_sign_in_status() -> Value {
+    serde_json::json!({"available": microsoft::configured_client_id().is_some()})
+}
+
+#[tauri::command]
+async fn begin_outlook_sign_in(app: tauri::AppHandle) -> Result<Value, String> {
+    let client_id = microsoft::required_client_id()?.to_owned();
     tauri::async_runtime::spawn_blocking(move || {
         let output = hidden_command("powershell.exe")
             .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
@@ -305,12 +309,19 @@ async fn begin_outlook_sign_in(app: tauri::AppHandle, client_id: String) -> Resu
             .arg("-ClientId").arg(client_id).output()
             .map_err(|_| "Could not start Microsoft sign-in".to_owned())?;
         if !output.status.success() { return Err("Microsoft sign-in could not start. Check your connection and app registration.".into()); }
-        serde_json::from_slice(&output.stdout).map_err(|_| "Invalid Microsoft sign-in response".into())
+        let response: Value = serde_json::from_slice(&output.stdout).map_err(|_| "Invalid Microsoft sign-in response".to_owned())?;
+        if response.get("device_code").and_then(Value::as_str).is_none() || response.get("user_code").and_then(Value::as_str).is_none() {
+            return Err("Microsoft sign-in could not start. Try again.".into());
+        }
+        Command::new("explorer.exe").arg("https://microsoft.com/devicelogin").spawn()
+            .map_err(|_| "Could not open Microsoft sign-in in your browser. Try again.".to_owned())?;
+        Ok(response)
     }).await.map_err(|_| "Microsoft sign-in was interrupted".to_owned())?
 }
 
 #[tauri::command]
-async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings, process: tauri::State<'_, BackupProcess>) -> Result<String, String> {
+async fn configure_mailbox(app: tauri::AppHandle, mut settings: MailboxSettings, process: tauri::State<'_, BackupProcess>) -> Result<String, String> {
+    if microsoft::outlook_host(&settings.host) { settings.client_id = microsoft::required_client_id()?.to_owned(); }
     {
         let guard = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
         if guard.as_ref().is_some_and(|child| process_running(child.id() as u64)) || active_backup(&backup_root(&data_root(&app)?)) {
@@ -337,7 +348,7 @@ async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings, pro
         if !output.status.success() || write_result.is_err() {
             let status = serde_json::from_slice::<Value>(&output.stdout).unwrap_or(Value::Null);
             let message = match status.get("errorCode").and_then(Value::as_str).unwrap_or("") {
-                "OUTLOOK_SIGN_IN_REQUIRED" => "Outlook requires Microsoft sign-in, not an app password. Select Microsoft Outlook and enter an application (client) ID to start sign-in.",
+                "OUTLOOK_SIGN_IN_REQUIRED" => "Start Microsoft sign-in before saving this Outlook mailbox.",
                 "OUTLOOK_AUTH_FAILED" => "Microsoft sign-in failed or expired. Start sign-in again and use the same mailbox address. Check that IMAP is enabled and your organization permits access.",
                 "INVALID_EMAIL" => "Enter your complete email address.",
                 "INVALID_HOST" => "Enter a valid IMAP server hostname.",
@@ -674,7 +685,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(desktop::handle_window_event)
-        .invoke_handler(tauri::generate_handler![mail::get_mail_page, desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, begin_outlook_sign_in, configure_mailbox, switch_account, remove_mailbox, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
+        .invoke_handler(tauri::generate_handler![mail::get_mail_page, desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, get_microsoft_sign_in_status, begin_outlook_sign_in, configure_mailbox, switch_account, remove_mailbox, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }
@@ -682,6 +693,15 @@ pub fn run() {
 #[cfg(test)]
 mod dashboard_tests {
     use super::*;
+
+    #[test]
+    fn mailbox_requests_cannot_override_the_publishers_microsoft_app_id() {
+        let settings: MailboxSettings = serde_json::from_value(serde_json::json!({
+            "user": "fixture@outlook.com", "host": "outlook.office365.com", "port": 993, "password": "",
+            "client_id": "11111111-2222-3333-4444-555555555555"
+        })).unwrap();
+        assert!(settings.client_id.is_empty());
+    }
 
     #[test]
     fn new_mail_contention_is_distinct_from_connection_failures() {

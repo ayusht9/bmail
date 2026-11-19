@@ -213,20 +213,27 @@ let dashboardPoller;
 let schedulerMonth = new Date();
 let schedulerFocusDate = '';
 let schedulerBusy = false;
+let microsoftSignIn = null;
+
+async function loadMicrosoftSignIn() {
+  try { microsoftSignIn = await invoke('get_microsoft_sign_in_status'); }
+  catch { microsoftSignIn = { available: false }; }
+  if (!busy && document.querySelector('#mail-provider')) updateProviderHelp();
+}
 
 async function startOutlookSignIn(button) {
   const form = button.form;
-  const clientId = form.elements.client_id.value.trim();
+  if (!microsoftSignIn?.available) return;
   const status = document.querySelector('#outlook-sign-in-status');
   form.elements.device_code.value = '';
   button.disabled = true;
   status.textContent = 'Starting Microsoft sign-in...';
   try {
-    const response = await invoke('begin_outlook_sign_in', { clientId });
-    if (!form.isConnected || form.elements.client_id.value.trim() !== clientId || !outlookHost(form.elements.host.value)) return;
+    const response = await invoke('begin_outlook_sign_in');
+    if (!form.isConnected || !outlookHost(form.elements.host.value)) return;
     form.elements.device_code.value = response.device_code;
     form.elements.device_interval.value = response.interval || 10;
-    status.textContent = `Visit ${response.verification_uri} in your browser and enter ${response.user_code}. Then select Save mailbox to finish sign-in. This code expires in ${Math.floor(response.expires_in / 60)} minutes.`;
+    status.textContent = `In the Microsoft browser window, enter ${response.user_code}. Then select Save mailbox to finish sign-in. This code expires in ${Math.floor(response.expires_in / 60)} minutes.`;
   } catch (error) { status.textContent = userMessage(error); }
   finally { button.disabled = false; }
 }
@@ -235,14 +242,20 @@ function updateProviderHelp() {
   const google = document.querySelector('#mail-provider').value === 'google';
   const outlook = document.querySelector('#mail-provider').value === 'outlook';
   document.querySelector('#outlook-auth').hidden = !outlook;
-  document.querySelector('#outlook-client-id').required = outlook;
+  const available = Boolean(microsoftSignIn?.available);
+  const signInButton = document.querySelector('[data-action="outlook-sign-in"]');
+  signInButton.disabled = !available;
+  document.querySelector('#mailbox-form [type="submit"]').disabled = outlook && !available;
+  const availability = document.querySelector('#outlook-availability');
+  availability.hidden = !outlook || available;
+  availability.textContent = microsoftSignIn === null ? 'Checking Microsoft sign-in availability...' : 'Microsoft sign-in is not set up for this Bmail build. Outlook accounts cannot be connected yet.';
   const password = document.querySelector('#mail-password');
   password.required = !outlook;
   password.hidden = outlook;
   document.querySelector('label[for="mail-password"]').style.display = outlook ? 'none' : '';
   document.querySelector('#provider-help').textContent = google
     ? 'Turn on Google 2-Step Verification, then create an app password. Use that 16-character password here. Some work or school accounts do not allow app passwords.'
-    : outlook ? 'Outlook requires Microsoft sign-in. App passwords cannot be used. Bmail currently requires a Microsoft application (client) ID from an app registration. Enable IMAP in Outlook settings, then start sign-in below.' : 'Use the application-specific password supplied by your email provider.';
+    : outlook ? 'Connect using your Microsoft account. Your password is entered only on the Microsoft website. Enable IMAP in Outlook settings before connecting.' : 'Use the application-specific password supplied by your email provider.';
   document.querySelector('[data-action="google-help"]').hidden = !google;
   const port = document.querySelector('#mail-port');
   port.readOnly = google || outlook;
@@ -384,10 +397,8 @@ function render() {
         <label for="mail-password">Application-specific password</label>
         <input id="mail-password" name="password" type="password" autocomplete="new-password" aria-describedby="provider-help" required>
         <div id="outlook-auth" hidden>
-          <label for="outlook-client-id">Microsoft application (client) ID</label>
-          <input id="outlook-client-id" name="client_id" type="text" placeholder="App registration client ID" aria-describedby="outlook-registration-help">
-          <p id="outlook-registration-help">Use an app registration allowing personal and organizational accounts, public client flows, and delegated IMAP.AccessAsUser.All permission. This ID identifies the app; it is not your email password or an app password. No client secret is needed.</p>
-          <button type="button" data-action="outlook-sign-in">Start Microsoft sign-in</button>
+          <p id="outlook-availability" role="status"></p>
+          <button type="button" data-action="outlook-sign-in">Sign in with Microsoft</button>
           <p id="outlook-sign-in-status" role="status"></p>
           <input name="device_code" type="hidden">
           <input name="device_interval" type="hidden" value="10">
@@ -619,7 +630,7 @@ app.addEventListener('change', event => {
   if (event.target.id === 'all-folders') {
     document.querySelector('#folder-choices').disabled = event.target.checked;
   }
-  if (event.target.id === 'outlook-client-id' || event.target.id === 'mail-provider') {
+  if (event.target.id === 'mail-provider') {
     document.querySelector('[name="device_code"]').value = '';
     document.querySelector('#outlook-sign-in-status').textContent = '';
   }
@@ -903,7 +914,7 @@ app.addEventListener('submit', async event => {
   const settings = {
     user: values.get('user').trim(), host: values.get('host').trim(),
     port: Number(values.get('port')), password: values.get('password') || '',
-    client_id: values.get('client_id')?.trim() || '', device_code: values.get('device_code') || '',
+    device_code: values.get('device_code') || '',
     device_interval: Number(values.get('device_interval')) || 10,
   };
   if (outlookHost(settings.host) && !settings.device_code) {
@@ -960,7 +971,7 @@ window.addEventListener('pagehide', () => dashboardPoller.stop());
 installColumnResizing(app);
 installPaneResizing(app);
 render();
-Promise.all([refresh(), loadDesktopPreferences()]).finally(() => {
+Promise.all([refresh(), loadDesktopPreferences(), loadMicrosoftSignIn()]).finally(() => {
   dashboardPoller.start();
   void invoke('finish_startup').catch(error => console.error('Could not finish startup:', error));
 });

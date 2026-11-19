@@ -39,8 +39,9 @@ const { paginateMail } = require('../engine/mail-page.cjs');
         window.calls.push(name);
         if (name.startsWith('plugin:window|')) return;
         if (name === 'finish_startup') return;
+        if (name === 'get_microsoft_sign_in_status') return { available: sessionStorage.getItem('fixture-microsoft-unavailable') !== 'true' };
         if (name === 'begin_outlook_sign_in') {
-          window.microsoftClientId = args.clientId;
+          window.microsoftSignInArgs = args;
           return { device_code: 'fixture-device', user_code: 'TEST-CODE', verification_uri: 'https://microsoft.com/devicelogin', expires_in: 900, interval: 5 };
         }
         if (name === 'configure_mailbox') { window.mailboxSettings = { ...args.settings }; return 'Mailbox saved'; }
@@ -770,16 +771,16 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     assert.equal(await page.locator('#mail-password').isVisible(), false);
     assert.equal(await page.locator('label[for="mail-password"]').isVisible(), false);
     await page.locator('#mail-user').fill('fixture@outlook.com');
-    await page.locator('#outlook-client-id').fill('11111111-1111-1111-1111-111111111111');
+    assert.equal(await page.locator('#outlook-client-id').count(), 0);
     await page.locator('#mailbox-form [type="submit"]').click();
     await page.getByText('Start Microsoft sign-in first.', { exact: true }).waitFor();
-    await page.getByRole('button', { name: 'Start Microsoft sign-in', exact: true }).click();
+    await page.getByRole('button', { name: 'Sign in with Microsoft', exact: true }).click();
     await page.locator('#outlook-sign-in-status').filter({ hasText: 'TEST-CODE' }).waitFor();
     await page.locator('#mailbox-form [type="submit"]').click();
     await page.waitForFunction(() => window.mailboxSettings?.device_code === 'fixture-device');
     assert.deepEqual(await page.evaluate(() => window.mailboxSettings), {
       user: 'fixture@outlook.com', host: 'outlook.office365.com', port: 993,
-      password: '', client_id: '11111111-1111-1111-1111-111111111111', device_code: 'fixture-device', device_interval: 5,
+      password: '', device_code: 'fixture-device', device_interval: 5,
     });
     await page.waitForFunction(() => !document.querySelector('#mailbox-dialog').open);
     await page.evaluate(() => { window.data.host = 'outlook.in'; window.data.hasManifest = false; });
@@ -789,7 +790,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     assert.equal(await page.locator('#mail-host').inputValue(), 'outlook.office365.com');
     assert.equal(await page.locator('#mail-password').isVisible(), false);
     await page.getByText('The saved server was an Outlook email domain.', { exact: false }).waitFor();
-    assert.match(await page.locator('#provider-help').textContent(), /App passwords cannot be used/);
+    assert.match(await page.locator('#provider-help').textContent(), /password is entered only on the Microsoft/);
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.locator('[data-action="add-account"]').click();
     await page.locator('#mail-provider').selectOption('other');
@@ -813,6 +814,17 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     assert.doesNotMatch(await page.locator('body').innerText(), /private-startup-error/);
     await page.getByRole('button', { name: 'Retry', exact: true }).click();
     await page.locator('#active-account').waitFor();
+    await page.evaluate(() => sessionStorage.setItem('fixture-microsoft-unavailable', 'true'));
+    await page.reload();
+    await page.locator('[data-action="add-account"]').click();
+    await page.locator('#mail-provider').selectOption('outlook');
+    await page.locator('#outlook-availability').filter({ hasText: 'Outlook accounts cannot be connected yet.' }).waitFor();
+    assert.equal(await page.locator('#outlook-client-id').count(), 0);
+    assert.equal(await page.getByRole('button', { name: 'Sign in with Microsoft', exact: true }).isDisabled(), true);
+    assert.equal(await page.locator('#mailbox-form [type="submit"]').isDisabled(), true);
+    await page.locator('#mail-provider').selectOption('google');
+    assert.equal(await page.locator('#mailbox-form [type="submit"]').isDisabled(), false);
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     assert.deepEqual(errors, []);
     assert.equal(await page.locator('.statusbar progress').count(), 0, 'Finished runs clear the status progress bar');
     console.log('Tabbed workspace passed: no duplicate panels, keyboard tabs, retained drafts, independent scheduled folders, calendar, retries, history, notifications and responsive layout.');
