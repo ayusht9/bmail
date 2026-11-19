@@ -88,16 +88,16 @@ standard folder icon.
 The bell at the right of the navbar opens recent notifications for the selected account in a panel directly below the bell. Its
 badge counts unread notifications, separately from new-email folder badges.
 Use Mark all read, individual read controls, or Clear all to manage the list.
-Escape closes the panel and returns focus to the bell. Up to 100 recent messages
+The panel does not block the rest of the app. Escape, an outside click, or clicking the bell again closes it. Escape returns focus to the bell. Up to 100 recent messages
 per account are saved on this device, with a total limit of 500.
 
 Toasts show success, information, and error icons with a dismiss button. They
-pause while hovered or focused and expire automatically; dismissing a toast
-keeps its message in the bell's history. New-mail discoveries and backup
-completion updates also appear there. Windows desktop-alert preferences remain
+pause while hovered or focused and expire automatically. The bell retains only new-email discoveries and completed backups; other action feedback and errors stay transient or appear in their relevant screens. Windows desktop-alert preferences remain
 in the advanced Backup options.
 
 ## Progress and backup controls
+
+Start backup saves the displayed selection and notification preferences before launching the run. The initial display waits for fresh run progress instead of showing the previous run at 100%. Mailbox coverage in the status bar refers to the last mailbox check, while run progress covers only the selected messages.
 
 Choose **Choose what to back up** to select folders, an inclusive received-date
 range, and an optional maximum number of **new** emails per run. Saved emails
