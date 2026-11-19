@@ -14,7 +14,7 @@ test('notification history persists, deduplicates events, and keeps account read
   assert.equal(store.unread('first@example.test'), 0);
   assert.equal(store.unread('second@example.test'), 1);
   const reloaded = createNotificationStore(options);
-  assert.equal(reloaded.list('first@example.test')[0].message, '<img src=x>');
+  assert.equal(reloaded.list('first@example.test')[0].message, 'Something went wrong. Please try again. If the problem continues, restart Bmail.');
   assert.equal(reloaded.list('first@example.test')[0].read, true);
   const next = reloaded.add('first@example.test', 'New message');
   assert.notEqual(next.id, first.id, 'IDs remain unique across reloads, even within one millisecond');

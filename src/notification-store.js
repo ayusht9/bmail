@@ -1,3 +1,4 @@
+import { userMessage } from './errors.js';
 const levels = ['success', 'info', 'error'];
 
 export function createNotificationStore({ read = () => [], write = () => {}, now = Date.now } = {}) {
@@ -6,6 +7,7 @@ export function createNotificationStore({ read = () => [], write = () => {}, now
     const saved = read();
     items = Array.isArray(saved) ? saved.filter(item => item && typeof item.id === 'string' && typeof item.account === 'string'
       && typeof item.message === 'string' && levels.includes(item.level) && Number.isFinite(Date.parse(item.createdAt))) : [];
+    items = items.map(item => item.level === 'error' ? { ...item, message: userMessage(item.message) } : item);
   } catch { items = []; }
   let serial = 0;
   function persist() {
@@ -24,7 +26,7 @@ export function createNotificationStore({ read = () => [], write = () => {}, now
       const time = now();
       let id;
       do { id = `${time}-${++serial}`; } while (items.some(item => item.id === id));
-      const item = { id, account, message: String(message).slice(0, 8000), level: levels.includes(level) ? level : 'info', createdAt: new Date(time).toISOString(), read: false, key };
+      const item = { id, account, message: (level === 'error' ? userMessage(message) : String(message)).slice(0, 8000), level: levels.includes(level) ? level : 'info', createdAt: new Date(time).toISOString(), read: false, key };
       items.unshift(item);
       persist();
       return { ...item };

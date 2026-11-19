@@ -1,3 +1,4 @@
+import { userMessage } from './errors.js';
 import { appearancePreference, fontFamilies, fontSizes } from './appearance.js';
 
 export function preferencesView(theme, preferences, saving, error, escape) {
@@ -25,6 +26,6 @@ export function preferencesView(theme, preferences, saving, error, escape) {
     </select>
     <p id="close-description">${preferences?.closeToTray === false ? 'Closing the window quits Bmail.' : 'Closing the window hides Bmail. Click its system tray icon to reopen it, or right-click the icon and choose Quit Bmail.'} Backups already running continue independently.</p>
     <p class="preferences-status" role="status">${saving ? 'Saving preference…' : !preferences && !error ? 'Loading desktop preferences…' : ''}</p>
-    ${error ? `<p class="preferences-error" role="alert">${escape(error)} <button data-action="retry-preferences">Reload preferences</button></p>` : ''}
+    ${error ? `<p class="preferences-error" role="alert">${escape(userMessage(error))} <button data-action="retry-preferences">Reload preferences</button></p>` : ''}
   </section>`;
 }
