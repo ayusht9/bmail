@@ -529,8 +529,8 @@ app.addEventListener('click', event => {
       form.elements.lastDays.value = button.dataset.preset === 'recent' ? '30' : '';
       form.elements.unreadOnly.checked = form.elements.flaggedOnly.checked = false;
       form.elements.verifyAfterBackup.checked = form.elements.checkMailboxAfterBackup.checked = true;
-      if (button.dataset.preset === 'recent') form.querySelector('.advanced-backup').open = true;
     }
+    button.parentElement.querySelectorAll('[data-preset]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
     document.querySelector('#selection-error').textContent = '';
     return;
   }
