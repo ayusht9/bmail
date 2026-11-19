@@ -20,7 +20,7 @@ import { windowControls, controlWindow, startupHeader } from './window-chrome.js
 import { normalizeNewMailCount, totalNewMail, createBadgeSync } from './notifications.js';
 import { folderNavigation, savedMailPane, mailboxFolders } from './desktop.js';
 import { progressPanel, statusDownloadProgress, backupControls } from './progress.js';
-import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, nextRuns, calendarMarkup, scheduleSummary, localDate, updateClock } from './scheduler.js';
+import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, calendarMarkup, scheduleSummary, localDate, updateClock, scheduleStatusMarkup, schedulePreferencesMarkup, powerFromForm } from './scheduler.js';
 import { backupOptionsView, folderChoices, advancedFromForm } from './selection.js';
 
 const app = document.querySelector('#app');
@@ -38,6 +38,8 @@ let activeExports = 0;
 let desktopPreferences = null;
 let preferencesSaving = false;
 let preferencesError = '';
+let schedulePreferencesSaving = false;
+let schedulePreferencesError = '';
 
 async function loadDesktopPreferences() {
   try {
@@ -366,7 +368,7 @@ function render() {
   if (activeTab === 'mailbox') loadSavedMail();
   const folderKey = JSON.stringify([dashboard.user, selectedFolder]);
   if (messageFolderKey !== folderKey) { messageFolderKey = folderKey; selectedMessage = { file: '', message: null, loading: false, error: '' }; }
-  const workspaceBody = activeTab === 'preferences' ? preferencesView(themePreference(), desktopPreferences, preferencesSaving, preferencesError, escapeHtml)
+  const workspaceBody = activeTab === 'preferences' ? preferencesView(themePreference(), desktopPreferences, preferencesSaving, preferencesError, escapeHtml, schedulePreferencesMarkup(dashboard.schedule, { saving: schedulePreferencesSaving, error: schedulePreferencesError, backupRunning: dashboard.backupRunning }, escapeHtml))
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions">${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button data-action="open-backups">Open backup folder</button></div><div class="backup-progress-slot">${progressPanel(dashboard, escapeHtml, formatNumber)}</div>${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
     : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
@@ -489,7 +491,7 @@ async function refresh(background = false, force = false) {
     updateBackupProgress();
     updateFolderCounts();
     updateStatusBar();
-    if (background && (columnResizeActive() || paneResizeActive() || unchanged || ['options','scheduler'].includes(activeTab) || document.querySelector('dialog[open]'))) return;
+    if (background && (columnResizeActive() || paneResizeActive() || unchanged || ['options','scheduler','preferences'].includes(activeTab) || document.querySelector('dialog[open]'))) return;
     captureTabDraft();
     const focusAction = document.activeElement?.dataset?.action;
     const focusFolder = document.activeElement?.dataset?.folder;
@@ -789,7 +791,7 @@ function updateScheduleStatus() {
   const status = dashboard.schedule;
   const element = document.querySelector('#schedule-status');
   if (!element) return;
-  element.innerHTML = status ? `<strong>Windows: ${escapeHtml(status.state)}</strong><p>Next run: ${status.nextRunTime ? formatDate(status.nextRunTime) : 'None reported'}<br>Last run: ${status.lastRunTime ? formatDate(status.lastRunTime) : 'Never'}${status.lastResult != null ? `<br>Last task result: ${escapeHtml(status.lastResult)}` : ''}<br>Status checked: ${formatDate(status.checkedAt)}</p>` : '<p>No Windows status loaded yet.</p>';
+  element.innerHTML = scheduleStatusMarkup(status, formatDate, escapeHtml);
   document.querySelector('[data-action="schedule-remove"]').disabled = schedulerBusy || !status?.installed || dashboard.backupRunning;
 }
 
@@ -807,8 +809,6 @@ function updateSchedulePreview() {
   try { schedule = normalizeSchedule(draft); document.querySelector('#schedule-error').textContent = ''; }
   catch (error) { document.querySelector('#schedule-error').textContent = userMessage(error); schedule = { ...draft, enabled: false }; }
   document.querySelector('#schedule-calendar').innerHTML = calendarMarkup(schedule, schedulerMonth, schedulerFocusDate, escapeHtml);
-  const runs = nextRuns(schedule);
-  document.querySelector('#schedule-upcoming').innerHTML = `<h3>Upcoming preview</h3>${runs.length ? `<ol>${runs.map(date => `<li>${formatDate(date)}</li>`).join('')}</ol>` : '<p>No upcoming runs for these settings.</p>'}<p class="muted">Preview only. Windows next-run status is authoritative. Dots are planned dates, not completed backups.</p>`;
   updateClock();
 }
 
@@ -823,7 +823,7 @@ function captureTabDraft() {
   const options = document.querySelector('#selection-form');
   if (activeTab === 'options' && options) backupOptionsDraft = { ...readBackupOptions(options), _uiAdvancedOpen: options.querySelector('.advanced-backup').open };
   const scheduler = document.querySelector('#scheduler-form');
-  if (activeTab === 'scheduler' && scheduler) schedulerDraft = { ...scheduleFromForm(scheduler), _uiAdvancedOpen: scheduler.querySelector('.scheduler-advanced').open };
+  if (activeTab === 'scheduler' && scheduler) schedulerDraft = scheduleFromForm(scheduler);
 }
 
 function initializeSchedulerView() {
@@ -856,7 +856,28 @@ async function loadScheduledFolders(button) {
     document.querySelector('#schedule-folder-options').innerHTML = scheduleFolderChoices(dashboard, selected, document.querySelector('#schedule-all-folders').checked, escapeHtml);
     document.querySelector('#schedule-error').textContent = '';
   } catch (error) { document.querySelector('#schedule-error').textContent = userMessage(error); }
-  finally { busy = false; controls.forEach(control => control.disabled = false); button.disabled = false; button.textContent = 'Load / refresh scheduled folders'; dashboardPoller?.reschedule(); }
+  finally { busy = false; controls.forEach(control => control.disabled = false); button.disabled = false; button.textContent = 'Refresh folders'; dashboardPoller?.reschedule(); }
+}
+
+async function saveSchedulePreferences(form) {
+  if (busy || schedulerBusy || !dashboard.schedule?.settings) return;
+  let schedule;
+  try { schedule = normalizeSchedule({ ...dashboard.schedule.settings, ...powerFromForm(form) }); }
+  catch (error) { schedulePreferencesError = userMessage(error); render(); return; }
+  busy = true; schedulePreferencesSaving = true; schedulePreferencesError = '';
+  render();
+  let saved = false;
+  try {
+    const result = await invoke('manage_schedule', { action: 'save', schedule });
+    dashboard.schedule = result; dashboard.scheduleInstalled = result.installed;
+    saved = true;
+  } catch (error) { schedulePreferencesError = userMessage(error); }
+  finally {
+    busy = false; schedulePreferencesSaving = false;
+    if (activeTab === 'preferences') render();
+    if (saved) toast('Scheduled backup settings saved.');
+    dashboardPoller?.reschedule();
+  }
 }
 
 async function scheduleOperation(action, loadSettings = false) {
@@ -865,7 +886,7 @@ async function scheduleOperation(action, loadSettings = false) {
   if (action !== 'read' && dashboard.backupRunning) { document.querySelector('#schedule-error').textContent = 'Finish the current backup before changing its schedule.'; return; }
   let replaceForm = false;
   let schedule;
-  try { if (action === 'save') schedule = normalizeSchedule(scheduleFromForm(form)); }
+  try { if (action === 'save') schedule = normalizeSchedule(scheduleFromForm(form, dashboard.schedule?.settings)); }
   catch (error) { document.querySelector('#schedule-error').textContent = userMessage(error); return; }
   schedulerBusy = true; busy = true;
   document.querySelector('#schedule-error').textContent = '';
@@ -919,6 +940,7 @@ app.addEventListener('keydown', event => {
 app.addEventListener('submit', async event => {
   if (event.target.id === 'remove-mailbox-form') { event.preventDefault(); await removeMailbox(); return; }
   if (event.target.id === 'scheduler-form') { event.preventDefault(); scheduleOperation('save'); return; }
+  if (event.target.id === 'schedule-preferences-form') { event.preventDefault(); await saveSchedulePreferences(event.target); return; }
   if (event.target.id === 'selection-form') {
     event.preventDefault();
     if (busy) return;
