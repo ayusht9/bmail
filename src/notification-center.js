@@ -1,6 +1,8 @@
+import { userMessage } from './errors.js';
 import { createNotificationStore } from './notification-store.js';
 
 const storageKey = 'bmail-notifications';
+const retainNotification = key => typeof key === 'string' && (key.startsWith('mail:') || key.startsWith('backup:') && key.endsWith(':completed'));
 const icons = {
   success: '<path d="m6 10 3 3 5-6"/><circle cx="10" cy="10" r="8"/>',
   error: '<circle cx="10" cy="10" r="8"/><path d="M10 5v6m0 3v1"/>',
@@ -12,10 +14,11 @@ const titles = { success: 'Success', error: 'Error', info: 'Notice' };
 
 export function createNotificationCenter({ account, escape, date, onChange }) {
   const store = createNotificationStore({
-    read: () => JSON.parse(localStorage.getItem(storageKey) || '[]'),
+    read: () => { const saved = JSON.parse(localStorage.getItem(storageKey) || '[]'); return Array.isArray(saved) ? saved.filter(item => item && retainNotification(item.key)) : []; },
     write: items => localStorage.setItem(storageKey, JSON.stringify(items)),
   });
   let toasts = [];
+  let transientSerial = 0;
   const timers = new Map();
   let currentAccount = '';
   let opened = false;
@@ -41,7 +44,7 @@ export function createNotificationCenter({ account, escape, date, onChange }) {
     const unread = store.unread(account());
     return `<header class="notification-panel-header"><div><h2 id="notification-title">Notifications</h2><p>${unread ? `${unread} unread` : 'All caught up'}</p></div><button type="button" class="notification-icon-button" data-action="notifications-close" aria-label="Close notifications">${closeIcon}</button></header>
       <div class="notification-panel-actions"><button data-action="notifications-read-all" ${!unread ? 'disabled' : ''}>Mark all read</button><button data-action="notifications-clear" ${!items.length ? 'disabled' : ''}>Clear all</button></div>
-      ${items.length ? `<ol class="notification-list">${items.map(item => `<li class="notification-item ${item.read ? '' : 'unread'}" data-level="${item.level}">${svg(icons[item.level], 'notification-kind')}<div><p>${escape(item.message)}</p><time datetime="${escape(item.createdAt)}">${escape(date(item.createdAt))}</time></div>${!item.read ? `<button class="notification-icon-button" data-action="notification-read" data-id="${escape(item.id)}" aria-label="Mark notification read" title="Mark read">${svg('<path d="m4 10 4 4 8-8"/>')}</button>` : ''}</li>`).join('')}</ol>` : '<div class="notification-empty"><h3>No notifications yet</h3><p>Backup, sync, download, and settings updates will appear here.</p></div>'}`;
+      ${items.length ? `<ol class="notification-list">${items.map(item => `<li class="notification-item ${item.read ? '' : 'unread'}" data-level="${item.level}">${svg(icons[item.level], 'notification-kind')}<div><p>${escape(item.message)}</p><time datetime="${escape(item.createdAt)}">${escape(date(item.createdAt))}</time></div>${!item.read ? `<button class="notification-icon-button" data-action="notification-read" data-id="${escape(item.id)}" aria-label="Mark notification read" title="Mark read">${svg('<path d="m4 10 4 4 8-8"/>')}</button>` : ''}</li>`).join('')}</ol>` : '<div class="notification-empty"><h3>No notifications yet</h3><p>New email and completed backups will appear here.</p></div>'}`;
   }
   function renderToasts() {
     let root = document.querySelector('#toast');
@@ -76,9 +79,11 @@ export function createNotificationCenter({ account, escape, date, onChange }) {
     const dialog = document.querySelector('#notification-dialog');
     if (opened && dialog) {
       const focusAction = dialog.contains(document.activeElement) ? document.activeElement?.dataset?.action : null;
+      const scroll = dialog.scrollTop;
       dialog.innerHTML = panel();
+      dialog.scrollTop = scroll;
       positionPanel();
-      if (!dialog.open) dialog.showModal();
+      if (!dialog.open) dialog.show();
       if (focusAction) (dialog.querySelector(`[data-action="${focusAction}"]:not(:disabled)`) || dialog.querySelector('[data-action="notifications-close"]'))?.focus({ preventScroll: true });
     }
   }
@@ -100,6 +105,13 @@ export function createNotificationCenter({ account, escape, date, onChange }) {
     onChange?.();
     document.querySelector('[data-action="notifications-open"]')?.focus({ preventScroll: true });
   }
+  document.addEventListener('pointerdown', event => {
+    const dialog = document.querySelector('#notification-dialog');
+    if (opened && dialog?.open && !dialog.contains(event.target) && !event.target.closest?.('[data-action="notifications-open"]')) close();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && opened) { event.preventDefault(); close(); }
+  });
   return {
     bell,
     shell: () => '<dialog id="notification-dialog" class="notification-panel" aria-labelledby="notification-title"></dialog>',
@@ -123,7 +135,7 @@ export function createNotificationCenter({ account, escape, date, onChange }) {
       refresh();
     },
     notify(message, { level = 'info', key, transient = true, account: targetAccount = account() } = {}) {
-      const item = store.add(targetAccount, message, { level, key });
+      const item = retainNotification(key) ? store.add(targetAccount, message, { level, key }) : { id: `temporary-${Date.now()}-${++transientSerial}`, account: targetAccount, level, message: level === 'error' ? userMessage(message) : String(message) };
       if (!item) return;
       if (transient && targetAccount === account()) {
         toasts.push(item);
@@ -133,7 +145,7 @@ export function createNotificationCenter({ account, escape, date, onChange }) {
       refresh();
     },
     handle(action, element) {
-      if (action === 'notifications-open') { opened = true; refresh(); return true; }
+      if (action === 'notifications-open') { if (opened) close(); else { opened = true; refresh(); } return true; }
       if (action === 'notifications-close') { close(); return true; }
       if (action === 'notifications-read-all') { store.markRead(account()); refresh(); return true; }
       if (action === 'notification-read') { store.markRead(account(), element.dataset.id); refresh(); return true; }

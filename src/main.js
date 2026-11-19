@@ -291,7 +291,7 @@ function folderStatus() {
   const checked = dashboard.mailboxStatus && (!selectedFolder || server.length);
   const onServer = checked ? formatNumber(selectedFolder ? server.reduce((sum, folder) => sum + folder.serverMessages, 0) : dashboard.mailboxStatus.totalServerMessages) : 'Not checked';
   const remaining = checked ? formatNumber(selectedFolder ? server.reduce((sum, folder) => sum + folder.missingMessages, 0) : dashboard.mailboxStatus.missingMessages) : 'Not checked';
-  return `${selectedFolder || 'All folders'}: ${formatNumber(local)} saved | ${onServer} on server | ${remaining} remaining`;
+  return `${selectedFolder || 'All folders'}: ${formatNumber(local)} saved | ${onServer} on server | ${remaining} remaining at last mailbox check`;
 }
 
 function statusBarContents() {
@@ -303,9 +303,13 @@ function updateBackupControls() {
   if (controls && dashboard) controls.outerHTML = backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml);
 }
 
+function currentProgressDashboard() {
+  return busyAction === 'backup' ? { ...dashboard, backupRunning: true, progress: null } : dashboard;
+}
+
 function updateBackupProgress() {
   const slot = document.querySelector('.backup-progress-slot');
-  if (slot) slot.innerHTML = progressPanel(dashboard, escapeHtml, formatNumber);
+  if (slot) slot.innerHTML = progressPanel(currentProgressDashboard(), escapeHtml, formatNumber);
   const banner = document.querySelector('.run-banner');
   if (banner) banner.innerHTML = backupBannerContents();
 }
@@ -342,7 +346,10 @@ function updateStatusBar() {
   const footer = document.querySelector('.statusbar');
   if (footer && dashboard) footer.innerHTML = statusBarContents();
   const bell = document.querySelector('.navbar-notifications');
-  if (bell) bell.innerHTML = notificationCenter.bell();
+  if (bell) {
+    const html = notificationCenter.bell();
+    if (bell.dataset.signature !== html) { bell.dataset.signature = html; bell.innerHTML = html; }
+  }
 }
 
 function render() {
@@ -370,7 +377,7 @@ function render() {
   if (messageFolderKey !== folderKey) { messageFolderKey = folderKey; selectedMessage = { file: '', message: null, loading: false, error: '' }; }
   const workspaceBody = activeTab === 'preferences' ? preferencesView(themePreference(), desktopPreferences, preferencesSaving, preferencesError, escapeHtml, schedulePreferencesMarkup(dashboard.schedule, { saving: schedulePreferencesSaving, error: schedulePreferencesError, backupRunning: dashboard.backupRunning }, escapeHtml))
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
-    : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions">${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button data-action="open-backups">Open backup folder</button></div><div class="backup-progress-slot">${progressPanel(dashboard, escapeHtml, formatNumber)}</div>${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
+    : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions">${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button data-action="open-backups">Open backup folder</button></div><div class="backup-progress-slot">${progressPanel(currentProgressDashboard(), escapeHtml, formatNumber)}</div>${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
     : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
     : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readingPane(selectedMessage, escapeHtml, formatDate)}</div>`;
 
@@ -478,12 +485,12 @@ async function refresh(background = false, force = false) {
     if (force) savedMail.key = '';
     next.newMailFolders = [...(newMailByAccount.get(next.user)?.keys() || [])];
     const unchanged = JSON.stringify(next) === JSON.stringify(dashboard);
-    const finishedBackup = dashboard?.user === next.user && dashboard.backupRunning && !next.backupRunning;
+    const finishedBackup = dashboard?.user === next.user && !next.backupRunning && (dashboard.backupRunning || Boolean(next.lastRun?.runId && next.lastRun.finishedAt && next.lastRun.runId !== dashboard.lastRun?.runId));
     dashboard = next;
     if (finishedBackup) {
       const run = next.lastRun || {};
       const outcome = ['stopped', 'cancelled'].includes(next.progress?.state) ? next.progress.state : run.outcome || (run.success ? 'completed' : 'failed');
-      const message = outcome === 'completed' ? `Backup completed. ${run.downloaded || next.progress?.downloaded || 0} emails saved.`
+      const message = outcome === 'completed' ? `Backup completed. ${run.downloaded ?? next.progress?.downloaded ?? 0} emails saved.`
         : outcome === 'failed' ? `Backup failed. ${userMessage(run.error)}` : `Backup ${outcome}. Saved mail is kept.`;
       notificationCenter.notify(message, { level: outcome === 'failed' ? 'error' : outcome === 'completed' ? 'success' : 'info', key: `backup:${run.runId || next.progress?.runId || run.finishedAt}:${outcome}` });
     }
@@ -516,6 +523,12 @@ async function refresh(background = false, force = false) {
 
 async function run(action) {
   if (busy) return;
+  const selectionForm = action === 'backup' ? document.querySelector('#selection-form') : null;
+  if (selectionForm && !selectionForm.reportValidity()) return;
+  if (selectionForm && !selectionForm.elements.allFolders.checked && !new FormData(selectionForm).getAll('folders').length) {
+    document.querySelector('#selection-error').textContent = 'Choose at least one folder or select all folders.';
+    return;
+  }
   busy = true;
   busyAction = action;
   captureTabDraft();
@@ -524,6 +537,12 @@ async function run(action) {
   let message;
   let failed = false;
   try {
+    if (action === 'backup' && backupOptionsDraft) {
+      const { _uiAllFolders, _uiAdvancedOpen, ...options } = backupOptionsDraft;
+      await invoke('save_backup_options', { options });
+      dashboard.backupOptions = options;
+      backupOptionsDraft = null;
+    }
     message = action === 'backup' ? await invoke('start_backup') : await invoke('run_action', { action });
   } catch (error) {
     message = userMessage(error);
