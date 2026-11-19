@@ -302,13 +302,37 @@ function updateBackupControls() {
 }
 
 function updateBackupProgress() {
-  const page = document.querySelector('.backup-page');
-  if (!page) return;
-  const progress = page.querySelector('.run-progress');
-  if (!dashboard.backupRunning) { progress?.remove(); return; }
-  const html = progressPanel(dashboard, escapeHtml, formatNumber);
-  if (progress) progress.outerHTML = html;
-  else page.querySelector('.backup-page-actions')?.insertAdjacentHTML('afterend', html);
+  const slot = document.querySelector('.backup-progress-slot');
+  if (slot) slot.innerHTML = progressPanel(dashboard, escapeHtml, formatNumber);
+  const banner = document.querySelector('.run-banner');
+  if (banner) banner.innerHTML = backupBannerContents();
+}
+
+function backupBannerContents() {
+  const run = dashboard.lastRun;
+  const outcome = dashboard.progress?.state || run?.outcome;
+  const title = dashboard.backupRunning ? outcome === 'paused' ? 'Your backup is paused' : 'Your backup is running'
+    : outcome === 'stopped' ? 'Backup stopped safely' : outcome === 'cancelled' ? 'Backup cancelled'
+    : outcome === 'completed' || run?.success === true ? 'Selected backup complete'
+    : outcome === 'failed' || run?.success === false ? 'Last run needs attention'
+    : dashboard.hasManifest ? 'Ready to continue your backup' : 'Ready for the first backup';
+  return `<h2>${title}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span>`;
+}
+
+function updateFolderCounts() {
+  const navigation = document.querySelector('.folder-list');
+  if (!navigation) return;
+  const all = navigation.querySelector('button[data-folder=""]');
+  if (all) all.querySelector('small').textContent = formatNumber(dashboard.localStats?.messages || 0);
+  const html = folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber, mailIndicators());
+  if (navigation.dataset.liveFolders === html) return;
+  navigation.dataset.liveFolders = html;
+  const scroll = navigation.scrollTop;
+  const focusedFolder = navigation.contains(document.activeElement) ? document.activeElement.dataset.folder : null;
+  navigation.querySelectorAll('.folder-row, .sidebar-empty').forEach(element => element.remove());
+  navigation.insertAdjacentHTML('beforeend', html || '<p class="sidebar-empty">No matching folders.</p>');
+  navigation.scrollTop = scroll;
+  if (focusedFolder) [...navigation.querySelectorAll('.folder-item')].find(element => element.dataset.folder === focusedFolder)?.focus({ preventScroll: true });
 }
 
 function updateStatusBar() {
@@ -338,15 +362,13 @@ function render() {
   const outcome = run?.outcome || dashboard.progress?.state;
   const intentional = ['stopped', 'cancelled'].includes(outcome);
   const state = healthy ? 'healthy' : run && !intentional ? 'attention' : 'empty';
-  const statusTitle = dashboard.backupRunning ? dashboard.progress?.state === 'paused' ? 'Your backup is paused' : 'Your backup is running'
-    : intentional ? outcome === 'stopped' ? 'Backup stopped safely' : 'Backup cancelled' : healthy ? 'Selected backup complete' : run ? 'Last run needs attention' : dashboard.hasManifest ? 'Ready to continue your backup' : 'Ready for the first backup';
   if (selectedFolder && !mailboxFolders(dashboard).includes(selectedFolder)) selectedFolder = '';
   if (activeTab === 'mailbox') loadSavedMail();
   const folderKey = JSON.stringify([dashboard.user, selectedFolder]);
   if (messageFolderKey !== folderKey) { messageFolderKey = folderKey; selectedMessage = { file: '', message: null, loading: false, error: '' }; }
   const workspaceBody = activeTab === 'preferences' ? preferencesView(themePreference(), desktopPreferences, preferencesSaving, preferencesError, escapeHtml)
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
-    : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions">${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button data-action="open-backups">Open backup folder</button></div>${dashboard.backupRunning ? progressPanel(dashboard, escapeHtml, formatNumber) : ''}${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
+    : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions">${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button data-action="open-backups">Open backup folder</button></div><div class="backup-progress-slot">${progressPanel(dashboard, escapeHtml, formatNumber)}</div>${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
     : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
     : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readingPane(selectedMessage, escapeHtml, formatDate)}</div>`;
 
@@ -375,7 +397,7 @@ function render() {
           <button type="button" data-action="navigate-back" aria-label="Back" title="Back" ${busy || !navigation.canMove(-1) ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m9 4-6 6 6 6M3 10h14"/></svg></button>
           <button type="button" data-action="navigate-forward" aria-label="Forward" title="Forward" ${busy || !navigation.canMove(1) ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m11 4 6 6-6 6M3 10h14"/></svg></button>
         </nav>${workspaceTabStrip(activeTab, busy)}</div>
-        ${!['mailbox', 'activity'].includes(activeTab) ? `<section class="run-banner ${state}" aria-label="Backup status"><h2>${statusTitle}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span></section>` : ''}
+        ${!['mailbox', 'activity'].includes(activeTab) ? `<section class="run-banner ${state}" aria-label="Backup status">${backupBannerContents()}</section>` : ''}
         ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'new-mail' ? 'New mail check failed' : operationFailure.action === 'stats' ? 'Mailbox sync failed' : 'Action failed'}</strong><p>${escapeHtml(userMessage(operationFailure.message))}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
         ${!dashboard.credentialReady ? `<aside class="notice">Connect an account to start backing up. <button data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
         ${run?.error ? `<aside class="notice error">${escapeHtml(userMessage(run.error))} Completed downloads are retained.</aside>` : ''}
@@ -465,6 +487,7 @@ async function refresh(background = false, force = false) {
     }
     updateBackupControls();
     updateBackupProgress();
+    updateFolderCounts();
     updateStatusBar();
     if (background && (columnResizeActive() || paneResizeActive() || unchanged || ['options','scheduler'].includes(activeTab) || document.querySelector('dialog[open]'))) return;
     captureTabDraft();
@@ -512,6 +535,10 @@ async function run(action) {
     toast(failed ? (action === 'stats' ? 'Mailbox check failed. See the error above.' : 'Action failed. See the error above.') : message, failed);
   }
 }
+
+document.addEventListener('contextmenu', event => {
+  if (!event.target.closest?.('input, textarea, [contenteditable="true"]')) event.preventDefault();
+});
 
 app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
