@@ -1,8 +1,9 @@
 export const errorMessages = Object.freeze({
+  microsoftUnavailable: 'Microsoft sign-in is not set up for this Bmail build. Outlook accounts cannot be connected yet.',
   timeout: 'The mail server took too long to respond. Check your internet connection and mailbox server settings, then try again.',
   connection: 'Could not connect to the mail server. Check your internet connection and try again.',
   server: 'Could not find your mail server. Check the IMAP server address in Account settings, then try again.',
-  outlook: 'Outlook requires Microsoft sign-in. Use Account settings to enter your application client ID and sign in again.',
+  outlook: 'Could not start Microsoft sign-in. Check your internet connection and try again.',
   authentication: 'Could not sign in to your mailbox. Check your sign-in details and IMAP access in Account settings.',
   secure: 'Could not establish a secure connection to the mail server. Check your computer clock and mailbox server settings.',
   busy: 'A mailbox task is still running. Wait for it to finish, or stop the backup, then try again.',
@@ -25,7 +26,7 @@ const safeMessages = new Set([...Object.values(errorMessages),
   'Enter a TLS port between 1 and 65535.',
   'Gmail requires TLS port 993. Port 25 cannot receive Gmail backups.',
   'Enter your application-specific password. Spaces between Google app-password groups are accepted.',
-  'Enter the Microsoft application (client) ID from your app registration.',
+  'Start Microsoft sign-in before saving this Outlook mailbox.',
   'Choose a recurrence.', 'Choose valid start and end dates.', 'Choose a valid time.',
   'The end date must not be before the start date.', 'Choose valid scheduled folders.',
   'Choose at least one scheduled folder.', 'Choose valid weekdays.', 'Choose at least one weekday.',
@@ -54,6 +55,7 @@ export function userMessage(error, context = '') {
   try { if (typeof error?.message === 'string') originalMessage = error.message; } catch {}
   if (safeMessages.has(originalMessage)) return originalMessage;
   if (text.startsWith('Backup failed. ') && safeMessages.has(text.slice(15))) return text;
+  if (/Microsoft sign.in.*(?:not available|not configured|not set up)/i.test(text)) return errorMessages.microsoftUnavailable;
   if (/NEW_MAIL_CHECK_BUSY|BACKUP_BUSY|already (?:running|active)|mailbox.*busy|finish (?:or stop|the current)|stop or finish|wait for the current/i.test(text)) return errorMessages.busy;
   if (/saved Outlook server|Outlook.*(?:sign.in|app password|client ID)|Microsoft.*(?:sign.in|client.id|app.registration)|OUTLOOK_SIGN_IN_REQUIRED/i.test(text)) return errorMessages.outlook;
   if (/ETIMEDOUT|ESOCKETTIMEDOUT|timed?\s*out|timeout/i.test(text)) return errorMessages.timeout;
