@@ -250,3 +250,11 @@ a verified release.
 Start features from `dev`, commit each feature, and merge it into `dev`. Release
 only after the checks above: merge `dev` into `main`, tag the version, and push
 `main` and the tag to your configured remote. A remote must be configured first.
+
+## Remove a mailbox
+
+Use the **+** icon beside the Account controls to add a mailbox. To remove the selected mailbox, open **Account settings**, click the trash icon, and confirm **Remove mailbox**.
+
+Removal clears saved credentials and removes the mailbox's Windows backup schedule. Existing local mail and account data are moved into `removed-accounts` inside the Bmail data folder; the confirmation result shows the full path. Custom backup directories outside the account folder stay in their original location. Server mail is untouched. If another mailbox exists, Bmail selects it; removing the last mailbox returns to setup. Adding a removed mailbox again creates a new profile.
+
+Finish backups, mailbox checks, and exports before removing an account. Run `npm.cmd run test:mailbox-removal` for an isolated native test of the complete removal flow.

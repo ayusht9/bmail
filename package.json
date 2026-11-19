@@ -17,7 +17,8 @@
     "test:profiles": "node scripts/test-profiles.cjs",
     "verify": "node engine/backup.cjs --verify",
     "test:stats:ui": "node scripts/test-stats-ui.cjs",
-    "test:cache": "cargo test --manifest-path src-tauri/Cargo.toml --lib cache::tests"
+    "test:cache": "cargo test --manifest-path src-tauri/Cargo.toml --lib cache::tests",
+    "test:mailbox-removal": "tauri build --debug --config src-tauri/tauri.setup-test.conf.json --no-bundle && node scripts/test-mailbox-removal.cjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",
