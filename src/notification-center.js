@@ -141,6 +141,11 @@ export function createNotificationCenter({ account, escape, date, onChange }) {
       if (action === 'toast-dismiss') { dismiss(element.dataset.id); return true; }
       return false;
     },
+    clearAccount(targetAccount) {
+      store.clear(targetAccount);
+      toasts.filter(item => item.account === targetAccount).forEach(item => dismiss(item.id));
+      refresh();
+    },
     pause,
     resume,
   };

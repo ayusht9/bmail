@@ -94,6 +94,10 @@ fn account_list(base: &Path) -> Vec<String> {
 }
 
 fn select_account(base: &Path, email: &str) -> Result<(), String> {
+    save_active_account(base, Some(email))
+}
+
+fn save_active_account(base: &Path, email: Option<&str>) -> Result<(), String> {
     let temporary = base.join("app-settings.json.pending");
     fs::write(&temporary, serde_json::to_vec(&serde_json::json!({"activeAccount": email})).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     fs::rename(&temporary, base.join("app-settings.json")).map_err(|e| e.to_string())
@@ -371,6 +375,62 @@ fn switch_account(app: tauri::AppHandle, email: String, process: tauri::State<Ba
     Ok(())
 }
 
+struct MailboxRemovalLock { path: PathBuf }
+impl Drop for MailboxRemovalLock {
+    fn drop(&mut self) { let _ = fs::remove_file(&self.path); }
+}
+
+#[tauri::command]
+async fn remove_mailbox(app: tauri::AppHandle, email: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let process = app.state::<BackupProcess>();
+        let mut process = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
+        let base = base_root(&app)?;
+        if !account_list(&base).contains(&email) { return Err("That mailbox has already been removed.".into()); }
+        let root = profile::checked_account_folder(&base, &email).map_err(|e| e.to_string())?;
+        if fs::canonicalize(data_root(&app)?).map_err(|e| e.to_string())? != root {
+            return Err("Select that mailbox before removing it.".into());
+        }
+        let backup = backup_root(&root);
+        if process.as_mut().is_some_and(|child| child.try_wait().map_or(true, |status| status.is_none())) || active_backup(&backup) {
+            return Err("Finish or stop the current backup or mail check before removing this mailbox.".into());
+        }
+        // The same exclusive lock used by Node prevents a scheduled run starting
+        // while its account is being moved. Keep it until selection is updated.
+        fs::create_dir_all(&backup).map_err(|e| e.to_string())?;
+        let backup = fs::canonicalize(&backup).map_err(|e| e.to_string())?;
+        let lock_path = backup.join(".backup.lock");
+        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&lock_path)
+            .map_err(|_| "This mailbox is busy or its backup lock remains. Complete a mailbox check and try removing it again.".to_owned())?;
+        let mut lock = MailboxRemovalLock { path: lock_path };
+        file.write_all(format!("{{\"pid\":{}}}", std::process::id()).as_bytes()).map_err(|e| e.to_string())?;
+        drop(file);
+        let engine = engine_root(&app)?;
+        let mut child = hidden_command("powershell.exe").current_dir(dunce::simplified(&root)).env("MAIL_VAULT_DATA_DIR", dunce::simplified(&root))
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(engine.join("Manage-BackupSchedule.ps1"))
+            .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
+            .spawn().map_err(|e| format!("Could not remove the mailbox schedule: {e}"))?;
+        let written = child.stdin.take().ok_or("Schedule input is unavailable")?.write_all(br#"{"action":"remove"}"#);
+        let output = child.wait_with_output().map_err(|e| e.to_string())?;
+        if written.is_err() || !output.status.success() {
+            return Err("The mailbox was kept because its Windows schedule could not be removed. Check Task Scheduler permissions and try again.".into());
+        }
+        let next = account_list(&base).into_iter().find(|account| account != &email);
+        save_active_account(&base, next.as_deref())?;
+        let retained = match profile::retire_account(&base, &email) {
+            Ok(path) => path,
+            Err(error) => {
+                let _ = select_account(&base, &email);
+                return Err(format!("Mailbox removal could not finish: {error}"));
+            }
+        };
+        if let Ok(relative) = backup.strip_prefix(&root) { lock.path = retained.join(relative).join(".backup.lock"); }
+        let _ = notifications::apply(&app, next.as_deref().unwrap_or(""), 0);
+        Ok(format!("Mailbox removed. Local emails and account data are kept at {}. Saved sign-in and the backup schedule were removed.", dunce::simplified(&retained).display()))
+    }).await.map_err(|e| format!("Mailbox removal was interrupted: {e}"))?
+}
+
 fn powershell(engine: &Path, data: &Path, script: &str) -> Result<std::process::Output, String> {
     hidden_command("powershell.exe").current_dir(data).env("MAIL_VAULT_DATA_DIR", data).args([
         "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"
@@ -614,7 +674,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(desktop::handle_window_event)
-        .invoke_handler(tauri::generate_handler![mail::get_mail_page, desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, begin_outlook_sign_in, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
+        .invoke_handler(tauri::generate_handler![mail::get_mail_page, desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, begin_outlook_sign_in, configure_mailbox, switch_account, remove_mailbox, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }

@@ -333,9 +333,9 @@ function render() {
     </header>
     <div class="desktop-layout">
       <aside class="folder-sidebar" aria-label="Accounts and folders">
-        <div class="account-switcher"><div class="account-heading"><label for="active-account">Account</label><button type="button" class="account-sync" data-action="stats" aria-label="Sync" title="Sync" aria-busy="${busyAction === 'stats'}" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'stats' ? '<span class="spinner" aria-hidden="true"></span>' : '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 7a6 6 0 0 0-10-2L3 8m0-5v5h5M4 13a6 6 0 0 0 10 2l3-3m0 5v-5h-5"/></svg>'}</button></div><select id="active-account" ${busy || dashboard.backupRunning || !dashboard.accounts?.length ? 'disabled' : ''}>
+        <div class="account-switcher"><div class="account-heading"><label for="active-account">Account</label><button type="button" class="account-sync" data-action="stats" aria-label="Sync" title="Sync" aria-busy="${busyAction === 'stats'}" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'stats' ? '<span class="spinner" aria-hidden="true"></span>' : '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 7a6 6 0 0 0-10-2L3 8m0-5v5h5M4 13a6 6 0 0 0 10 2l3-3m0 5v-5h-5"/></svg>'}</button><button type="button" class="account-sync" data-action="add-account" aria-label="Add account" title="Add account" ${busy || dashboard.backupRunning ? 'disabled' : ''}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg></button></div><select id="active-account" ${busy || dashboard.backupRunning || !dashboard.accounts?.length ? 'disabled' : ''}>
           ${dashboard.accounts?.length ? dashboard.accounts.map(email => `<option value="${escapeHtml(email)}" ${email === dashboard.user ? 'selected' : ''}>${escapeHtml(email)}</option>`).join('') : '<option>No mailbox configured</option>'}</select></div>
-        <div class="sidebar-heading"><h2>Folders</h2><button class="icon-button" data-action="add-account" aria-label="Add account" title="Add account" ${busy || dashboard.backupRunning ? 'disabled' : ''}>+</button></div>
+        <div class="sidebar-heading"><h2>Folders</h2></div>
         <label class="filter-field"><span class="sr-only">Filter folders</span><input id="folder-filter" type="search" placeholder="Filter folders" value="${escapeHtml(folderFilter)}"></label>
         <nav class="folder-list" aria-label="Mailbox folders"><button class="folder-item ${!selectedFolder ? 'selected' : ''}" data-action="select-folder" data-folder="" aria-pressed="${!selectedFolder}"><span>All folders</span><small>${formatNumber(dashboard.localStats?.messages || 0)}</small></button>
           ${folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber, mailIndicators()) || `<p class="sidebar-empty">${folderFilter ? 'No matching folders.' : 'Sync your mailbox to load folders.'}</p>`}</nav>
@@ -361,7 +361,7 @@ function render() {
     ${notificationCenter.shell()}
     <dialog id="mailbox-dialog" aria-labelledby="setup-title" aria-describedby="setup-description">
       <form id="mailbox-form">
-        <h2 id="setup-title">${hasAccount ? (outlookHost(mailHost) ? 'Sign in to Microsoft again' : 'Update app password') : 'Set up your mailbox'}</h2>
+        <div class="mailbox-settings-heading"><h2 id="setup-title">${hasAccount ? (outlookHost(mailHost) ? 'Sign in to Microsoft again' : 'Update app password') : 'Set up your mailbox'}</h2>${hasAccount ? `<button type="button" class="account-sync account-remove" data-action="remove-mailbox" aria-label="Remove mailbox" title="Remove mailbox" ${busy || dashboard.backupRunning || activeExports ? 'disabled' : ''}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M8 5V3h4v2M5 5l1 12h8l1-12M8 8v6m4-6v6"/></svg></button>` : ''}</div>
         <p id="setup-description">Connect with Microsoft sign-in or your IMAP server and application-specific password. Credentials are encrypted for this Windows user.</p>
         <label for="mail-provider">Email provider</label>
         <select id="mail-provider" ${hasAccount ? 'disabled' : ''}>
@@ -392,6 +392,15 @@ function render() {
         </div>
         <p id="setup-error" role="alert"></p>
         <div class="dialog-actions"><button type="button" class="ghost" data-action="cancel-setup">Cancel</button><button class="primary" type="submit">Save mailbox</button></div>
+      </form>
+    </dialog>
+    <dialog id="remove-mailbox-dialog" aria-labelledby="remove-mailbox-title" aria-describedby="remove-mailbox-description">
+      <form id="remove-mailbox-form">
+        <h2 id="remove-mailbox-title">Remove mailbox?</h2>
+        <p><strong>${escapeHtml(dashboard.user)}</strong></p>
+        <p id="remove-mailbox-description">Remove this mailbox, its saved sign-in, and its backup schedule from Bmail. Local emails will be kept in a separate retained-data folder. Adding the mailbox again starts a new profile. Server emails stay untouched.</p>
+        <p id="remove-mailbox-error" role="alert"></p>
+        <div class="dialog-actions"><button type="button" class="ghost" data-action="cancel-remove-mailbox" autofocus>Cancel</button><button type="submit" class="danger-button">Remove mailbox</button></div>
       </form>
     </dialog>
   `;
@@ -546,6 +555,12 @@ app.addEventListener('click', event => {
   if (action === 'select-folder') { captureTabDraft(); rememberNavigation('mailbox', button.dataset.folder); selectedFolder = button.dataset.folder; activeTab = 'mailbox'; render(); return; }
   if (action === 'dismiss-error') { operationFailure = null; render(); return; }
   if (action === 'setup') { captureTabDraft(); document.querySelector('#mailbox-dialog').showModal(); }
+  else if (action === 'remove-mailbox') {
+    if (busy || dashboard.backupRunning || activeExports) return;
+    document.querySelector('#remove-mailbox-error').textContent = '';
+    document.querySelector('#remove-mailbox-dialog').showModal();
+  }
+  else if (action === 'cancel-remove-mailbox') document.querySelector('#remove-mailbox-dialog').close();
   else if (action === 'add-account') { captureTabDraft(); addingAccount = true; render(); document.querySelector('#mailbox-dialog').showModal(); }
   else if (['pause', 'resume', 'stop', 'cancel'].includes(action)) controlBackup(action, button.dataset.runId);
   else if (action === 'selection') selectTab('options');
@@ -654,6 +669,43 @@ async function controlBackup(command, runId) {
     toast(result);
   } catch (error) { toast(String(error), true); await refresh(); }
   finally { controlBusy = false; updateBackupControls(); }
+}
+
+async function removeMailbox() {
+  if (busy || dashboard.backupRunning || activeExports) return;
+  const email = dashboard.user;
+  const dialog = document.querySelector('#remove-mailbox-dialog');
+  const controls = [...dialog.querySelectorAll('button')];
+  const preventCancel = event => event.preventDefault();
+  busy = true;
+  dialog.addEventListener('cancel', preventCancel);
+  controls.forEach(control => control.disabled = true);
+  dialog.querySelector('[type="submit"]').textContent = 'Removing...';
+  document.querySelector('#remove-mailbox-error').textContent = '';
+  try {
+    const message = await invoke('remove_mailbox', { email });
+    dialog.close();
+    if (document.querySelector('#mailbox-dialog').open) document.querySelector('#mailbox-dialog').close();
+    notificationCenter.clearAccount(email);
+    startupMailChecked.delete(email); newMailRetryAfter.delete(email); newMailByAccount.delete(email);
+    addingAccount = false; operationFailure = null;
+    selectedFolder = ''; folderFilter = ''; selectedHistoryRun = '';
+    selectedMessage = { file: '', message: null, loading: false, error: '' };
+    savedMail = { key: '', rows: [], loading: false, error: '' };
+    activeTab = 'mailbox'; backupOptionsDraft = schedulerDraft = null; schedulerLoaded = false; schedulerFocusDate = '';
+    resetNavigation();
+    busy = false;
+    await refresh(false, true);
+    toast(message);
+  } catch (error) {
+    document.querySelector('#remove-mailbox-error').textContent = String(error);
+  } finally {
+    busy = false;
+    dialog.removeEventListener('cancel', preventCancel);
+    controls.forEach(control => control.disabled = false);
+    dialog.querySelector('[type="submit"]').textContent = 'Remove mailbox';
+    dashboardPoller?.reschedule();
+  }
 }
 
 async function switchAccount(email) {
@@ -813,6 +865,7 @@ app.addEventListener('keydown', event => {
 });
 
 app.addEventListener('submit', async event => {
+  if (event.target.id === 'remove-mailbox-form') { event.preventDefault(); await removeMailbox(); return; }
   if (event.target.id === 'scheduler-form') { event.preventDefault(); scheduleOperation('save'); return; }
   if (event.target.id === 'selection-form') {
     event.preventDefault();
