@@ -258,3 +258,7 @@ Use the **+** icon beside the Account controls to add a mailbox. To remove the s
 Removal clears saved credentials and removes the mailbox's Windows backup schedule. Existing local mail and account data are moved into `removed-accounts` inside the Bmail data folder; the confirmation result shows the full path. Custom backup directories outside the account folder stay in their original location. Server mail is untouched. If another mailbox exists, Bmail selects it; removing the last mailbox returns to setup. Adding a removed mailbox again creates a new profile.
 
 Finish backups, mailbox checks, and exports before removing an account. Run `npm.cmd run test:mailbox-removal` for an isolated native test of the complete removal flow.
+
+## Friendly error messages
+
+Bmail translates mailbox connection, sign-in, storage, and scheduling failures into actionable messages. Alerts, previews, Activity details, and notifications use the same formatter, including previously saved error notifications. Unexpected application errors and unhandled promise rejections show a generic recovery message. Raw exception output, network addresses, stack traces, and internal error codes are not shown in these messages. Existing backup diagnostic logs remain available through the log folder for troubleshooting.

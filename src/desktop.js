@@ -1,3 +1,4 @@
+import { userMessage } from './errors.js';
 import { loadingIndicator } from './loading.js';
 import { mailPagination } from './mail-pagination.js';
 import { tableStart, columnHandle } from './columns.js';
@@ -63,7 +64,7 @@ export function savedMailPane(state, selected, sort, escape, date, selectedFile 
   }).join('');
   return `<section class="mail-pane" aria-label="Mail list" aria-busy="${state.loading}">
     <div class="mail-legend" aria-label="Mail state legend"><span><i class="legend-new" aria-hidden="true"></i>New since last check</span><span><i class="legend-backed-up" aria-hidden="true"></i>Backed up locally</span><span><i class="legend-not-backed-up" aria-hidden="true"></i>Not backed up</span></div>
-    ${state.loading ? `<p class="empty-pane">${loadingIndicator('Loading mail...')}</p>` : state.error ? `<p class="empty-pane" role="alert">${escape(state.error)} <button data-action="retry-mail">Retry</button></p>` : rows ? `<div class="table-wrap">${tableStart('mail', 'mail-table')}<thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty-pane">No messages to show. Check the mailbox to load server mail, or back up a folder to save local copies.</p>'}
+    ${state.loading ? `<p class="empty-pane">${loadingIndicator('Loading mail...')}</p>` : state.error ? `<p class="empty-pane" role="alert">${escape(userMessage(state.error))} <button data-action="retry-mail">Retry</button></p>` : rows ? `<div class="table-wrap">${tableStart('mail', 'mail-table')}<thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty-pane">No messages to show. Check the mailbox to load server mail, or back up a folder to save local copies.</p>'}
     ${mailPagination(state)}
 </section>`;
 }

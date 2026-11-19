@@ -5,7 +5,9 @@ import logoUrl from '../src-tauri/icons/app.svg';
 import { paneDivider, installPaneResizing, paneResizeActive } from './panes.js';
 import { installColumnResizing, columnResizeActive } from './columns.js';
 import { themePreference, setTheme } from './theme.js';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke as nativeInvoke } from '@tauri-apps/api/core';
+import { userMessage, createSafeInvoke, installGlobalErrorHandlers } from './errors.js';
+const invoke = createSafeInvoke(nativeInvoke);
 import { workspaceTabs, workspaceTabStrip } from './workspace.js';
 import { historyPane } from './history.js';
 import { readingPane } from './reader.js';
@@ -41,7 +43,7 @@ async function loadDesktopPreferences() {
   try {
     desktopPreferences = await invoke('get_desktop_preferences');
     preferencesError = '';
-  } catch (error) { preferencesError = String(error); }
+  } catch (error) { preferencesError = userMessage(error); }
   if (dashboard && activeTab === 'preferences') render();
 }
 
@@ -53,7 +55,7 @@ async function saveCloseBehavior(value) {
   try {
     desktopPreferences = await invoke('save_desktop_preferences', { preferences: { closeToTray: value === 'tray' } });
     saved = true;
-  } catch (error) { preferencesError = String(error); }
+  } catch (error) { preferencesError = userMessage(error); }
   finally {
     preferencesSaving = false;
     if (activeTab === 'preferences') {
@@ -94,12 +96,12 @@ async function checkStartupMail() {
     newMailRetryAfter.delete(account);
     if (operationFailure?.action === 'new-mail') operationFailure = null;
   } catch (error) {
-    if (String(error).includes('NEW_MAIL_CHECK_BUSY')) {
+    if (error?.code === 'NEW_MAIL_CHECK_BUSY') {
       startupMailChecked.delete(account);
       newMailRetryAfter.set(account, Date.now() + 10000);
     } else {
       failed = true;
-      operationFailure = { action: 'new-mail', message: String(error) };
+      operationFailure = { action: 'new-mail', message: userMessage(error) };
     }
   } finally {
     busy = false; busyAction = '';
@@ -133,7 +135,7 @@ function openMessage(file, id = file) {
   selectedMessage = request;
   updateReader();
   document.querySelectorAll('.mail-table tbody tr').forEach(row => row.classList.toggle('selected', row.dataset.id === id));
-  invoke('get_saved_message', { file }).then(message => { request.message = message; }).catch(error => { request.error = String(error); }).finally(() => {
+  invoke('get_saved_message', { file }).then(message => { request.message = message; }).catch(error => { request.error = userMessage(error); }).finally(() => {
     request.loading = false;
     if (selectedMessage === request) updateReader();
   });
@@ -168,7 +170,7 @@ function loadSavedMail(focusSelector) {
       Object.assign(request, result);
       if (savedMail === request) mailPage = result.page;
     })
-    .catch(error => { request.error = String(error); })
+    .catch(error => { request.error = userMessage(error); })
     .finally(() => {
       request.loading = false;
       if (savedMail === request && activeTab === 'mailbox' && !document.querySelector('dialog[open]')) {
@@ -225,7 +227,7 @@ async function startOutlookSignIn(button) {
     form.elements.device_code.value = response.device_code;
     form.elements.device_interval.value = response.interval || 10;
     status.textContent = `Visit ${response.verification_uri} in your browser and enter ${response.user_code}. Then select Save mailbox to finish sign-in. This code expires in ${Math.floor(response.expires_in / 60)} minutes.`;
-  } catch (error) { status.textContent = String(error); }
+  } catch (error) { status.textContent = userMessage(error); }
   finally { button.disabled = false; }
 }
 
@@ -349,10 +351,10 @@ function render() {
           <button type="button" data-action="navigate-forward" aria-label="Forward" title="Forward" ${busy || !navigation.canMove(1) ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m11 4 6 6-6 6M3 10h14"/></svg></button>
         </nav>${workspaceTabStrip(activeTab, busy)}</div>
         ${!['mailbox', 'activity'].includes(activeTab) ? `<section class="run-banner ${state}" aria-label="Backup status"><h2>${statusTitle}</h2><span>${run?.finishedAt ? formatDate(run.finishedAt) : 'No backup run yet'}</span></section>` : ''}
-        ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'new-mail' ? 'New mail check failed' : operationFailure.action === 'stats' ? 'Mailbox sync failed' : 'Action failed'}</strong><p>${escapeHtml(operationFailure.message)}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
+        ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'new-mail' ? 'New mail check failed' : operationFailure.action === 'stats' ? 'Mailbox sync failed' : 'Action failed'}</strong><p>${escapeHtml(userMessage(operationFailure.message))}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
         ${!dashboard.credentialReady ? `<aside class="notice">Connect an account to start backing up. <button data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
-        ${run?.error ? `<aside class="notice error">${escapeHtml(run.error.message || 'Backup failed')}. Completed downloads are retained.</aside>` : ''}
-        ${dashboard.launchError ? `<aside class="notice error">${escapeHtml(dashboard.launchError)}</aside>` : ''}
+        ${run?.error ? `<aside class="notice error">${escapeHtml(userMessage(run.error))} Completed downloads are retained.</aside>` : ''}
+        ${dashboard.launchError ? `<aside class="notice error">${escapeHtml(userMessage(dashboard.launchError))}</aside>` : ''}
         ${dashboard.migrationNotice ? `<aside class="notice">${escapeHtml(dashboard.migrationNotice)}</aside>` : ''}
         ${workspaceTabs.map(([key]) => `<section id="view-${key}" role="tabpanel" aria-labelledby="tab-${key}" ${activeTab === key ? 'tabindex="0"' : 'hidden'}>${activeTab === key ? workspaceBody : ''}</section>`).join('')}
       </main>
@@ -435,7 +437,7 @@ async function refresh(background = false, force = false) {
       const run = next.lastRun || {};
       const outcome = ['stopped', 'cancelled'].includes(next.progress?.state) ? next.progress.state : run.outcome || (run.success ? 'completed' : 'failed');
       const message = outcome === 'completed' ? `Backup completed. ${run.downloaded || next.progress?.downloaded || 0} emails saved.`
-        : outcome === 'failed' ? `Backup failed. ${run.error?.message || 'See Activity for details.'}` : `Backup ${outcome}. Saved mail is kept.`;
+        : outcome === 'failed' ? `Backup failed. ${userMessage(run.error)}` : `Backup ${outcome}. Saved mail is kept.`;
       notificationCenter.notify(message, { level: outcome === 'failed' ? 'error' : outcome === 'completed' ? 'success' : 'info', key: `backup:${run.runId || next.progress?.runId || run.finishedAt}:${outcome}` });
     }
     updateBackupControls();
@@ -460,7 +462,7 @@ async function refresh(background = false, force = false) {
     if (focusAction === 'sort-mail') document.querySelector(`[data-action="sort-mail"][data-column="${focusColumn}"]`)?.focus({ preventScroll: true });
     if (focusAction && !['select-folder','select-tab','sort-mail'].includes(focusAction)) [...document.querySelectorAll('[data-action]')].find(el => el.dataset.action === focusAction)?.focus({ preventScroll: true });
   } catch (error) {
-    if (!background) app.innerHTML = `${startupHeader(logoUrl)}<main class="fatal"><h1>Bmail could not start</h1><p>${escapeHtml(error)}</p><button data-action="refresh">Retry startup</button></main>`;
+    if (!background) app.innerHTML = `${startupHeader(logoUrl)}<main class="fatal"><h1>Bmail could not start</h1><p>${escapeHtml(userMessage(error))}</p><button data-action="refresh">Retry startup</button></main>`;
   } finally { refreshing = false; finished(); dashboardPoller?.reschedule(); void checkStartupMail(); }
 }
 
@@ -476,7 +478,7 @@ async function run(action) {
   try {
     message = action === 'backup' ? await invoke('start_backup') : await invoke('run_action', { action });
   } catch (error) {
-    message = String(error);
+    message = userMessage(error);
     failed = true;
     operationFailure = { action, message };
   } finally {
@@ -493,7 +495,7 @@ app.addEventListener('click', event => {
   if (!button || button.disabled) return;
   const action = button.dataset.action;
   if (notificationCenter.handle(action, button)) return;
-  if (action.startsWith('window-')) { void controlWindow(action).catch(error => toast(String(error), true)); return; }
+  if (action.startsWith('window-')) { void controlWindow(action).catch(error => toast(userMessage(error), true)); return; }
   if (action === 'backup-preset') {
     const form = document.querySelector('#selection-form');
     const custom = button.dataset.preset === 'custom';
@@ -548,7 +550,7 @@ app.addEventListener('click', event => {
     updateStatusBar();
     invoke('export_mail', { folder: button.dataset.folder || null, file: button.dataset.file || null })
       .then(message => { if (message) toast(message, false, exportAccount); })
-      .catch(error => toast(String(error), true, exportAccount))
+      .catch(error => toast(userMessage(error), true, exportAccount))
       .finally(() => { activeExports--; updateStatusBar(); button.disabled = false; });
     return;
   }
@@ -566,7 +568,7 @@ app.addEventListener('click', event => {
   else if (action === 'selection') selectTab('options');
   else if (action === 'load-folders') loadFolders();
   else if (action === 'outlook-sign-in') startOutlookSignIn(button);
-  else if (action === 'google-help') invoke('open_google_help').catch(error => toast(String(error), true));
+  else if (action === 'google-help') invoke('open_google_help').catch(error => toast(userMessage(error), true));
   else if (action === 'cancel-setup') {
     document.querySelector('#mail-password').value = '';
     document.querySelector('#mailbox-dialog').close();
@@ -574,7 +576,7 @@ app.addEventListener('click', event => {
     render();
   }
   else if (action === 'refresh') refresh(false, true);
-  else if (action.startsWith('open-')) invoke('open_directory', { kind: action.slice(5) }).catch(error => toast(String(error), true));
+  else if (action.startsWith('open-')) invoke('open_directory', { kind: action.slice(5) }).catch(error => toast(userMessage(error), true));
   else run(action);
 });
 
@@ -655,7 +657,7 @@ async function loadFolders() {
     const selected = [...document.querySelectorAll('[name="folders"]:checked')].map(el => el.value);
     document.querySelector('#folder-options').innerHTML = folderChoices(dashboard.mailboxes?.folders || [], selected, document.querySelector('#all-folders').checked, escapeHtml);
     document.querySelector('#selection-error').textContent = '';
-  } catch (error) { document.querySelector('#selection-error').textContent = String(error); }
+  } catch (error) { document.querySelector('#selection-error').textContent = userMessage(error); }
   finally { busy = false; button.disabled = submit.disabled = false; button.textContent = 'Load / refresh mailbox folders'; }
 }
 
@@ -667,7 +669,7 @@ async function controlBackup(command, runId) {
     const result = await invoke('control_backup', { command, runId });
     await refresh();
     toast(result);
-  } catch (error) { toast(String(error), true); await refresh(); }
+  } catch (error) { toast(userMessage(error), true); await refresh(); }
   finally { controlBusy = false; updateBackupControls(); }
 }
 
@@ -698,7 +700,7 @@ async function removeMailbox() {
     await refresh(false, true);
     toast(message);
   } catch (error) {
-    document.querySelector('#remove-mailbox-error').textContent = String(error);
+    document.querySelector('#remove-mailbox-error').textContent = userMessage(error);
   } finally {
     busy = false;
     dialog.removeEventListener('cancel', preventCancel);
@@ -719,7 +721,7 @@ async function switchAccount(email) {
   resetNavigation();
   render();
   try { await invoke('switch_account', { email }); }
-  catch (error) { toast(String(error), true); }
+  catch (error) { toast(userMessage(error), true); }
   finally { busy = false; await refresh(); }
 }
 
@@ -729,7 +731,7 @@ async function testNotification(button) {
   button.disabled = true;
   button.textContent = 'Sending test...';
   try { document.querySelector('#notification-status').textContent = await invoke('test_notification'); }
-  catch (error) { document.querySelector('#selection-error').textContent = String(error); }
+  catch (error) { document.querySelector('#selection-error').textContent = userMessage(error); }
   finally { busy = false; button.disabled = false; button.textContent = 'Send test notification'; dashboardPoller?.reschedule(); }
 }
 
@@ -753,7 +755,7 @@ function updateSchedulePreview() {
   document.querySelector('#schedule-every').max = draft.frequency === 'weekly' ? 52 : 365;
   let schedule;
   try { schedule = normalizeSchedule(draft); document.querySelector('#schedule-error').textContent = ''; }
-  catch (error) { document.querySelector('#schedule-error').textContent = error.message; schedule = { ...draft, enabled: false }; }
+  catch (error) { document.querySelector('#schedule-error').textContent = userMessage(error); schedule = { ...draft, enabled: false }; }
   document.querySelector('#schedule-calendar').innerHTML = calendarMarkup(schedule, schedulerMonth, schedulerFocusDate, escapeHtml);
   const runs = nextRuns(schedule);
   document.querySelector('#schedule-upcoming').innerHTML = `<h3>Upcoming preview</h3>${runs.length ? `<ol>${runs.map(date => `<li>${formatDate(date)}</li>`).join('')}</ol>` : '<p>No upcoming runs for these settings.</p>'}<p class="muted">Preview only. Windows next-run status is authoritative. Dots are planned dates, not completed backups.</p>`;
@@ -803,7 +805,7 @@ async function loadScheduledFolders(button) {
     dashboard.mailboxes = updated.mailboxes;
     document.querySelector('#schedule-folder-options').innerHTML = scheduleFolderChoices(dashboard, selected, document.querySelector('#schedule-all-folders').checked, escapeHtml);
     document.querySelector('#schedule-error').textContent = '';
-  } catch (error) { document.querySelector('#schedule-error').textContent = String(error); }
+  } catch (error) { document.querySelector('#schedule-error').textContent = userMessage(error); }
   finally { busy = false; controls.forEach(control => control.disabled = false); button.disabled = false; button.textContent = 'Load / refresh scheduled folders'; dashboardPoller?.reschedule(); }
 }
 
@@ -814,7 +816,7 @@ async function scheduleOperation(action, loadSettings = false) {
   let replaceForm = false;
   let schedule;
   try { if (action === 'save') schedule = normalizeSchedule(scheduleFromForm(form)); }
-  catch (error) { document.querySelector('#schedule-error').textContent = error.message; return; }
+  catch (error) { document.querySelector('#schedule-error').textContent = userMessage(error); return; }
   schedulerBusy = true; busy = true;
   document.querySelector('#schedule-error').textContent = '';
   const controls = [...form.querySelectorAll('button,input,select')];
@@ -829,7 +831,7 @@ async function scheduleOperation(action, loadSettings = false) {
     updateScheduleStatus();
     if (action === 'save') toast(result.enabled ? 'Schedule saved in Windows.' : 'Schedule paused.');
     if (action === 'remove') toast('Schedule removed. Backup files are kept.');
-  } catch (error) { document.querySelector('#schedule-error').textContent = String(error); }
+  } catch (error) { document.querySelector('#schedule-error').textContent = userMessage(error); }
   finally {
     schedulerBusy = false; busy = false;
     enabled.forEach(control => control.disabled = false);
@@ -889,7 +891,7 @@ app.addEventListener('submit', async event => {
       busy = false;
       await refresh();
       toast(result);
-    } catch (error) { document.querySelector('#selection-error').textContent = String(error); }
+    } catch (error) { document.querySelector('#selection-error').textContent = userMessage(error); }
     finally { busy = false; button.disabled = false; button.textContent = 'Save selection'; }
     return;
   }
@@ -926,7 +928,7 @@ app.addEventListener('submit', async event => {
     await refresh();
     toast(result);
   } catch (error) {
-    document.querySelector('#setup-error').textContent = String(error);
+    document.querySelector('#setup-error').textContent = userMessage(error);
     document.querySelector('#setup-error').scrollIntoView({ block: 'nearest' });
   } finally {
     settings.password = '';
@@ -939,6 +941,14 @@ app.addEventListener('submit', async event => {
     dialog.removeEventListener('cancel', preventCancel);
     busy = false;
   }
+});
+
+installGlobalErrorHandlers(window, message => {
+  if (!document.querySelector('#toast')) {
+    app.innerHTML = `${startupHeader(logoUrl)}<main class="fatal" role="alert"><h1>Bmail needs your attention</h1><p>${escapeHtml(message)}</p><button data-action="refresh">Retry</button></main>`;
+    return;
+  }
+  notificationCenter.notify(message, { level: 'error', key: `unexpected:${message}` });
 });
 
 dashboardPoller = createDashboardPoller({
