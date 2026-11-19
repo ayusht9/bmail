@@ -1084,7 +1084,7 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .notification-bell { display: inline-grid; place-items: center; width: 32px; height: 24px; min-height: 24px; padding: 2px; position: relative; border: 0; background: transparent; flex-shrink: 0; margin-left: auto; }
 .notification-bell svg { width: 18px; height: 18px; }
 .notification-count { position: absolute; top: -3px; right: -3px; min-width: 15px; line-height: 15px; padding: 0 3px; border-radius: 8px; background: #b3261e; color: #fff; font-size: 10px; font-weight: 700; }
-.notification-panel { position: fixed; inset: 54px 12px auto auto; margin: 0; padding: 0; width: min(480px, calc(100vw - 24px)); max-height: min(580px, calc(100dvh - 70px)); background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 48px #0004; overflow: auto; }
+.notification-panel { z-index: 1000; position: fixed; inset: 54px 12px auto auto; margin: 0; padding: 0; width: min(480px, calc(100vw - 24px)); max-height: min(580px, calc(100dvh - 70px)); background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 48px #0004; overflow: auto; }
 .notification-panel::backdrop { background: #0002; }
 .notification-panel-header { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: start; padding: 18px 18px 12px; background: var(--surface); z-index: 1; }
 .notification-panel-header h2 { margin: 0 0 4px; font-size: 1.3em; }
