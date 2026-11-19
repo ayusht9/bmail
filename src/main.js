@@ -1,3 +1,4 @@
+import { outlookHost, outlookAddressHost, providerForHost } from './mail-providers.js';
 import { loadingIndicator } from './loading.js';
 import './style.css';
 import logoUrl from '../src-tauri/icons/app.svg';
@@ -210,8 +211,6 @@ let dashboardPoller;
 let schedulerMonth = new Date();
 let schedulerFocusDate = '';
 let schedulerBusy = false;
-const outlookHost = host => ['outlook.office365.com', 'imap-mail.outlook.com'].includes(host?.trim().toLowerCase());
-const providerForHost = host => outlookHost(host) ? 'outlook' : host?.toLowerCase() === 'imap.gmail.com' ? 'google' : host?.toLowerCase() === 'imappro.zoho.in' ? 'zoho' : 'other';
 
 async function startOutlookSignIn(button) {
   const form = button.form;
@@ -241,7 +240,7 @@ function updateProviderHelp() {
   document.querySelector('label[for="mail-password"]').style.display = outlook ? 'none' : '';
   document.querySelector('#provider-help').textContent = google
     ? 'Turn on Google 2-Step Verification, then create an app password. Use that 16-character password here. Some work or school accounts do not allow app passwords.'
-    : outlook ? 'Enable IMAP in Outlook settings. Start Microsoft sign-in, visit the address below and enter the code, then save this mailbox. Sign in as the email address entered above.' : 'Use the application-specific password supplied by your email provider.';
+    : outlook ? 'Outlook requires Microsoft sign-in. App passwords cannot be used. Bmail currently requires a Microsoft application (client) ID from an app registration. Enable IMAP in Outlook settings, then start sign-in below.' : 'Use the application-specific password supplied by your email provider.';
   document.querySelector('[data-action="google-help"]').hidden = !google;
   const port = document.querySelector('#mail-port');
   port.readOnly = google || outlook;
@@ -305,7 +304,8 @@ function render() {
   }
   const run = dashboard.lastRun;
   const hasAccount = !addingAccount && dashboard.user.includes('@');
-  const mailHost = addingAccount ? 'imap.gmail.com' : dashboard.host;
+  const repairOutlookHost = !addingAccount && !dashboard.hasManifest && outlookAddressHost(dashboard.host);
+  const mailHost = addingAccount ? 'imap.gmail.com' : repairOutlookHost ? 'outlook.office365.com' : dashboard.host;
   const mailPort = addingAccount ? 993 : dashboard.port;
   const healthy = run?.success === true;
   const outcome = run?.outcome || dashboard.progress?.state;
@@ -377,13 +377,14 @@ function render() {
         <label for="mail-port">TLS port</label>
         <input id="mail-port" name="port" type="number" min="1" max="65535" value="${mailPort}" ${hasAccount ? 'readonly' : ''} required>
         <p id="provider-help"></p>
+        ${repairOutlookHost ? '<p role="status">The saved server was an Outlook email domain. Save with Microsoft sign-in to correct it to outlook.office365.com.</p>' : ''}
         <button type="button" class="text-button" data-action="google-help" hidden>How to create a Google app password</button>
         <label for="mail-password">Application-specific password</label>
         <input id="mail-password" name="password" type="password" autocomplete="new-password" aria-describedby="provider-help" required>
         <div id="outlook-auth" hidden>
           <label for="outlook-client-id">Microsoft application (client) ID</label>
           <input id="outlook-client-id" name="client_id" type="text" placeholder="App registration client ID" aria-describedby="outlook-registration-help">
-          <p id="outlook-registration-help">Use an app registration allowing personal and organizational accounts, public client flows, and delegated IMAP.AccessAsUser.All permission. No client secret is needed.</p>
+          <p id="outlook-registration-help">Use an app registration allowing personal and organizational accounts, public client flows, and delegated IMAP.AccessAsUser.All permission. This ID identifies the app; it is not your email password or an app password. No client secret is needed.</p>
           <button type="button" data-action="outlook-sign-in">Start Microsoft sign-in</button>
           <p id="outlook-sign-in-status" role="status"></p>
           <input name="device_code" type="hidden">
@@ -611,6 +612,7 @@ app.addEventListener('change', event => {
     document.querySelector('#mail-port').value = '993';
     updateProviderHelp();
   } else if (event.target.id === 'mail-host') {
+    if (outlookAddressHost(event.target.value)) event.target.value = 'outlook.office365.com';
     document.querySelector('#mail-provider').value = providerForHost(event.target.value.trim());
     updateProviderHelp();
   }

@@ -333,6 +333,7 @@ async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings, pro
         if !output.status.success() || write_result.is_err() {
             let status = serde_json::from_slice::<Value>(&output.stdout).unwrap_or(Value::Null);
             let message = match status.get("errorCode").and_then(Value::as_str).unwrap_or("") {
+                "OUTLOOK_SIGN_IN_REQUIRED" => "Outlook requires Microsoft sign-in, not an app password. Select Microsoft Outlook and enter an application (client) ID to start sign-in.",
                 "OUTLOOK_AUTH_FAILED" => "Microsoft sign-in failed or expired. Start sign-in again and use the same mailbox address. Check that IMAP is enabled and your organization permits access.",
                 "INVALID_EMAIL" => "Enter your complete email address.",
                 "INVALID_HOST" => "Enter a valid IMAP server hostname.",

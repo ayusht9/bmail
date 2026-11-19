@@ -421,6 +421,9 @@ async function main() {
     } finally { release(); }
     return;
   }
+  if (/^(outlook|hotmail|live|msn)\.(com|in|co\.uk)$/i.test(config.host)) {
+    throw new Error('The saved Outlook server is an email domain, not an IMAP server. Open Account settings and save with Microsoft sign-in to use outlook.office365.com on port 993. Outlook requires an application client ID; app passwords cannot be used.');
+  }
   let input = '';
   for await (const chunk of process.stdin) input += chunk;
   const credentials = JSON.parse(input.replace(/^\uFEFF/, ''));
