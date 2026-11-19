@@ -181,3 +181,16 @@ test('notification preferences route only enabled outcomes and do not expose cre
   assert.equal(scheduledSelection(manual, { enabled: false }), null);
   assert.throws(() => scheduledSelection(manual, { enabled: true, allFolders: false, folders: [] }), /at least one/);
 });
+
+test('scheduler shows readable task results and keeps preference-owned power settings', async () => {
+  const { taskResult, powerSettings, scheduleStatusMarkup } = await import('../src/scheduler.js');
+  assert.equal(taskResult(267011), 'Not run yet');
+  assert.equal(taskResult(0), 'Succeeded');
+  assert.equal(taskResult(-2147216609), 'Error 0x8004131F');
+  assert.equal(taskResult(null), '');
+  assert.deepEqual(powerSettings(null), {});
+  assert.deepEqual(powerSettings({ wakeComputer: true, restartCount: 2, frequency: 'daily' }), { wakeComputer: true, restartCount: 2 });
+  const markup = scheduleStatusMarkup({ state: 'Ready', nextRunTime: null, lastRunTime: null, lastResult: 267011 }, String, String);
+  assert.match(markup, /Windows: Ready/);
+  assert.doesNotMatch(markup, /267011|Result/, 'A task that never ran shows no result code');
+});
