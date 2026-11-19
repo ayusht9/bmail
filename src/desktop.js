@@ -46,10 +46,10 @@ export function sortMail(messages, sort) {
 export function mailStateLabels(message) {
   const labels = [];
   if (message.isNew) labels.push('<span class="mail-state state-new" title="Found since the previous mailbox check">New</span>');
-  labels.push(message.backedUp
-    ? '<span class="mail-state state-backed-up" title="A local backup file is present">Backed up</span>'
-    : '<span class="mail-state state-not-backed-up">Not backed up</span>');
-  if (message.backedUp && message.onServer === false) labels.push('<span class="mail-state state-local-only" title="Saved locally; absent from the latest server check">Local only</span>');
+  const backedUp = Boolean(message.backedUp);
+  const label = backedUp ? 'Backed up locally' : 'Not backed up';
+  const mark = backedUp ? '<path d="m7 12 2 2 4-4"/>' : '<path d="m7 10 6 5m0-5-6 5"/>';
+  labels.push(`<span class="mail-state backup-icon ${backedUp ? 'state-backed-up' : 'state-not-backed-up'}" role="img" aria-label="${label}" title="${label}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7h14v10H3zM2 3h16v4H2z"/>${mark}</svg></span>`);
   return `<span class="mail-states">${labels.join('')}</span>`;
 }
 

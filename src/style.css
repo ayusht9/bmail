@@ -1031,15 +1031,21 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .loading-indicator .spinner { display: inline-block; flex: 0 0 16px; }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none !important; } }
 
-.mail-states { display: flex; gap: 5px; margin-top: 4px; overflow: hidden; }
+.mail-table td:first-child { position: relative; }
+.mail-states { display: inline-flex; vertical-align: middle; margin-left: 6px; }
 .mail-state { display: inline-block; font-size:calc(10px * var(--app-font-scale, 1)); font-weight: 600; line-height: 17px; padding: 0 5px; border-radius: 3px; white-space: nowrap; }
-.state-new { color: #154d99; background: #deebff; } .state-backed-up { color: #115d50; background: #dcefe8; }
-.state-not-backed-up, .state-local-only { color: #4d5b69; background: #e9edf2; }
+.state-new { position: absolute; top: 5px; right: 6px; color: #154d99; background: #deebff; border: 1px solid #bad1f3; }
+.backup-icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; }
+.backup-icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.state-backed-up { color: #115d50; }
+.state-not-backed-up { color: #687686; }
+.mail-table .mail-subject { max-width: calc(100% - 26px); vertical-align: middle; }
+.mail-table tr.new-mail td:first-child { padding-right: 45px; }
 .mail-table tr.new-mail .mail-subject { font-weight: 700; }
 .server-mail-notice { padding: 18px 24px; color: var(--muted); line-height: 1.5; }
-:root[data-theme="dark"] .state-new { color: #c1ddff; background: #28476c; }
-:root[data-theme="dark"] .state-backed-up { color: #b5ecdd; background: #24574f; }
-:root[data-theme="dark"] .state-not-backed-up, :root[data-theme="dark"] .state-local-only { color: #d1dbe5; background: #384453; }
+:root[data-theme="dark"] .state-new { color: #c1ddff; background: #28476c; border-color: #476890; }
+:root[data-theme="dark"] .state-backed-up { color: #b5ecdd; }
+:root[data-theme="dark"] .state-not-backed-up { color: #aebac8; }
 
 .mailbox-panes .mail-pane { display: flex; flex-direction: column; }
 .mailbox-panes .mail-pane .table-wrap { flex: 1; min-height: 0; height: auto; }

@@ -73,5 +73,5 @@ test('message state labels can mark new and backed-up mail independently', async
   assert.match(mailStateLabels({ isNew: true, backedUp: true }), /New.*Backed up/);
   assert.match(mailStateLabels({ isNew: false, backedUp: false }), /Not backed up/);
   assert.doesNotMatch(mailStateLabels({ isNew: false, backedUp: false }), /state-new/);
-  assert.match(mailStateLabels({ backedUp: true, onServer: false }), /Local only/);
+  assert.doesNotMatch(mailStateLabels({ backedUp: true, onServer: false }), /Local only|state-local-only/);
 });
