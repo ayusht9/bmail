@@ -80,17 +80,31 @@ export function scheduleSummary(status, installed = false) {
   return `${recurrence} at ${s.time}`;
 }
 
-export function scheduleFromForm(form) {
+export const POWER_SETTINGS = ['startWhenAvailable', 'networkRequired', 'wakeComputer', 'allowOnBattery', 'stopOnBattery', 'maxRunHours', 'restartCount', 'restartMinutes'];
+
+// Power, network and recovery settings live in Preferences. The scheduler form
+// keeps whatever values the saved schedule already has.
+export function powerSettings(source) {
+  source ||= {};
+  return Object.fromEntries(POWER_SETTINGS.filter(key => source[key] !== undefined).map(key => [key, source[key]]));
+}
+
+export function powerFromForm(form) {
   const values = new FormData(form);
+  const number = name => Number(form.elements.namedItem(name)?.value);
+  return { startWhenAvailable: values.has('startWhenAvailable'), networkRequired: values.has('networkRequired'), wakeComputer: values.has('wakeComputer'),
+    allowOnBattery: values.has('allowOnBattery'), stopOnBattery: values.has('stopOnBattery'),
+    maxRunHours: number('maxRunHours'), restartCount: number('restartCount'), restartMinutes: number('restartMinutes') };
+}
+
+export function scheduleFromForm(form, saved = {}) {
   const value = name => form.elements.namedItem(name)?.value;
   const frequency = value('frequency');
   const weekdays = [...form.querySelectorAll('[name="weekdays"]:checked')].map(input => Number(input.value));
-  return { enabled: values.has('enabled'), frequency, startDate: value('startDate'), time: value('time'),
+  return { enabled: Boolean(form.elements.namedItem('enabled')?.checked), frequency, startDate: value('startDate'), time: value('time'),
     weekdays: frequency === 'weekly' ? weekdays : weekdays.length ? weekdays : [1], monthDay: frequency === 'monthly' ? value('monthDay') : '1',
     every: ['daily','weekly'].includes(frequency) ? Number(value('every')) : 1, intervalHours: frequency === 'interval' ? Number(value('intervalHours')) : 6,
-    endDate: value('endDate') || null, startWhenAvailable: values.has('startWhenAvailable'), networkRequired: values.has('networkRequired'),
-    wakeComputer: values.has('wakeComputer'), allowOnBattery: values.has('allowOnBattery'), stopOnBattery: values.has('stopOnBattery'),
-    maxRunHours: Number(value('maxRunHours')), restartCount: Number(value('restartCount')), restartMinutes: Number(value('restartMinutes')),
+    endDate: value('endDate') || null, ...powerSettings(saved),
     allFolders: form.elements.scheduleAllFolders.checked,
     folders: [...form.querySelectorAll('[name="scheduledFolders"]:checked')].map(input => input.value) };
 }
@@ -98,7 +112,7 @@ export function scheduleFromForm(form) {
 export function scheduleFolderChoices(dashboard, selected, disabled, escape) {
   const names = [...new Set([...(dashboard.mailboxes?.folders || []), ...(dashboard.localStats?.folders || []).map(folder => folder.name),
     ...(dashboard.mailboxStatus?.folders || []).map(folder => folder.name), ...selected])].sort();
-  return `<fieldset id="schedule-folder-choices" ${disabled ? 'disabled' : ''}><legend>Scheduled folders</legend>${names.length ? names.map(name => `<label class="folder-choice"><input type="checkbox" name="scheduledFolders" value="${escape(name)}" ${selected.includes(name) ? 'checked' : ''}><span>${escape(name)}</span></label>`).join('') : '<p class="muted">Load mailbox folders to choose a custom selection.</p>'}</fieldset>`;
+  return `<fieldset id="schedule-folder-choices" ${disabled ? 'disabled' : ''}><legend class="sr-only">Scheduled folders</legend>${names.length ? names.map(name => `<label class="folder-choice"><input type="checkbox" name="scheduledFolders" value="${escape(name)}" ${selected.includes(name) ? 'checked' : ''}><span>${escape(name)}</span></label>`).join('') : '<p class="muted">No folders loaded.</p>'}</fieldset>`;
 }
 
 export function calendarMarkup(schedule, month, focusDate, escape, now = new Date()) {
@@ -113,29 +127,85 @@ export function calendarMarkup(schedule, month, focusDate, escape, now = new Dat
     return `<td><button type="button" data-action="schedule-day" data-date="${iso}" tabindex="${iso === tabStop ? 0 : -1}" aria-label="${escape(fullDateFormatter.format(date))}" aria-pressed="${iso === schedule.startDate}" class="${date.getMonth() !== month.getMonth() ? 'outside ' : ''}${iso === today ? 'today ' : ''}${dots.has(iso) ? 'scheduled ' : ''}${iso === schedule.startDate ? 'chosen' : ''}">${date.getDate()}</button></td>`;
   });
   return `<div class="calendar-heading"><button type="button" data-action="schedule-prev" aria-label="Previous month">‹</button><strong>${escape(monthFormatter.format(first))}</strong><button type="button" data-action="schedule-next" aria-label="Next month">›</button></div>
-    <table class="schedule-calendar" role="grid" aria-label="Schedule calendar"><thead><tr>${weekdayNames.map(day => `<th scope="col" abbr="${day}">${day.slice(0, 2)}</th>`).join('')}</tr></thead><tbody>${Array.from({ length: 6 }, (_, row) => `<tr>${cells.slice(row * 7, row * 7 + 7).join('')}</tr>`).join('')}</tbody></table><p class="calendar-legend">Blue dots: planned run dates. Select a date to change the start.</p>`;
+    <table class="schedule-calendar" role="grid" aria-label="Schedule calendar"><thead><tr>${weekdayNames.map(day => `<th scope="col" abbr="${day}">${day.slice(0, 2)}</th>`).join('')}</tr></thead><tbody>${Array.from({ length: 6 }, (_, row) => `<tr>${cells.slice(row * 7, row * 7 + 7).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
 export function schedulerView(dashboard, escape, draft = null) {
   const s = { ...defaultSchedule(), ...dashboard.schedule?.settings, ...draft };
   const checkbox = (name, label) => `<label class="folder-choice"><input type="checkbox" name="${name}" ${s[name] ? 'checked' : ''}>${label}</label>`;
-  return `<section id="scheduler-panel" class="scheduler-page" aria-labelledby="scheduler-title"><form id="scheduler-form"><h2 id="scheduler-title">Backup scheduler</h2><p>Schedule for ${escape(dashboard.user)}. Times use this computer's local time zone.</p>
-    <div class="scheduler-layout"><aside class="scheduler-calendar-pane"><div class="scheduler-clock"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="45"/>${Array.from({ length: 12 }, (_, hour) => `<line x1="50" y1="8" x2="50" y2="13" transform="rotate(${hour * 30} 50 50)"/>`).join('')}<line id="clock-hour" x1="50" y1="50" x2="50" y2="26"/><line id="clock-minute" x1="50" y1="50" x2="50" y2="16"/><line id="clock-second" x1="50" y1="54" x2="50" y2="12"/><circle cx="50" cy="50" r="2"/></svg><time id="scheduler-clock" aria-label="Current local time"></time><small id="scheduler-zone"></small></div><div id="schedule-calendar"></div><div id="schedule-upcoming"></div></aside>
-    <section class="scheduler-fields" aria-label="Schedule settings">${checkbox('enabled', 'Enable scheduled backups')}
-      <label for="schedule-frequency">Repeat</label><select id="schedule-frequency" name="frequency">${[['once','One time'],['daily','Daily'],['weekly','Weekly'],['monthly','Monthly'],['interval','Every few hours']].map(([value,label]) => `<option value="${value}" ${s.frequency === value ? 'selected' : ''}>${label}</option>`).join('')}</select>
-      <div class="date-fields"><div><label for="schedule-date">Start date</label><input id="schedule-date" name="startDate" type="date" value="${escape(s.startDate)}" required></div><div><label for="schedule-time">Start time</label><input id="schedule-time" name="time" type="time" value="${escape(s.time)}" required></div></div>
-      <div data-recurrence="daily weekly"><label for="schedule-every">Repeat every (days / weeks)</label><input id="schedule-every" name="every" type="number" min="1" max="365" value="${s.every}" required></div>
-      <fieldset data-recurrence="weekly" class="schedule-weekdays"><legend>Days of week</legend>${weekdayNames.map((day,index) => `<label><input type="checkbox" name="weekdays" value="${index}" ${s.weekdays.includes(index) ? 'checked' : ''}>${day.slice(0, 3)}</label>`).join('')}</fieldset>
-      <div data-recurrence="monthly"><label for="schedule-month-day">Day of month</label><select id="schedule-month-day" name="monthDay">${[...Array.from({ length: 31 }, (_, index) => String(index + 1)), 'last'].map(day => `<option value="${day}" ${s.monthDay === day ? 'selected' : ''}>${day === 'last' ? 'Last day' : day}</option>`).join('')}</select><p class="muted">Dates 29–31 skip months without that date. Use Last day to run every month.</p></div>
-      <div data-recurrence="interval"><label for="schedule-hours">Interval (hours)</label><input id="schedule-hours" name="intervalHours" type="number" min="1" max="24" value="${s.intervalHours}" required></div>
-      <label for="schedule-end">End date (optional)</label><input id="schedule-end" name="endDate" type="date" value="${escape(s.endDate || '')}">
-      <section class="scheduled-folder-selection"><h3>Folders for scheduled backups</h3><label class="folder-choice"><input id="schedule-all-folders" type="checkbox" name="scheduleAllFolders" ${s.allFolders ? 'checked' : ''}>All mailbox folders</label><button type="button" data-action="schedule-load-folders" ${dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>Load / refresh scheduled folders</button><div id="schedule-folder-options">${scheduleFolderChoices(dashboard, s.folders, s.allFolders, escape)}</div><p class="muted">This folder choice is independent of manual backups. Date filters, exclusions and limits follow the Backup tab.</p></section>
-      <details class="scheduler-advanced" ${s._uiAdvancedOpen ? 'open' : ''}><summary>Power, network and recovery</summary>${checkbox('startWhenAvailable','Run a missed backup when available')}${checkbox('networkRequired','Require a network connection')}${checkbox('wakeComputer','Ask Windows to wake the computer')}${checkbox('allowOnBattery','Allow starting on battery power')}${checkbox('stopOnBattery','Stop if the computer switches to battery')}
-        <label for="schedule-duration">Maximum run duration (hours)</label><input id="schedule-duration" name="maxRunHours" type="number" min="1" max="168" value="${s.maxRunHours}" required>
-        <div class="date-fields"><div><label for="schedule-restarts">Task restart attempts</label><input id="schedule-restarts" name="restartCount" type="number" min="0" max="10" value="${s.restartCount}" required></div><div><label for="schedule-restart-delay">Restart interval (minutes)</label><input id="schedule-restart-delay" name="restartMinutes" type="number" min="1" max="1440" value="${s.restartMinutes}" required></div></div></details>
-      <p class="muted">Runs with Bmail closed while you are signed in. Windows power/network policies may delay a run. Overlapping runs are ignored.</p>
-      <div id="schedule-status" class="schedule-status"></div><p id="schedule-error" role="alert"></p>
-    </section></div><div class="dialog-actions"><button type="button" data-action="schedule-remove" ${dashboard.scheduleInstalled ? '' : 'disabled'}>Remove schedule</button><button type="button" data-action="schedule-read" ${!dashboard.credentialReady ? 'disabled' : ''}>Refresh status</button><button type="submit" class="primary" ${dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>Save schedule</button></div></form></section>`;
+  const ticks = Array.from({ length: 60 }, (_, minute) => `<line class="tick${minute % 5 ? '' : ' hour'}" x1="50" y1="5" x2="50" y2="${minute % 5 ? 8 : 11}" transform="rotate(${minute * 6} 50 50)"/>`).join('');
+  return `<section id="scheduler-panel" class="scheduler-page" aria-labelledby="scheduler-title"><form id="scheduler-form">
+    <header class="scheduler-head"><h2 id="scheduler-title">Backup scheduler</h2>${checkbox('enabled', 'Enable scheduled backups')}</header>
+    <div class="scheduler-layout">
+      <aside class="scheduler-calendar-pane">
+        <div class="scheduler-clock"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="face" cx="50" cy="50" r="47"/>${ticks}<line id="clock-hour" x1="50" y1="53" x2="50" y2="27"/><line id="clock-minute" x1="50" y1="55" x2="50" y2="14"/><line id="clock-second" x1="50" y1="59" x2="50" y2="10"/><circle class="hub" cx="50" cy="50" r="2.4"/></svg>
+          <div class="scheduler-clock-text"><time id="scheduler-clock" aria-label="Current local time"></time><small id="scheduler-zone"></small></div></div>
+        <div id="schedule-calendar"></div>
+      </aside>
+      <section class="scheduler-fields" aria-label="Schedule settings">
+        <section class="scheduler-card" aria-labelledby="schedule-when-title">
+          <h3 id="schedule-when-title">When</h3>
+          <div class="date-fields">
+            <div><label for="schedule-frequency">Repeat</label><select id="schedule-frequency" name="frequency">${[['once','One time'],['daily','Daily'],['weekly','Weekly'],['monthly','Monthly'],['interval','Every few hours']].map(([value,label]) => `<option value="${value}" ${s.frequency === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
+            <div data-recurrence="daily weekly"><label for="schedule-every">Repeat every (days / weeks)</label><input id="schedule-every" name="every" type="number" min="1" max="365" value="${s.every}" required></div>
+            <div data-recurrence="monthly"><label for="schedule-month-day">Day of month</label><select id="schedule-month-day" name="monthDay">${[...Array.from({ length: 31 }, (_, index) => String(index + 1)), 'last'].map(day => `<option value="${day}" ${s.monthDay === day ? 'selected' : ''}>${day === 'last' ? 'Last day' : day}</option>`).join('')}</select></div>
+            <div data-recurrence="interval"><label for="schedule-hours">Interval (hours)</label><input id="schedule-hours" name="intervalHours" type="number" min="1" max="24" value="${s.intervalHours}" required></div>
+            <div><label for="schedule-date">Start date</label><input id="schedule-date" name="startDate" type="date" value="${escape(s.startDate)}" required></div>
+            <div><label for="schedule-time">Start time</label><input id="schedule-time" name="time" type="time" value="${escape(s.time)}" required></div>
+            <div><label for="schedule-end">End date (optional)</label><input id="schedule-end" name="endDate" type="date" value="${escape(s.endDate || '')}"></div>
+          </div>
+          <fieldset data-recurrence="weekly" class="schedule-weekdays"><legend>Days of week</legend>${weekdayNames.map((day, index) => `<label><input type="checkbox" name="weekdays" value="${index}" ${s.weekdays.includes(index) ? 'checked' : ''}><span>${day.slice(0, 3)}</span></label>`).join('')}</fieldset>
+        </section>
+        <section class="scheduler-card scheduled-folder-selection" aria-labelledby="schedule-folders-title">
+          <div class="backup-card-head"><h3 id="schedule-folders-title">Folders</h3><button type="button" class="ghost" data-action="schedule-load-folders" ${dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>Refresh folders</button></div>
+          <label class="folder-choice"><input id="schedule-all-folders" type="checkbox" name="scheduleAllFolders" ${s.allFolders ? 'checked' : ''}>All mailbox folders</label>
+          <div id="schedule-folder-options">${scheduleFolderChoices(dashboard, s.folders, s.allFolders, escape)}</div>
+        </section>
+        <div id="schedule-status" class="scheduler-card schedule-status" aria-live="polite"></div>
+        <p id="schedule-error" role="alert"></p>
+      </section>
+    </div>
+    <div class="dialog-actions"><button type="button" data-action="schedule-remove" ${dashboard.scheduleInstalled ? '' : 'disabled'}>Remove schedule</button><button type="button" data-action="schedule-read" ${!dashboard.credentialReady ? 'disabled' : ''}>Refresh status</button><button type="submit" class="primary" ${dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>Save schedule</button></div>
+  </form></section>`;
+}
+
+const taskResults = { 0: 'Succeeded', 1: 'Failed', 267008: 'Ready', 267009: 'Running', 267010: 'Disabled', 267011: 'Not run yet', 267012: 'No more runs', 267014: 'Stopped', 267015: 'Not started' };
+
+export function taskResult(code) {
+  if (code == null || code === '') return '';
+  const number = Number(code);
+  return taskResults[number] || (Number.isFinite(number) ? `Error 0x${(number >>> 0).toString(16).toUpperCase()}` : String(code));
+}
+
+export function scheduleStatusMarkup(status, format, escape) {
+  if (!status) return '<strong>Windows: Not loaded</strong>';
+  const result = taskResult(status.lastResult);
+  const row = (label, value) => `<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`;
+  return `<strong>Windows: ${escape(status.state)}</strong><dl>${row('Next run', status.nextRunTime ? format(status.nextRunTime) : 'None')}${row('Last run', status.lastRunTime ? format(status.lastRunTime) : 'Never')}${status.lastRunTime && result ? row('Result', result) : ''}</dl>`;
+}
+
+const powerCheck = (s, name, label, disabled) => `<label class="folder-choice"><input type="checkbox" name="${name}" ${s[name] ? 'checked' : ''} ${disabled}>${label}</label>`;
+
+export function schedulePreferencesMarkup(status, { saving = false, error = '', backupRunning = false } = {}, escape = value => value) {
+  const ready = Boolean(status?.installed && status.settings);
+  const s = { ...defaultSchedule(), ...status?.settings };
+  const disabled = !ready || saving || backupRunning ? 'disabled' : '';
+  return `<form id="schedule-preferences-form" class="schedule-preferences" aria-labelledby="schedule-preferences-title">
+    <h3 id="schedule-preferences-title">Scheduled backups</h3>
+    ${ready ? '' : '<p class="muted">Save a schedule in Scheduler first.</p>'}
+    <div class="schedule-preferences-checks">
+      ${powerCheck(s, 'startWhenAvailable', 'Run a missed backup when available', disabled)}${powerCheck(s, 'networkRequired', 'Require a network connection', disabled)}
+      ${powerCheck(s, 'wakeComputer', 'Wake the computer to run', disabled)}${powerCheck(s, 'allowOnBattery', 'Allow starting on battery power', disabled)}
+      ${powerCheck(s, 'stopOnBattery', 'Stop if the computer switches to battery', disabled)}
+    </div>
+    <div class="schedule-preferences-numbers">
+      <div><label for="schedule-duration">Maximum run time (hours)</label><input id="schedule-duration" name="maxRunHours" type="number" min="1" max="168" value="${s.maxRunHours}" required ${disabled}></div>
+      <div><label for="schedule-restarts">Restart attempts</label><input id="schedule-restarts" name="restartCount" type="number" min="0" max="10" value="${s.restartCount}" required ${disabled}></div>
+      <div><label for="schedule-restart-delay">Restart interval (minutes)</label><input id="schedule-restart-delay" name="restartMinutes" type="number" min="1" max="1440" value="${s.restartMinutes}" required ${disabled}></div>
+    </div>
+    ${error ? `<p class="preferences-error" role="alert">${escape(error)}</p>` : ''}
+    <button type="submit" class="primary" ${disabled}>${saving ? 'Saving…' : 'Save scheduled backup settings'}</button>
+  </form>`;
 }
 
 export function updateClock(now = new Date()) {
