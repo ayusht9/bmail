@@ -1117,3 +1117,43 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 
 .mailbox-settings-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .mailbox-settings-heading h2 { margin:0; }
+
+/* Backup tab: summary header, preset switcher, and a two-column card grid. */
+.backup-options-page { max-width: 1180px; padding: 16px 20px 0; }
+.backup-form-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.backup-form-head h2 { margin: 0; }
+.backup-summary { margin: 4px 0 0; color: var(--muted); }
+.backup-options-page .backup-presets { display: inline-flex; gap: 0; margin: 0; flex-wrap: nowrap; }
+.backup-presets button { border-radius: 0; margin-left: -1px; white-space: nowrap; }
+.backup-presets button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.backup-presets button:last-child { border-radius: 0 4px 4px 0; }
+.backup-presets button[aria-pressed="true"] { position: relative; z-index: 1; background: var(--selected); border-color: var(--accent); color: var(--link); font-weight: 600; }
+.backup-grid { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "folders range range" "folders filters after"; gap: 12px; align-items: start; }
+.backup-card { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); padding: 12px 14px; min-width: 0; }
+.backup-card h3, .backup-options-page .backup-card h3 { font-size: calc(13px * var(--app-font-scale, 1)); margin: 0 0 4px; }
+.backup-card-folders { grid-area: folders; display: flex; flex-direction: column; align-self: stretch; }
+.backup-grid > .backup-card:nth-child(2) { grid-area: range; }
+.backup-grid > .backup-card:nth-child(3) { grid-area: filters; }
+.backup-grid > .backup-card:nth-child(4) { grid-area: after; }
+.backup-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.backup-card-head button { min-height: 26px; padding: 3px 8px; font-size: calc(12px * var(--app-font-scale, 1)); }
+.backup-card-folders #folder-options { flex: 1; display: flex; min-height: 0; }
+.backup-card-folders #folder-choices { flex: 1; margin: 4px 0 0; max-height: 360px; min-height: 140px; border-radius: 4px; background: var(--sidebar); }
+.backup-card-folders #folder-choices:disabled { opacity: .6; }
+.backup-card .folder-choice { margin: 6px 0; font-size: calc(12px * var(--app-font-scale, 1)); }
+.backup-card .date-fields { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0 12px; }
+.backup-card label:not(.folder-choice) { margin: 10px 0 4px; }
+.backup-checks { display: flex; flex-direction: column; gap: 0; margin-top: 4px; }
+.backup-card textarea { width: 100%; resize: vertical; border: 1px solid var(--input-border); border-radius: 3px; padding: 7px 8px; font: inherit; background: var(--surface); color: inherit; }
+.backup-card-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.backup-card-foot [role="status"] { font-size: calc(12px * var(--app-font-scale, 1)); color: var(--muted); }
+.backup-options-page .advanced-backup { margin-top: 12px; padding: 0; border-top: 1px solid var(--line); }
+.backup-options-page .advanced-backup summary { padding: 10px 14px; cursor: pointer; }
+.backup-options-page .advanced-backup[open] summary { border-bottom: 1px solid var(--line); }
+.backup-options-page .connection-fields { padding: 0 14px 12px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.backup-options-page #selection-error { color: var(--error); margin: 8px 0 0; }
+.backup-options-page #selection-error:empty { display: none; }
+.backup-options-page .dialog-actions { margin-top: 12px; }
+@media (max-width: 1050px) { .backup-grid { grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); grid-template-areas: "folders range" "folders filters" "folders after"; } }
+@media (max-width: 720px) { .backup-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "folders" "range" "filters" "after"; } .backup-card-folders #folder-choices { max-height: 220px; } }
+.backup-card .filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
