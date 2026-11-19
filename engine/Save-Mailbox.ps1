@@ -18,6 +18,14 @@ try {
     if ($request.host -notmatch '^[a-zA-Z0-9.-]+$') { $failureCode = 'INVALID_HOST'; throw 'Invalid host' }
     if ([int]$request.port -lt 1 -or [int]$request.port -gt 65535) { $failureCode = 'INVALID_PORT'; throw 'Invalid port' }
     if ($request.host -ieq 'imap.gmail.com' -and [int]$request.port -ne 993) { $failureCode = 'GMAIL_REQUIRES_993'; throw 'Invalid Gmail port' }
+    $outlook = $request.host -iin @('outlook.office365.com', 'imap-mail.outlook.com')
+    if ($outlook) {
+        $failureCode = 'OUTLOOK_AUTH_FAILED'
+        if ([int]$request.port -ne 993) { throw 'Outlook requires TLS port 993' }
+        . (Join-Path $PSScriptRoot 'Outlook-Auth.ps1')
+        $tokens = Wait-OutlookToken -ClientId $request.client_id -DeviceCode $request.device_code -Interval $request.device_interval
+        $request.password = @{ clientId = $request.client_id; refreshToken = $tokens.refresh_token } | ConvertTo-Json -Compress
+    }
     if ([string]::IsNullOrWhiteSpace($request.password)) { $failureCode = 'PASSWORD_REQUIRED'; throw 'Password required' }
     $failureCode = 'DATA_DIRECTORY_UNAVAILABLE'
     New-Item -ItemType Directory -Path $dataDirectory -Force | Out-Null
@@ -44,6 +52,7 @@ try {
     $failureCode = 'CONFIG_SAVE_FAILED'
     $config = if ($existing) { $existing } else { @{ user = $request.user; host = $request.host; port = [int]$request.port; backupDirectory = 'backups' } }
     $config.port = [int]$request.port
+    $config | Add-Member -NotePropertyName authType -NotePropertyValue $(if ($outlook) { "oauth2" } else { "basic" }) -Force
     $config | ConvertTo-Json | Set-Content -LiteralPath ($configPath + '.pending') -Encoding UTF8
     Move-Item -LiteralPath ($configPath + '.pending') -Destination $configPath -Force
     $request = $null

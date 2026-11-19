@@ -281,6 +281,28 @@ struct MailboxSettings {
     host: String,
     port: u16,
     password: String,
+    #[serde(default)]
+    client_id: String,
+    #[serde(default)]
+    device_code: String,
+    #[serde(default)]
+    device_interval: u64,
+}
+
+#[tauri::command]
+async fn begin_outlook_sign_in(app: tauri::AppHandle, client_id: String) -> Result<Value, String> {
+    if client_id.len() != 36 || !client_id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+        return Err("Enter the Microsoft application (client) ID from your app registration.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let output = hidden_command("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(engine_root(&app)?.join("Start-OutlookSignIn.ps1"))
+            .arg("-ClientId").arg(client_id).output()
+            .map_err(|_| "Could not start Microsoft sign-in".to_owned())?;
+        if !output.status.success() { return Err("Microsoft sign-in could not start. Check your connection and app registration.".into()); }
+        serde_json::from_slice(&output.stdout).map_err(|_| "Invalid Microsoft sign-in response".into())
+    }).await.map_err(|_| "Microsoft sign-in was interrupted".to_owned())?
 }
 
 #[tauri::command]
@@ -311,6 +333,7 @@ async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings, pro
         if !output.status.success() || write_result.is_err() {
             let status = serde_json::from_slice::<Value>(&output.stdout).unwrap_or(Value::Null);
             let message = match status.get("errorCode").and_then(Value::as_str).unwrap_or("") {
+                "OUTLOOK_AUTH_FAILED" => "Microsoft sign-in failed or expired. Start sign-in again and use the same mailbox address. Check that IMAP is enabled and your organization permits access.",
                 "INVALID_EMAIL" => "Enter your complete email address.",
                 "INVALID_HOST" => "Enter a valid IMAP server hostname.",
                 "INVALID_PORT" => "Enter a TLS port between 1 and 65535.",
@@ -590,7 +613,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(desktop::handle_window_event)
-        .invoke_handler(tauri::generate_handler![mail::get_mail_page, desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
+        .invoke_handler(tauri::generate_handler![mail::get_mail_page, desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, begin_outlook_sign_in, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }

@@ -5,7 +5,24 @@ $ErrorActionPreference = 'Stop'
 try {
     if ($Scheduled -and $Mode -ne 'Backup') { throw 'Scheduled mode is only available for backups.' }
     $credential = Import-Clixml -LiteralPath (Join-Path $dataDirectory '.private\zoho-credential.xml')
-    $payload = @{ user = $credential.UserName; password = $credential.GetNetworkCredential().Password } | ConvertTo-Json -Compress
+    $config = Get-Content -LiteralPath (Join-Path $dataDirectory 'backup-config.json') -Raw | ConvertFrom-Json
+    if ($config.authType -eq 'oauth2') {
+        . (Join-Path $PSScriptRoot 'Outlook-Auth.ps1')
+        $saved = $credential.GetNetworkCredential().Password | ConvertFrom-Json
+        $tokens = Request-OutlookToken @{ client_id = $saved.clientId; grant_type = 'refresh_token'; refresh_token = $saved.refreshToken; scope = $outlookScope }
+        if (!$tokens.access_token) { throw 'Microsoft sign-in expired. Sign in again in mailbox settings.' }
+        if ($tokens.refresh_token) {
+            $saved.refreshToken = $tokens.refresh_token
+            $secret = ConvertTo-SecureString ($saved | ConvertTo-Json -Compress) -AsPlainText -Force
+            $updated = New-Object System.Management.Automation.PSCredential($credential.UserName, $secret)
+            $credentialPath = Join-Path $dataDirectory '.private\zoho-credential.xml'
+            $updated | Export-Clixml -LiteralPath ($credentialPath + '.pending')
+            Move-Item -LiteralPath ($credentialPath + '.pending') -Destination $credentialPath -Force
+        }
+        $payload = @{ user = $credential.UserName; accessToken = $tokens.access_token } | ConvertTo-Json -Compress
+    } else {
+        $payload = @{ user = $credential.UserName; password = $credential.GetNetworkCredential().Password } | ConvertTo-Json -Compress
+    }
     $logDirectory = Join-Path $dataDirectory 'logs'
     New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
     $logPath = Join-Path $logDirectory ((Get-Date -Format 'yyyy-MM-dd_HH-mm-ss') + '.log')
