@@ -17,10 +17,28 @@ use std::sync::Mutex;
 #[derive(Default)]
 struct BackupProcess(Mutex<Option<std::process::Child>>);
 
+// Queried directly: launching tasklist.exe cost tens of milliseconds per
+// dashboard poll while a backup lock or progress file exists.
+#[cfg(windows)]
 fn process_running(pid: u64) -> bool {
-    hidden_command("tasklist.exe").args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
-        .output().is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(&format!("\"{pid}\"")))
+    use windows_sys::Win32::{Foundation::{CloseHandle, GetLastError, ERROR_ACCESS_DENIED, STILL_ACTIVE},
+        System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION}};
+    let Ok(pid) = u32::try_from(pid) else { return false; };
+    if pid == 0 { return false; }
+    // SAFETY: the handle is checked before use and closed exactly once.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        // A process Windows will not let us inspect still exists.
+        if handle.is_null() { return GetLastError() == ERROR_ACCESS_DENIED; }
+        let mut code = 0_u32;
+        let running = GetExitCodeProcess(handle, &mut code) != 0 && code == STILL_ACTIVE as u32;
+        CloseHandle(handle);
+        running
+    }
 }
+
+#[cfg(not(windows))]
+fn process_running(_pid: u64) -> bool { false }
 
 fn backup_root(root: &Path) -> PathBuf {
     let config = read_json(&root.join("backup-config.json")).unwrap_or(Value::Null);
@@ -678,6 +696,7 @@ pub fn run() {
         .manage(notifications::MailBadgeState::default())
         .manage(taskbar::TaskbarIconState::default())
         .manage(cache::DashboardCache::default())
+        .manage(mail::MailReader::default())
         .setup(|app| {
             initialize_profiles(app.handle()).map_err(std::io::Error::other)?;
             desktop::initialize(app.handle())?;
@@ -701,6 +720,18 @@ mod dashboard_tests {
             "client_id": "11111111-2222-3333-4444-555555555555"
         })).unwrap();
         assert!(settings.client_id.is_empty());
+    }
+
+    #[test]
+    fn process_checks_find_live_processes_and_reject_missing_ones() {
+        assert!(process_running(u64::from(std::process::id())));
+        let mut child = hidden_command("cmd.exe").args(["/c", "exit"]).spawn().unwrap();
+        let pid = u64::from(child.id());
+        child.wait().unwrap();
+        drop(child);
+        assert!(!process_running(pid));
+        assert!(!process_running(0));
+        assert!(!process_running(u64::MAX));
     }
 
     #[test]
