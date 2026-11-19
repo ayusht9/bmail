@@ -161,21 +161,33 @@ function reloadMailList(focusSelector) {
 function loadSavedMail(focusSelector) {
   const context = JSON.stringify([dashboard.user, selectedFolder]);
   if (mailPageContext !== context) { mailPage = 1; mailPageContext = context; }
-  const key = JSON.stringify([context, dashboard.localStats, dashboard.mailIndexStamp, mailPage, mailPageSize, mailSort]);
+  const view = JSON.stringify([context, mailPage, mailPageSize, mailSort]);
+  const key = JSON.stringify([view, dashboard.localStats, dashboard.mailIndexStamp]);
   if (savedMail.key === key) return;
-  const request = { key, rows: [], loading: true, error: '', page: mailPage, pageSize: mailPageSize, pages: savedMail.pages || 1, total: savedMail.total || 0 };
+  // When only the saved data changed (for example while a backup runs), keep
+  // showing the current rows and refresh quietly. Skip overlapping background
+  // refreshes; the next dashboard poll requests the latest data again.
+  const background = savedMail.view === view && !savedMail.error;
+  if (background && (savedMail.refreshing || savedMail.loading)) return;
+  const request = background
+    ? { ...savedMail, key, refreshing: true }
+    : { key, view, rows: [], loading: true, error: '', page: mailPage, pageSize: mailPageSize, pages: savedMail.pages || 1, total: savedMail.total || 0 };
   savedMail = request;
   invoke('get_mail_page', { folder: selectedFolder || null, page: mailPage, pageSize: mailPageSize, sortColumn: mailSort.column, sortDirection: mailSort.direction })
     .then(result => {
       Object.assign(request, result);
       if (savedMail === request) mailPage = result.page;
     })
-    .catch(error => { request.error = userMessage(error); })
+    .catch(error => { if (!background) request.error = userMessage(error); else request.key = ''; })
     .finally(() => {
       request.loading = false;
+      request.refreshing = false;
       if (savedMail === request && activeTab === 'mailbox' && !document.querySelector('dialog[open]')) {
         const pane = document.querySelector('.mail-pane');
+        const scroll = pane?.querySelector('.table-wrap')?.scrollTop || 0;
         if (pane) pane.outerHTML = mailList();
+        const table = document.querySelector('.mail-pane .table-wrap');
+        if (table && background) table.scrollTop = scroll;
         if (focusSelector) document.querySelector(focusSelector)?.focus({ preventScroll: true });
       }
     });
