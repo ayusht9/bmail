@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { syncRuntimeSources } = require('./runtime-sources.cjs');
 
 if (process.platform !== 'win32') throw new Error('Build the Windows installer on Windows.');
 const root = path.resolve(__dirname, '..');
@@ -9,14 +10,15 @@ if (target && !target.startsWith(`${process.arch === 'x64' ? 'x86_64' : process.
   throw new Error('Use a Node runtime matching the Windows build architecture.');
 }
 const output = path.join(root, 'src-tauri/resources/engine');
-fs.mkdirSync(output, { recursive: true });
-// Explicit allowlist: never package credentials, backups, logs, or local config.
-for (const file of [
-  'read-mail.cjs', 'backup.cjs', 'backup-history.cjs', 'Notify-Backup.ps1', 'backup-stats.cjs', 'backup-progress.cjs', 'backup-selection.cjs', 'backup-control.cjs', 'Run-Backup.ps1', 'Invoke-BackupProcess.ps1', 'Backup-Paths.ps1',
-  'Install-BackupSchedule.ps1', 'Backup-Schedule.ps1', 'Manage-BackupSchedule.ps1', 'Setup-Backup.ps1', 'Protect-CredentialDirectory.ps1',
-  'Save-Mailbox.ps1',
-  'backup-config.example.json', 'package.json', 'package-lock.json',
-]) fs.copyFileSync(path.join(root, file), path.join(output, file));
+if (process.argv.includes('--sources-only')) {
+  if (!fs.existsSync(path.join(output, 'node.exe'))) throw new Error('Prepare the full runtime once before refreshing its sources.');
+  console.log(`Refreshed ${syncRuntimeSources(root, output)} backup runtime source files.`);
+  process.exit(0);
+}
+syncRuntimeSources(root, output);
+for (const file of ['LICENSE', 'package.json', 'package-lock.json']) {
+  fs.copyFileSync(path.join(root, file), path.join(output, file));
+}
 fs.copyFileSync(process.execPath, path.join(output, 'node.exe'));
 const nodeLicense = process.env.NODE_LICENSE_PATH || path.join(path.dirname(process.execPath), 'LICENSE');
 if (!fs.existsSync(nodeLicense)) throw new Error('Set NODE_LICENSE_PATH to the LICENSE file from your Node.js distribution.');

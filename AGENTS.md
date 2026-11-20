@@ -8,3 +8,10 @@
   generated runtime resources.
 - Run `npm.cmd test` and `npm.cmd run build` for applicable changes. For Windows
   packaging changes, also build the Tauri installer when prerequisites permit.
+
+# Beta versions and builds
+
+- Keep the major version at `0` during beta.
+- Increment the patch number for bug fixes (for example, `0.4.0` to `0.4.1`). Increment the middle number for minor releases.
+- Keep the Tauri and Cargo package/lock versions in sync.
+- Do not generate the app or installer until the user requests it. Source validation and tests may run independently.
