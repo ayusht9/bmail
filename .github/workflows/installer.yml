@@ -6,6 +6,8 @@ permissions:
 jobs:
   installer:
     runs-on: windows-latest
+    env:
+      BMAIL_DROPBOX_APP_KEY: ${{ secrets.BMAIL_DROPBOX_APP_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

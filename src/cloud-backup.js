@@ -1,4 +1,30 @@
 import messages from '../engine/drive-messages.json';
+import dropboxMessages from '../engine/dropbox-messages.json';
+
+export function dropboxBackupView(status = {}, { pending = '', backupRunning = false, ready = true, error = '' } = {}, escape, date) {
+  status ||= {};
+  const working = Boolean(pending || ['connecting', 'uploading'].includes(status.stage));
+  const uploading = pending === 'sync' || status.stage === 'uploading';
+  const label = working ? uploading ? 'Uploading' : pending === 'automatic' ? 'Saving' : pending === 'disconnect' ? 'Disconnecting' : 'Connecting' : status.connected ? 'Connected' : 'Not connected';
+  const disabled = working || !ready ? 'disabled' : '';
+  const total = Number(status.totalFiles) || 0, completed = Number(status.completedFiles) || 0, bytes = Number(status.totalBytes) || 0;
+  const percent = Math.min(100, Math.round(bytes ? (Number(status.uploadedBytes) || 0) / bytes * 100 : total ? completed / total * 100 : 0));
+  const problem = error || dropboxMessages[status.errorCode];
+  return `<section id="dropbox-backup-settings" class="preference-section cloud-backup" aria-labelledby="dropbox-backup-title">
+    <header><h3 id="dropbox-backup-title">Dropbox backup</h3><span class="cloud-connection" role="status">${label}</span></header>
+    <div class="cloud-provider"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18H6a4 4 0 0 1-.6-8A6.5 6.5 0 0 1 18 9a4.5 4.5 0 0 1 0 9h-1M12 21V12m-3 3 3-3 3 3"/></svg><div><strong>Dropbox</strong><p>Keep verified copies of your saved emails in Bmail’s Dropbox app folder.</p></div></div>
+    ${!ready ? '<p>Set up a mailbox to connect Dropbox.</p>' : !status.configured ? '<p>Dropbox sign-in is not configured in this build.</p>' : ''}
+    ${status.connected && status.dropboxAccount ? `<p>Connected as ${escape(status.dropboxAccount)}</p>` : ''}
+    ${status.folderName ? `<p>Destination: <strong>${escape(status.folderName)}</strong> inside Bmail’s app folder</p>` : ''}
+    ${status.lastSyncedAt ? `<p>Last Dropbox backup: ${escape(date(status.lastSyncedAt))}</p>` : ''}
+    ${pending === 'connect' || status.stage === 'connecting' ? '<p role="status">Complete Dropbox sign-in in your browser, then return to Bmail. Sign-in expires after three minutes.</p>' : ''}
+    ${uploading ? `<div class="cloud-progress" aria-live="polite"><progress max="100" ${total ? `value="${percent}"` : ''} aria-label="Dropbox backup progress"></progress><p>${total ? `${completed} of ${total} files checked` : 'Verifying saved emails…'}</p></div>` : ''}
+    ${problem ? `<p class="preferences-error" role="alert">${escape(problem)}</p>` : ''}
+    <div class="cloud-actions">${status.connected ? `<button type="button" class="primary" data-action="dropbox-sync" ${disabled || backupRunning ? 'disabled' : ''}>${uploading ? 'Uploading to Dropbox…' : 'Back up to Dropbox now'}</button><button type="button" data-action="dropbox-disconnect" ${disabled}>Disconnect Dropbox</button>` : `<button type="button" class="primary" data-action="dropbox-connect" ${disabled || !status.configured ? 'disabled' : ''}>Connect Dropbox</button>`}</div>
+    <label class="cloud-automatic"><input type="checkbox" id="dropbox-automatic" ${status.automatic ? 'checked' : ''} ${disabled || !status.connected ? 'disabled' : ''}>Upload to Dropbox after successful local backups</label>
+    <p class="cloud-note">Uploads email files and their manifest. Disconnecting keeps both your local and Dropbox backups.</p>
+  </section>`;
+}
 
 export function cloudBackupView(status = {}, { pending = '', backupRunning = false, ready = true, error = '' } = {}, escape, date) {
   status ||= {};

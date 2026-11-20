@@ -11,6 +11,7 @@ live progress, pause/resume/stop controls, and full-mailbox coverage statistics.
 - [Code map and contribution guide](CONTRIBUTING.md)
 - [Backup engine documentation](docs/BACKUP-README.md)
 - [Google Drive cloud backup and setup](docs/GOOGLE-DRIVE.md)
+- [Dropbox cloud backup and public app registration](docs/DROPBOX.md)
 - [Backup statistics](docs/STATS.md)
 - [Scheduler, advanced preferences, notifications and history](docs/SCHEDULER.md)
 
