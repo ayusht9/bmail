@@ -15,7 +15,7 @@ import { createDashboardPoller } from './polling.js';
 import { createNavigation } from './navigation.js';
 import { preferencesView } from './preferences.js';
 import { createRenderGuard } from './render-guard.js';
-import { cloudBackupView } from './cloud-backup.js';
+import { cloudBackupView, dropboxBackupView } from './cloud-backup.js';
 import { createUniversalSearch } from './universal-search.js';
 import { createNotificationCenter } from './notification-center.js';
 import { setAppearance } from './appearance.js';
@@ -47,34 +47,43 @@ let schedulePreferencesError = '';
 const cloudOperations = new Map();
 const cloudErrors = new Map();
 
-function cloudMarkup() {
-  return cloudBackupView(dashboard.cloudDrive, { pending: cloudOperations.get(dashboard.user), backupRunning: dashboard.backupRunning,
-    ready: dashboard.user.includes('@'), error: cloudErrors.get(dashboard.user) }, escapeHtml, formatDate);
+const cloudKey = provider => `${dashboard.user}:${provider}`;
+function cloudMarkup(provider = 'drive') {
+  const view = provider === 'dropbox' ? dropboxBackupView : cloudBackupView;
+  const status = provider === 'dropbox' ? dashboard.cloudDropbox : dashboard.cloudDrive;
+  return view(status, { pending: cloudOperations.get(cloudKey(provider)), backupRunning: dashboard.backupRunning,
+    ready: dashboard.user.includes('@'), error: cloudErrors.get(cloudKey(provider)) }, escapeHtml, formatDate);
 }
 
 function updateCloudBackup() {
-  const panel = document.querySelector('#cloud-backup-settings');
-  if (!panel || activeTab !== 'preferences') return;
-  const signature = JSON.stringify([dashboard.cloudDrive, cloudOperations.get(dashboard.user), cloudErrors.get(dashboard.user), dashboard.backupRunning]);
-  if (panel.dataset.signature === signature || renderGuard.defer()) return;
-  const focus = panel.contains(document.activeElement) ? document.activeElement.id : '';
-  panel.outerHTML = cloudMarkup();
-  document.querySelector('#cloud-backup-settings').dataset.signature = signature;
-  if (focus) document.getElementById(focus)?.focus({ preventScroll: true });
+  if (activeTab !== 'preferences') return;
+  for (const provider of ['dropbox', 'drive']) {
+    const id = provider === 'dropbox' ? 'dropbox-backup-settings' : 'cloud-backup-settings';
+    const panel = document.getElementById(id);
+    if (!panel) continue;
+    const status = provider === 'dropbox' ? dashboard.cloudDropbox : dashboard.cloudDrive;
+    const signature = JSON.stringify([status, cloudOperations.get(cloudKey(provider)), cloudErrors.get(cloudKey(provider)), dashboard.backupRunning]);
+    if (panel.dataset.signature === signature || renderGuard.defer()) continue;
+    const focus = panel.contains(document.activeElement) ? document.activeElement.id : '';
+    panel.outerHTML = cloudMarkup(provider);
+    document.getElementById(id).dataset.signature = signature;
+    if (focus) document.getElementById(focus)?.focus({ preventScroll: true });
+  }
 }
 
-async function cloudOperation(action, value) {
+async function cloudOperation(action, value, provider = 'drive') {
   if (action === 'preferences') { await selectTab('preferences'); document.querySelector('#cloud-backup-settings')?.scrollIntoView({ block: 'center' }); return; }
   if (action === 'guide') { await invoke('cloud_drive', { action }).catch(error => toast(userMessage(error), true)); return; }
   const account = dashboard.user;
-  if (cloudOperations.has(account) || action === 'sync' && dashboard.backupRunning) return;
-  cloudOperations.set(account, action); cloudErrors.delete(account); updateCloudBackup(); dashboardPoller?.reschedule();
+  const key = cloudKey(provider);
+  if (cloudOperations.has(key) || action === 'sync' && dashboard.backupRunning) return;
+  cloudOperations.set(key, action); cloudErrors.delete(key); updateCloudBackup(); dashboardPoller?.reschedule();
   try {
-    const result = await invoke('cloud_drive', { action, value: value ?? null });
-    if (dashboard.user === account) dashboard.cloudDrive = result;
-  } catch (error) { cloudErrors.set(account, userMessage(error)); }
+    const result = await invoke(provider === 'dropbox' ? 'cloud_dropbox' : 'cloud_drive', { action, value: value ?? null });
+    if (dashboard.user === account) dashboard[provider === 'dropbox' ? 'cloudDropbox' : 'cloudDrive'] = result;
+  } catch (error) { cloudErrors.set(key, userMessage(error)); }
   finally {
-    cloudOperations.delete(account);
+    cloudOperations.delete(key);
     if (dashboard.user === account) updateCloudBackup();
     dashboardPoller?.reschedule();
   }
@@ -433,7 +442,7 @@ function render() {
   if (activeTab === 'mailbox') loadSavedMail();
   const folderKey = JSON.stringify([dashboard.user, selectedFolder]);
   if (messageFolderKey !== folderKey) { messageFolderKey = folderKey; selectedMessage = { file: '', message: null, loading: false, error: '' }; }
-  const workspaceBody = activeTab === 'preferences' ? preferencesView(themePreference(), desktopPreferences, preferencesSaving, preferencesError, escapeHtml, schedulePreferencesMarkup(dashboard.schedule, { saving: schedulePreferencesSaving, error: schedulePreferencesError, backupRunning: dashboard.backupRunning }, escapeHtml), cloudMarkup())
+  const workspaceBody = activeTab === 'preferences' ? preferencesView(themePreference(), desktopPreferences, preferencesSaving, preferencesError, escapeHtml, schedulePreferencesMarkup(dashboard.schedule, { saving: schedulePreferencesSaving, error: schedulePreferencesError, backupRunning: dashboard.backupRunning }, escapeHtml), cloudMarkup('dropbox') + cloudMarkup())
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions"><button type="button" data-action="cloud-preferences">Cloud backup</button>${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button data-action="open-backups">Open backup folder</button></div><div class="backup-progress-slot">${progressPanel(currentProgressDashboard(), escapeHtml, formatNumber)}</div>${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
     : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
@@ -645,6 +654,7 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (action.startsWith('dropbox-')) { void cloudOperation(action.slice(8), undefined, 'dropbox'); return; }
   if (action.startsWith('cloud-')) { void cloudOperation(action.slice(6)); return; }
   if (action === 'backup-message') { void backupOpenedMessage(); return; }
   if (action === 'universal-search') { universalSearch.open(); return; }
@@ -751,6 +761,7 @@ app.addEventListener('input', event => {
 });
 
 app.addEventListener('change', event => {
+  if (event.target.id === 'dropbox-automatic') { void cloudOperation('automatic', event.target.checked, 'dropbox'); return; }
   if (event.target.id === 'cloud-automatic') { void cloudOperation('automatic', event.target.checked); return; }
   if (event.target.id === 'mail-page-size') {
     mailPageSize = Number(event.target.value);
@@ -1128,7 +1139,7 @@ installGlobalErrorHandlers(window, message => {
 
 dashboardPoller = createDashboardPoller({
   refresh: () => refresh(true),
-  state: () => ({ hidden: document.hidden && !desktopPreferences?.closeToTray, busy, controlBusy, backupRunning: Boolean(dashboard?.backupRunning || cloudOperations.size || ['connecting', 'uploading'].includes(dashboard?.cloudDrive?.stage)) }),
+  state: () => ({ hidden: document.hidden && !desktopPreferences?.closeToTray, busy, controlBusy, backupRunning: Boolean(dashboard?.backupRunning || cloudOperations.size || ['connecting', 'uploading'].includes(dashboard?.cloudDrive?.stage) || ['connecting', 'uploading'].includes(dashboard?.cloudDropbox?.stage)) }),
 });
 document.addEventListener('visibilitychange', () => dashboardPoller.wake());
 window.addEventListener('pagehide', () => dashboardPoller.stop());

@@ -63,6 +63,7 @@ struct LogSummary { name: String, tail: String }
 #[serde(rename_all = "camelCase")]
 struct Dashboard {
     cloud_drive: Value,
+    cloud_dropbox: Value,
     user: String,
     host: String,
     port: u16,
@@ -272,6 +273,7 @@ fn read_dashboard(app: &tauri::AppHandle, force: bool) -> Result<Dashboard, Stri
     let history_error = if history_path.exists() && history.is_none() { Some("Backup history could not be read. The existing file was kept.".to_owned()) } else { None };
     Ok(Dashboard {
         cloud_drive: cloud::status(&root),
+        cloud_dropbox: cloud::dropbox_status(&root),
         mail_index_stamp: fs::metadata(backup_root.join("mail-index.json")).ok().and_then(|meta| meta.modified().ok().and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok()).map(|time| format!("{}:{}", meta.len(), time.as_nanos()))),
         host: config.get("host").and_then(Value::as_str).unwrap_or("imap.gmail.com").to_owned(),
         port: config.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).unwrap_or(993),
@@ -420,7 +422,7 @@ async fn remove_mailbox(app: tauri::AppHandle, email: String) -> Result<String, 
         let base = base_root(&app)?;
         if !account_list(&base).contains(&email) { return Err("That mailbox has already been removed.".into()); }
         let root = profile::checked_account_folder(&base, &email).map_err(|e| e.to_string())?;
-        if cloud::running(&root) { return Err("Finish the Google Drive operation before removing this mailbox.".into()); }
+        if cloud::running(&root) { return Err("Finish the cloud backup operation before removing this mailbox.".into()); }
         if fs::canonicalize(data_root(&app)?).map_err(|e| e.to_string())? != root {
             return Err("Select that mailbox before removing it.".into());
         }
@@ -718,7 +720,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(desktop::handle_window_event)
-        .invoke_handler(tauri::generate_handler![cloud::cloud_drive, mail::get_mail_page, desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, get_microsoft_sign_in_status, begin_outlook_sign_in, configure_mailbox, switch_account, remove_mailbox, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
+        .invoke_handler(tauri::generate_handler![cloud::cloud_dropbox, cloud::cloud_drive, mail::get_mail_page, desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, get_microsoft_sign_in_status, begin_outlook_sign_in, configure_mailbox, switch_account, remove_mailbox, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }
