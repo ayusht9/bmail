@@ -4,9 +4,12 @@ $ErrorActionPreference = 'Stop'
 try {
     $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
     $directory = Join-Path $dataDirectory '.private'
-    $file = Join-Path $directory 'google-drive.dat'
+    $provider = if ($request.provider) { $request.provider } else { 'google-drive' }
+    if ($provider -notin @('google-drive', 'dropbox')) { throw 'Unknown provider' }
+    $file = Join-Path $directory ($provider + '.dat')
     switch ($request.action) {
         'import' {
+            if ($provider -ne 'google-drive') { throw 'Import is not supported' }
             Add-Type -AssemblyName System.Windows.Forms
             $picker = New-Object System.Windows.Forms.OpenFileDialog
             $picker.Title = 'Choose Google OAuth desktop client JSON'
@@ -29,6 +32,10 @@ try {
             $secure = ConvertTo-SecureString ($request.value | ConvertTo-Json -Depth 8 -Compress) -AsPlainText -Force
             $secure | ConvertFrom-SecureString | Set-Content -LiteralPath ($file + '.pending') -Encoding UTF8
             Move-Item -LiteralPath ($file + '.pending') -Destination $file -Force
+            [Console]::Out.Write('null')
+        }
+        'delete' {
+            if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force }
             [Console]::Out.Write('null')
         }
         default { throw 'Invalid credential operation' }

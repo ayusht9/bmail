@@ -32,6 +32,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
       window.scheduleState = { installed: false, enabled: false, state: 'Not installed', settings: null, checkedAt: new Date().toISOString() };
       window.data = { user: 'fixture@example.com', accounts: ['fixture@example.com'], host: 'imap.gmail.com', port: 993,
         credentialReady: true, hasManifest: true, backupRunning: false, backupOptions: { folders: ['INBOX'] }, folderCount: 1,
+        cloudDropbox: { configured: true, connected: false, automatic: false, stage: 'disconnected' },
         localStats: { messages: 3, bytes: 1048576, folders: [{ name: 'INBOX', messages: 3 }], recent: [
           { file: 'emails/INBOX/one.eml', subject: '<img src=x onerror="window.injected=true">', sender: 'fixture@example.com', folder: 'INBOX', sentAt: '2020-01-02T00:00:00Z', bytes: 2048, backedUp: true, backedUpAt: '2026-11-15T00:00:00Z' },
         ] }, lastRun: { success: true, downloaded: 1, finishedAt: '2026-11-15T00:00:00Z' } };
@@ -48,6 +49,18 @@ const { paginateMail } = require('../engine/mail-page.cjs');
 
         if (name === 'open_directory') { window.openedDirectory = args.kind; return; }
         if (name === 'get_desktop_preferences') return { closeToTray: sessionStorage.getItem('fixture-close-to-tray') !== 'false' };
+        if (name === 'cloud_dropbox') {
+          const state = window.data.cloudDropbox;
+          if (args.action === 'connect') Object.assign(state, { connected: true, stage: 'ready', dropboxAccount: 'dropbox-fixture@example.test', errorCode: '' });
+          if (args.action === 'automatic') state.automatic = args.value;
+          if (args.action === 'sync') {
+            Object.assign(state, { stage: 'uploading', totalFiles: 2, completedFiles: 0, errorCode: '' });
+            if (window.holdDropbox) await new Promise(resolve => { window.finishDropbox = resolve; });
+            Object.assign(state, window.failDropbox ? { stage: 'error', errorCode: 'quota' } : { stage: 'ready', completedFiles: 2, lastSyncedAt: new Date().toISOString() });
+          }
+          if (args.action === 'disconnect') Object.assign(state, { connected: false, automatic: false, stage: 'disconnected', errorCode: '', dropboxAccount: '' });
+          return { ...state };
+        }
         if (name === 'cloud_drive') {
           const state = window.data.cloudDrive ||= {};
           if (args.action === 'setup') Object.assign(state, { configured: true, connected: false, stage: 'disconnected', errorCode: '' });
@@ -928,6 +941,26 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await cloud.getByRole('button', { name: 'Disconnect', exact: true }).click();
     await cloud.getByRole('button', { name: 'Connect Google Drive', exact: true }).waitFor();
     assert.equal(await cloud.getByLabel('Upload to Drive after successful local backups', { exact: true }).isChecked(), false);
+    const dropbox = page.locator('#dropbox-backup-settings');
+    await dropbox.getByRole('button', { name: 'Connect Dropbox', exact: true }).click();
+    await dropbox.getByText('Connected as dropbox-fixture@example.test', { exact: true }).waitFor();
+    await dropbox.getByLabel('Upload to Dropbox after successful local backups', { exact: true }).check();
+    await page.waitForFunction(() => window.data.cloudDropbox.automatic === true);
+    assert.equal(await page.evaluate(() => window.data.cloudDrive.automatic), false, 'Provider preferences are independent');
+    await page.evaluate(() => { window.holdDropbox = true; });
+    await dropbox.getByRole('button', { name: 'Back up to Dropbox now', exact: true }).click();
+    await page.waitForFunction(() => Boolean(window.finishDropbox));
+    await dropbox.getByRole('progressbar', { name: 'Dropbox backup progress', exact: true }).waitFor();
+    await go('Home'); await go('Preferences');
+    assert.equal(await dropbox.getByRole('button', { name: 'Uploading to Dropbox…', exact: true }).isDisabled(), true);
+    await page.evaluate(() => { window.holdDropbox = false; window.finishDropbox(); });
+    await dropbox.getByText(/Last Dropbox backup:/).waitFor();
+    await page.evaluate(() => { window.failDropbox = true; });
+    await dropbox.getByRole('button', { name: 'Back up to Dropbox now', exact: true }).click();
+    await dropbox.getByRole('alert').filter({ hasText: 'Dropbox storage or request limits were reached.' }).waitFor();
+    await dropbox.getByRole('button', { name: 'Disconnect Dropbox', exact: true }).click();
+    await dropbox.getByRole('button', { name: 'Connect Dropbox', exact: true }).waitFor();
+    assert.equal(await dropbox.getByLabel('Upload to Dropbox after successful local backups', { exact: true }).isChecked(), false);
     await go('Home');
     const activityBounds = await tab('Activity').boundingBox();
     await page.mouse.move(activityBounds.x + activityBounds.width / 2, activityBounds.y + activityBounds.height / 2);
