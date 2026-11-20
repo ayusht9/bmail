@@ -214,6 +214,8 @@ function loadSavedMail(focusSelector) {
 
 let operationFailure = null;
 let busyAction = '';
+// Mailbox checks serialize server work, but do not prevent browsing local views.
+function navigationBusy() { return busy && !['stats', 'new-mail'].includes(busyAction); }
 let activeTab = 'mailbox';
 const navigation = createNavigation({ tab: 'mailbox', folder: '', filter: '' });
 let navigationAccount;
@@ -227,7 +229,7 @@ function resetNavigation() {
 }
 
 async function moveNavigation(direction) {
-  if (busy || !navigation.canMove(direction)) return;
+  if (navigationBusy() || !navigation.canMove(direction)) return;
   captureTabDraft();
   const destination = navigation.move(direction, folderFilter);
   selectedFolder = destination.folder;
@@ -420,9 +422,9 @@ function render() {
       </aside>
       <main class="mail-workspace">
         <div class="workspace-navigation"><nav class="navigation-buttons" aria-label="Navigation history">
-          <button type="button" data-action="navigate-back" aria-label="Back" title="Back" ${busy || !navigation.canMove(-1) ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m9 4-6 6 6 6M3 10h14"/></svg></button>
-          <button type="button" data-action="navigate-forward" aria-label="Forward" title="Forward" ${busy || !navigation.canMove(1) ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m11 4 6 6-6 6M3 10h14"/></svg></button>
-        </nav>${workspaceTabStrip(activeTab, busy)}<button type="button" class="universal-search-trigger" data-action="universal-search" aria-label="Search Bmail" title="Search Bmail (Ctrl+K)" aria-haspopup="dialog"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg></button></div>
+          <button type="button" data-action="navigate-back" aria-label="Back" title="Back" ${navigationBusy() || !navigation.canMove(-1) ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m9 4-6 6 6 6M3 10h14"/></svg></button>
+          <button type="button" data-action="navigate-forward" aria-label="Forward" title="Forward" ${navigationBusy() || !navigation.canMove(1) ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m11 4 6 6-6 6M3 10h14"/></svg></button>
+        </nav>${workspaceTabStrip(activeTab, navigationBusy())}<button type="button" class="universal-search-trigger" data-action="universal-search" aria-label="Search Bmail" title="Search Bmail (Ctrl+K)" aria-haspopup="dialog"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg></button></div>
         ${!['mailbox', 'activity'].includes(activeTab) ? `<section class="run-banner ${state}" aria-label="Backup status">${backupBannerContents()}</section>` : ''}
         ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'new-mail' ? 'New mail check failed' : operationFailure.action === 'stats' ? 'Mailbox sync failed' : 'Action failed'}</strong><p>${escapeHtml(userMessage(operationFailure.message))}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
         ${!dashboard.credentialReady ? `<aside class="notice">Connect an account to start backing up. <button data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
@@ -622,7 +624,7 @@ app.addEventListener('click', event => {
     document.querySelector('#selection-error').textContent = '';
     return;
   }
-  if (busy && ['select-tab','select-folder','selection','schedule','reset-selection','schedule-day','schedule-prev','schedule-next'].includes(action)) return;
+  if ((action === 'select-tab' ? navigationBusy() : busy) && ['select-tab','select-folder','selection','schedule','reset-selection','schedule-day','schedule-prev','schedule-next'].includes(action)) return;
   if (action === 'retry-preferences') { void loadDesktopPreferences(); return; }
   if (action === 'navigate-back' || action === 'navigate-forward') { moveNavigation(action === 'navigate-back' ? -1 : 1); return; }
   if (action === 'new-mail') { startupMailChecked.delete(dashboard.user); newMailRetryAfter.delete(dashboard.user); checkStartupMail(); return; }
@@ -892,7 +894,7 @@ function initializeSchedulerView() {
 }
 
 async function selectTab(tab, remember = true) {
-  if (busy || !workspaceTabs.some(([key]) => key === tab)) return;
+  if (navigationBusy() || !workspaceTabs.some(([key]) => key === tab)) return;
   captureTabDraft();
   if (remember) rememberNavigation(tab);
   activeTab = tab;
@@ -977,7 +979,7 @@ async function scheduleOperation(action, loadSettings = false) {
 app.addEventListener('keydown', event => {
   const tab = event.target.closest('[role="tab"]');
   if (tab && ['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) {
-    if (busy) return;
+    if (navigationBusy()) return;
     event.preventDefault();
     const tabs = [...document.querySelectorAll('[role="tab"]')];
     const index = tabs.indexOf(tab);
