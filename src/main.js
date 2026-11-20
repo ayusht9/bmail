@@ -2,7 +2,7 @@ import { outlookHost, outlookAddressHost, providerForHost } from './mail-provide
 import { loadingIndicator } from './loading.js';
 import './style.css';
 import logoUrl from '../src-tauri/icons/app.svg';
-import { paneDivider, installPaneResizing, paneResizeActive } from './panes.js';
+import { paneDivider, installPaneResizing, paneResizeActive, sidebarToggle, toggleSidebar } from './panes.js';
 import { installColumnResizing, columnResizeActive } from './columns.js';
 import { themePreference, setTheme } from './theme.js';
 import { invoke as nativeInvoke } from '@tauri-apps/api/core';
@@ -362,7 +362,7 @@ function folderStatus() {
 }
 
 function statusBarContents() {
-  return `<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Syncing mailbox...' : 'Working...') : dashboard.backupRunning ? 'Backup active' : ''}</span>${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-summary"><span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span></span>`;
+  return `${sidebarToggle()}<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Syncing mailbox...' : 'Working...') : dashboard.backupRunning ? 'Backup active' : ''}</span>${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-summary"><span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span></span>`;
 }
 
 function updateBackupControls() {
@@ -411,7 +411,18 @@ function updateFolderCounts() {
 function updateStatusBar() {
   if (dashboard) void syncMailBadge(dashboard.user, totalNewMail(mailIndicators()));
   const footer = document.querySelector('.statusbar');
-  if (footer && dashboard) footer.innerHTML = statusBarContents();
+  if (footer && dashboard) {
+    const toggle = footer.querySelector('.sidebar-toggle');
+    if (!toggle) footer.innerHTML = statusBarContents();
+    else {
+      // Status polling must not replace a focused or pressed sidebar toggle.
+      const template = document.createElement('template');
+      template.innerHTML = statusBarContents();
+      template.content.querySelector('.sidebar-toggle')?.remove();
+      for (const child of [...footer.childNodes]) if (child !== toggle) child.remove();
+      footer.append(template.content);
+    }
+  }
   const bell = document.querySelector('.navbar-notifications');
   if (bell) {
     const html = notificationCenter.bell();
@@ -458,14 +469,14 @@ function render() {
       ${windowControls()}
     </header>
     <div class="desktop-layout">
-      <aside class="folder-sidebar" aria-label="Accounts and folders">
-        <div class="account-switcher"><div class="account-heading"><label for="active-account">Account</label><button type="button" class="account-sync" data-action="stats" aria-label="Sync" title="Sync" aria-busy="${busyAction === 'stats'}" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'stats' ? '<span class="spinner" aria-hidden="true"></span>' : '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 7a6 6 0 0 0-10-2L3 8m0-5v5h5M4 13a6 6 0 0 0 10 2l3-3m0 5v-5h-5"/></svg>'}</button><button type="button" class="account-sync" data-action="add-account" aria-label="Add account" title="Add account" ${busy || dashboard.backupRunning ? 'disabled' : ''}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg></button></div><select id="active-account" ${busy || dashboard.backupRunning || !dashboard.accounts?.length ? 'disabled' : ''}>
+      <aside id="folder-sidebar" class="folder-sidebar" aria-label="Accounts and folders">
+        <div class="account-switcher"><button type="button" class="compact-account" data-action="expand-account" aria-label="Choose account" title="Choose account"><svg aria-hidden="true" viewBox="0 0 20 20"><circle cx="10" cy="6" r="3"/><path d="M4 18v-2a6 6 0 0 1 12 0v2"/></svg></button><div class="account-heading"><label for="active-account">Account</label><button type="button" class="account-sync" data-action="stats" aria-label="Sync" title="Sync" aria-busy="${busyAction === 'stats'}" ${busy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'stats' ? '<span class="spinner" aria-hidden="true"></span>' : '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 7a6 6 0 0 0-10-2L3 8m0-5v5h5M4 13a6 6 0 0 0 10 2l3-3m0 5v-5h-5"/></svg>'}</button><button type="button" class="account-sync" data-action="add-account" aria-label="Add account" title="Add account" ${busy || dashboard.backupRunning ? 'disabled' : ''}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg></button></div><select id="active-account" ${busy || dashboard.backupRunning || !dashboard.accounts?.length ? 'disabled' : ''}>
           ${dashboard.accounts?.length ? dashboard.accounts.map(email => `<option value="${escapeHtml(email)}" ${email === dashboard.user ? 'selected' : ''}>${escapeHtml(email)}</option>`).join('') : '<option>No mailbox configured</option>'}</select></div>
-        <div class="sidebar-heading"><h2>Folders</h2></div>
+        <div class="sidebar-heading"><h2>Folders</h2></div><button type="button" class="compact-filter" data-action="expand-folder-filter" aria-label="Filter folders" title="Filter folders"><svg aria-hidden="true" viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg></button>
         <label class="filter-field"><span class="sr-only">Filter folders</span><input id="folder-filter" type="search" placeholder="Filter folders" value="${escapeHtml(folderFilter)}"></label>
-        <nav class="folder-list" aria-label="Mailbox folders"><button class="folder-item ${!selectedFolder ? 'selected' : ''}" data-action="select-folder" data-folder="" aria-pressed="${!selectedFolder}"><span>All folders</span><small>${formatNumber(dashboard.localStats?.messages || 0)}</small></button>
+        <nav class="folder-list" aria-label="Mailbox folders"><button class="folder-item ${!selectedFolder ? 'selected' : ''}" data-action="select-folder" data-folder="" title="All folders" aria-pressed="${!selectedFolder}"><svg aria-hidden="true" viewBox="0 0 20 20"><rect x="2" y="3" width="6" height="6" rx="1"/><rect x="12" y="3" width="6" height="6" rx="1"/><rect x="2" y="13" width="6" height="5" rx="1"/><rect x="12" y="13" width="6" height="5" rx="1"/></svg><span>All folders</span><small>${formatNumber(dashboard.localStats?.messages || 0)}</small></button>
           ${folderNavigation(dashboard, selectedFolder, folderFilter, escapeHtml, formatNumber, mailIndicators()) || `<p class="sidebar-empty">${folderFilter ? 'No matching folders.' : 'Sync your mailbox to load folders.'}</p>`}</nav>
-        <div class="sidebar-tools"><button data-action="setup" ${busy ? 'disabled' : ''}>${dashboard.credentialReady ? 'Account settings' : 'Set up mailbox'}</button>
+        <div class="sidebar-tools"><button data-action="setup" title="Account settings" ${busy ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M8 2h4l1 3 3-1 2 4-2 2 2 2-2 4-3-1-1 3H8l-1-3-3 1-2-4 2-2-2-2 2-4 3 1Z"/><circle cx="10" cy="10" r="3"/></svg><span>${dashboard.credentialReady ? 'Account settings' : 'Set up mailbox'}</span></button>
         </div>
         ${paneDivider('sidebar')}
       </aside>
@@ -655,6 +666,8 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (action === 'toggle-sidebar') { toggleSidebar(app); return; }
+  if (action === 'expand-account' || action === 'expand-folder-filter') { toggleSidebar(app, action === 'expand-account' ? '#active-account' : '#folder-filter'); return; }
   if (action.startsWith('dropbox-')) { void cloudOperation(action.slice(8), undefined, 'dropbox'); return; }
   if (action.startsWith('cloud-')) { void cloudOperation(action.slice(6)); return; }
   if (action === 'backup-message') { void backupOpenedMessage(); return; }
