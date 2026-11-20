@@ -14,6 +14,7 @@ export function sidebarToggle() {
 }
 
 export function toggleSidebar(root, focusTarget) {
+  root.querySelector('.desktop-layout')?.classList.add('sidebar-animate');
   preferences.collapsed = focusTarget ? false : !preferences.collapsed;
   apply(root); save();
   if (focusTarget) root.querySelector(focusTarget)?.focus({ preventScroll: true });
@@ -30,8 +31,10 @@ function apply(root) {
   const layout = root.querySelector('.desktop-layout');
   if (layout) {
     const max = Math.max(160, layout.clientWidth - 440);
-    const width = preferences.collapsed ? railWidth : bound(Number.isFinite(preferences.sidebar) ? preferences.sidebar : defaultSidebar(), 160, max);
+    const width = drag?.kind === 'sidebar' ? bound(drag.width ?? drag.start, railWidth, max)
+      : preferences.collapsed ? railWidth : bound(Number.isFinite(preferences.sidebar) ? preferences.sidebar : defaultSidebar(), 160, max);
     layout.style.setProperty('--sidebar-width', `${width}px`);
+    layout.style.setProperty('--sidebar-label-opacity', bound((width - 100) / 60, 0, 1));
     layout.classList.toggle('sidebar-collapsed', Boolean(preferences.collapsed));
     const divider = layout.querySelector('[data-pane-divider="sidebar"]');
     divider?.setAttribute('aria-valuenow', Math.round(width)); divider?.setAttribute('aria-valuemin', railWidth); divider?.setAttribute('aria-valuemax', max);
@@ -69,9 +72,10 @@ export function installPaneResizing(root) {
     if (!divider || event.button !== 0) return;
     const kind = divider.dataset.paneDivider;
     drag = { kind, id: event.pointerId, x: event.clientX, y: event.clientY,
-      start: Number(divider.getAttribute('aria-valuenow')) };
+      start: kind === 'sidebar' ? root.querySelector('.folder-sidebar').getBoundingClientRect().width : Number(divider.getAttribute('aria-valuenow')) };
     divider.setPointerCapture(event.pointerId);
     document.body.classList.add(kind === 'sidebar' ? 'resizing-sidebar' : 'resizing-mail');
+    apply(root);
     event.preventDefault();
   });
   function resize(kind, value) {
@@ -79,8 +83,12 @@ export function installPaneResizing(root) {
     if (!divider) return;
     const size = bound(value, Number(divider.getAttribute('aria-valuemin')), Number(divider.getAttribute('aria-valuemax')));
     if (kind === 'sidebar') {
-      preferences.collapsed = size <= collapseThreshold;
-      if (!preferences.collapsed) preferences.sidebar = Math.max(160, size);
+      if (drag?.kind === 'sidebar') drag.width = size;
+      else {
+        root.querySelector('.desktop-layout')?.classList.add('sidebar-animate');
+        preferences.collapsed = size <= collapseThreshold;
+        if (!preferences.collapsed) preferences.sidebar = Math.max(160, size);
+      }
     }
     else preferences.mailRatio = size / Math.max(1, root.querySelector('.mailbox-panes').clientHeight - 6);
     apply(root);
@@ -91,7 +99,15 @@ export function installPaneResizing(root) {
   });
   const finish = event => {
     if (!drag || drag.id !== event.pointerId) return;
-    drag = null; save(); document.body.classList.remove('resizing-sidebar', 'resizing-mail');
+    if (drag.kind === 'sidebar') {
+      root.querySelector('.desktop-layout')?.classList.add('sidebar-animate');
+      const width = drag.width ?? drag.start;
+      preferences.collapsed = width <= collapseThreshold;
+      if (!preferences.collapsed) preferences.sidebar = Math.max(160, width);
+    }
+    drag = null;
+    document.body.classList.remove('resizing-sidebar', 'resizing-mail');
+    apply(root); save();
   };
   for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) root.addEventListener(name, finish);
   root.addEventListener('keydown', event => {
@@ -112,7 +128,10 @@ export function installPaneResizing(root) {
     const divider = event.target.closest('[data-pane-divider]');
     if (!divider) return;
     delete preferences[divider.dataset.paneDivider === 'sidebar' ? 'sidebar' : 'mailRatio'];
-    if (divider.dataset.paneDivider === 'sidebar') preferences.collapsed = false;
+    if (divider.dataset.paneDivider === 'sidebar') {
+      preferences.collapsed = false;
+      root.querySelector('.desktop-layout')?.classList.add('sidebar-animate');
+    }
     apply(root); save();
   });
 }
