@@ -753,7 +753,13 @@ const { paginateMail } = require('../engine/mail-page.cjs');
 
     const sidebarDivider = page.getByRole('separator', { name: 'Resize folder sidebar', exact: true });
     const mailDivider = page.getByRole('separator', { name: 'Resize mail list and reading pane', exact: true });
-    const sidebarWidth = () => page.locator('.folder-sidebar').evaluate(el => el.getBoundingClientRect().width);
+    const sidebarWidth = async () => {
+      await page.waitForFunction(() => {
+        const layout = document.querySelector('.desktop-layout');
+        return Math.abs(layout.querySelector('.folder-sidebar').getBoundingClientRect().width - parseFloat(layout.style.getPropertyValue('--sidebar-width'))) < .01;
+      });
+      return page.locator('.folder-sidebar').evaluate(el => el.getBoundingClientRect().width);
+    };
     const listHeight = () => page.locator('.mail-pane').evaluate(el => el.getBoundingClientRect().height);
     const sidebarBefore = await sidebarWidth();
     const sidebarBox = await sidebarDivider.boundingBox();
@@ -803,9 +809,17 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click();
     await page.getByRole('button', { name: 'Filter folders', exact: true }).click();
     assert.equal(await page.locator('#folder-filter').evaluate(el => el === document.activeElement), true);
+    await sidebarWidth();
     const narrowBox = await sidebarDivider.boundingBox();
     await page.mouse.move(narrowBox.x + 3, narrowBox.y + 100); await page.mouse.down();
-    await page.mouse.move(90, narrowBox.y + 100, { steps: 8 }); await page.mouse.up();
+    await page.mouse.move(140, narrowBox.y + 100, { steps: 8 });
+    const intermediate = await sidebarWidth();
+    assert.ok(intermediate > 120 && intermediate < 150, `During a drag the width follows the pointer through the compact range (${intermediate}px)`);
+    const fading = await page.locator('.desktop-layout').evaluate(el => Number(el.style.getPropertyValue('--sidebar-label-opacity')));
+    assert.ok(fading > 0 && fading < 1, 'Labels progressively fade before icons-only mode');
+    await page.mouse.move(90, narrowBox.y + 100, { steps: 8 });
+    assert.ok(await sidebarWidth() > 56, 'The sidebar does not snap away from the pointer during the drag');
+    await page.mouse.up();
     assert.equal(await sidebarWidth(), 56, 'Dragging narrow snaps to icons rather than clipped text');
     await sidebarDivider.focus(); await page.keyboard.press('ArrowRight');
     assert.equal(await sidebarWidth(), 160, 'Keyboard users can expand the rail');

@@ -96,6 +96,7 @@ button.primary:hover:not(:disabled) {
 .folder-sidebar {
   display:flex;
   flex-direction:column;
+  min-width:0;
   background:var(--sidebar);
   border-right:1px solid var(--line);
   min-height:0;
@@ -230,6 +231,28 @@ button.primary:hover:not(:disabled) {
 .sidebar-collapsed .folder-row > .new-mail-badge { position:absolute; top:3px; right:5px; margin:0; width:7px; min-width:7px; height:7px; padding:0; font-size:0; pointer-events:none; }
 .sidebar-collapsed .sidebar-tools { padding:7px 5px; }
 .sidebar-collapsed .sidebar-tools button { justify-content:center; min-height:34px; padding:5px; }
+/* Follow the pointer directly; ease only the final settle and button toggles. */
+@media (prefers-reduced-motion: no-preference) {
+  .desktop-layout.sidebar-animate { transition:grid-template-columns 180ms cubic-bezier(.2,.7,.2,1); }
+  .resizing-sidebar .desktop-layout { transition:none; }
+  .folder-sidebar .folder-item { transition:padding 180ms ease, min-height 180ms ease, background-color 100ms ease; }
+  .folder-sidebar .folder-item span, .folder-sidebar .folder-item small,
+  .folder-sidebar .sidebar-tools span { transition:opacity 120ms ease; }
+  .sidebar-collapsed .compact-account, .sidebar-collapsed .compact-filter { animation:sidebar-control-appear 160ms ease-out; }
+}
+.resizing-sidebar .folder-sidebar { min-width:0; overflow:clip; }
+.resizing-sidebar .folder-sidebar .account-switcher,
+.resizing-sidebar .folder-sidebar .sidebar-heading,
+.resizing-sidebar .folder-sidebar .filter-field { min-width:160px; }
+.resizing-sidebar .folder-sidebar .folder-item span,
+.resizing-sidebar .folder-sidebar .folder-item small,
+.resizing-sidebar .folder-sidebar .sidebar-tools span,
+.resizing-sidebar .folder-sidebar .account-switcher,
+.resizing-sidebar .folder-sidebar .sidebar-heading,
+.resizing-sidebar .folder-sidebar .filter-field { opacity:var(--sidebar-label-opacity, 1); }
+.folder-sidebar .folder-item span, .folder-sidebar .folder-item small,
+.folder-sidebar .sidebar-tools span { opacity:var(--sidebar-label-opacity, 1); }
+@keyframes sidebar-control-appear { from { opacity:0; } to { opacity:1; } }
 .mail-workspace {
   min-width:0;
   overflow:auto;
