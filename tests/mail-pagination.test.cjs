@@ -35,3 +35,21 @@ test('empty and loading pagers expose disabled, named controls', async () => {
   assert.equal((loading.match(/ disabled/g) || []).length, 5);
   assert.match(loading, /26-50 of 123 messages/);
 });
+
+ test('mail search filters the entire index before pagination and matches every term', () => {
+  const rows = Array.from({ length: 80 }, (_, i) => ({ subject: `Invoice ${i}`, sender: i === 79 ? 'Alice@example.com' : 'Bob@example.com', folder: 'Receipts' }));
+  const result = paginateMail(rows, { query: 'ALICE invoice receipts', pageSize: 25 });
+  assert.equal(result.total, 1);
+  assert.equal(result.rows[0].subject, 'Invoice 79');
+  assert.equal(paginateMail(rows, { query: 'missing' }).total, 0);
+  assert.equal(paginateMail(rows, { query: '  ' }).total, 80);
+});
+
+test('universal search filters settings and features and matches descriptive keywords', async () => {
+  const { matchDestinations } = await import('../src/universal-search.js');
+  assert.equal(matchDestinations('dark', 'settings')[0][0], 'Theme');
+  assert.equal(matchDestinations('dark', 'features').length, 0);
+  assert.equal(matchDestinations('automatic', 'features')[0][0], 'Scheduler');
+  assert.equal(matchDestinations('network', 'settings')[0][0], 'Scheduled backup settings');
+  assert.equal(matchDestinations('nothing matches', 'all').length, 0);
+});
