@@ -87,6 +87,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
           if (args.action === 'new-mail') { window.newMailChecks++; if (window.newMailFailure) throw window.newMailFailure; return JSON.stringify({ folders: [{ name: 'INBOX', newMessages: 2 }, { name: 'Sent', newMessages: 0 }, { name: 'New folder', newMessages: 1 }] }); }
           if (args.action === 'folders') { window.data.mailboxes = { folders: ['INBOX','Sent','Archive','Drafts'] }; return 'Folders loaded'; }
           if (args.action !== 'stats') throw 'Unexpected action';
+          if (window.holdCheck) await new Promise(resolve => { window.finishCheck = resolve; });
           if (window.failCheck) throw 'Connection failed';
           window.data.mailboxStatus = { complete: true, checkedAt: '2026-11-15T01:00:00Z', previousCheckedAt: '2026-11-15T00:00:00Z',
             lastFullBackupAt: '2026-11-15T01:00:00Z', savedMessages: 3, totalServerMessages: 3, missingMessages: 0, newMessages: 1,
@@ -891,6 +892,20 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     });
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('bmail-notifications') || '[]').some(item => item.key === 'backup:instant-backup:completed'));
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('bmail-notifications')).every(item => item.key?.startsWith('mail:') || item.key?.startsWith('backup:') && item.key.endsWith(':completed'))), true);
+    await go('Home');
+    await page.evaluate(() => { window.holdCheck = true; });
+    await page.getByRole('button', { name: 'Sync', exact: true }).click();
+    await page.waitForFunction(() => Boolean(window.finishCheck));
+    assert.equal(await tab('Activity').isEnabled(), true, 'A slow mailbox check must not lock navigation');
+    await go('Activity');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Enter');
+    await page.getByRole('tabpanel', { name: 'Preferences', exact: true }).waitFor();
+    await go('Home');
+    await back.click();
+    await page.getByRole('tabpanel', { name: 'Preferences', exact: true }).waitFor();
+    await page.evaluate(() => { window.holdCheck = false; window.finishCheck(); });
+    await page.waitForFunction(() => !document.querySelector('[data-action="stats"]').disabled);
     await page.getByRole('button', { name: 'Search Bmail', exact: true }).click();
     const search = page.getByRole('dialog', { name: 'Search Bmail', exact: true });
     await search.waitFor();
