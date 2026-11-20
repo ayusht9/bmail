@@ -1,0 +1,15 @@
+{
+  "setup": "Import a Google OAuth desktop client JSON file to set up Google Drive.",
+  "client": "Choose a valid Google OAuth desktop client JSON file.",
+  "credentials": "Could not unlock Google Drive credentials. Set up Google Drive again as this Windows user.",
+  "auth": "Google Drive access expired or was denied. Connect Google Drive again.",
+  "timeout": "Google sign-in timed out. Connect Google Drive again.",
+  "network": "Google Drive could not be reached. Check your connection and retry.",
+  "quota": "Google Drive storage or request quota was exceeded. Free space or wait, then retry.",
+  "permission": "Google Drive denied access. Enable the Drive API for your OAuth app and connect again.",
+  "busy": "A Google Drive operation is already running for this mailbox.",
+  "files": "A saved email is missing or damaged. Repair the local backup before uploading.",
+  "checksum": "Google Drive did not confirm the uploaded file checksum. Retry cloud backup.",
+  "archive": "Back up this mailbox locally before uploading to Google Drive.",
+  "failed": "Google Drive backup could not finish. Your local backups are safe. Retry cloud backup."
+}
