@@ -48,6 +48,19 @@ const { paginateMail } = require('../engine/mail-page.cjs');
 
         if (name === 'open_directory') { window.openedDirectory = args.kind; return; }
         if (name === 'get_desktop_preferences') return { closeToTray: sessionStorage.getItem('fixture-close-to-tray') !== 'false' };
+        if (name === 'cloud_drive') {
+          const state = window.data.cloudDrive ||= {};
+          if (args.action === 'setup') Object.assign(state, { configured: true, connected: false, stage: 'disconnected', errorCode: '' });
+          if (args.action === 'connect') Object.assign(state, { connected: true, stage: 'ready', driveAccount: 'drive-fixture@example.test', errorCode: '' });
+          if (args.action === 'automatic') state.automatic = args.value;
+          if (args.action === 'sync') {
+            Object.assign(state, { stage: 'uploading', totalFiles: 2, completedFiles: 0, errorCode: '' });
+            if (window.holdDrive) await new Promise(resolve => { window.finishDrive = resolve; });
+            Object.assign(state, window.failDrive ? { stage: 'error', errorCode: 'quota' } : { stage: 'ready', completedFiles: 2, lastSyncedAt: new Date().toISOString() });
+          }
+          if (args.action === 'disconnect') Object.assign(state, { connected: false, automatic: false, stage: 'disconnected', errorCode: '' });
+          return { ...state };
+        }
         if (name === 'save_desktop_preferences') {
           if (window.failPreferences) throw 'Could not save desktop preferences';
           sessionStorage.setItem('fixture-close-to-tray', String(args.preferences.closeToTray));
@@ -892,6 +905,29 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     });
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('bmail-notifications') || '[]').some(item => item.key === 'backup:instant-backup:completed'));
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('bmail-notifications')).every(item => item.key?.startsWith('mail:') || item.key?.startsWith('backup:') && item.key.endsWith(':completed'))), true);
+    await go('Home');
+    await go('Preferences');
+    const cloud = page.locator('#cloud-backup-settings');
+    await cloud.getByRole('button', { name: 'Set up Google Drive', exact: true }).click();
+    await cloud.getByRole('button', { name: 'Connect Google Drive', exact: true }).click();
+    await cloud.getByText('Connected as drive-fixture@example.test', { exact: true }).waitFor();
+    await cloud.getByLabel('Upload to Drive after successful local backups', { exact: true }).check();
+    await page.waitForFunction(() => window.data.cloudDrive.automatic === true);
+    await page.evaluate(() => { window.holdDrive = true; });
+    await cloud.getByRole('button', { name: 'Back up to Drive now', exact: true }).click();
+    await page.waitForFunction(() => Boolean(window.finishDrive));
+    await cloud.getByRole('progressbar', { name: 'Google Drive backup progress', exact: true }).waitFor();
+    await go('Home'); await go('Preferences');
+    assert.equal(await cloud.getByRole('button', { name: 'Uploading…', exact: true }).isDisabled(), true);
+    await page.evaluate(() => { window.holdDrive = false; window.finishDrive(); });
+    await cloud.getByRole('button', { name: 'Back up to Drive now', exact: true }).waitFor();
+    await cloud.getByText(/Last cloud backup:/).waitFor();
+    await page.evaluate(() => { window.failDrive = true; });
+    await cloud.getByRole('button', { name: 'Back up to Drive now', exact: true }).click();
+    await cloud.getByRole('alert').filter({ hasText: 'Google Drive storage or request quota was exceeded.' }).waitFor();
+    await cloud.getByRole('button', { name: 'Disconnect', exact: true }).click();
+    await cloud.getByRole('button', { name: 'Connect Google Drive', exact: true }).waitFor();
+    assert.equal(await cloud.getByLabel('Upload to Drive after successful local backups', { exact: true }).isChecked(), false);
     await go('Home');
     const activityBounds = await tab('Activity').boundingBox();
     await page.mouse.move(activityBounds.x + activityBounds.width / 2, activityBounds.y + activityBounds.height / 2);

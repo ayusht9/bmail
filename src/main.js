@@ -15,6 +15,7 @@ import { createDashboardPoller } from './polling.js';
 import { createNavigation } from './navigation.js';
 import { preferencesView } from './preferences.js';
 import { createRenderGuard } from './render-guard.js';
+import { cloudBackupView } from './cloud-backup.js';
 import { createUniversalSearch } from './universal-search.js';
 import { createNotificationCenter } from './notification-center.js';
 import { setAppearance } from './appearance.js';
@@ -43,6 +44,41 @@ let preferencesSaving = false;
 let preferencesError = '';
 let schedulePreferencesSaving = false;
 let schedulePreferencesError = '';
+const cloudOperations = new Map();
+const cloudErrors = new Map();
+
+function cloudMarkup() {
+  return cloudBackupView(dashboard.cloudDrive, { pending: cloudOperations.get(dashboard.user), backupRunning: dashboard.backupRunning,
+    ready: dashboard.user.includes('@'), error: cloudErrors.get(dashboard.user) }, escapeHtml, formatDate);
+}
+
+function updateCloudBackup() {
+  const panel = document.querySelector('#cloud-backup-settings');
+  if (!panel || activeTab !== 'preferences') return;
+  const signature = JSON.stringify([dashboard.cloudDrive, cloudOperations.get(dashboard.user), cloudErrors.get(dashboard.user), dashboard.backupRunning]);
+  if (panel.dataset.signature === signature || renderGuard.defer()) return;
+  const focus = panel.contains(document.activeElement) ? document.activeElement.id : '';
+  panel.outerHTML = cloudMarkup();
+  document.querySelector('#cloud-backup-settings').dataset.signature = signature;
+  if (focus) document.getElementById(focus)?.focus({ preventScroll: true });
+}
+
+async function cloudOperation(action, value) {
+  if (action === 'preferences') { await selectTab('preferences'); document.querySelector('#cloud-backup-settings')?.scrollIntoView({ block: 'center' }); return; }
+  if (action === 'guide') { await invoke('cloud_drive', { action }).catch(error => toast(userMessage(error), true)); return; }
+  const account = dashboard.user;
+  if (cloudOperations.has(account) || action === 'sync' && dashboard.backupRunning) return;
+  cloudOperations.set(account, action); cloudErrors.delete(account); updateCloudBackup(); dashboardPoller?.reschedule();
+  try {
+    const result = await invoke('cloud_drive', { action, value: value ?? null });
+    if (dashboard.user === account) dashboard.cloudDrive = result;
+  } catch (error) { cloudErrors.set(account, userMessage(error)); }
+  finally {
+    cloudOperations.delete(account);
+    if (dashboard.user === account) updateCloudBackup();
+    dashboardPoller?.reschedule();
+  }
+}
 
 async function loadDesktopPreferences() {
   try {
@@ -397,9 +433,9 @@ function render() {
   if (activeTab === 'mailbox') loadSavedMail();
   const folderKey = JSON.stringify([dashboard.user, selectedFolder]);
   if (messageFolderKey !== folderKey) { messageFolderKey = folderKey; selectedMessage = { file: '', message: null, loading: false, error: '' }; }
-  const workspaceBody = activeTab === 'preferences' ? preferencesView(themePreference(), desktopPreferences, preferencesSaving, preferencesError, escapeHtml, schedulePreferencesMarkup(dashboard.schedule, { saving: schedulePreferencesSaving, error: schedulePreferencesError, backupRunning: dashboard.backupRunning }, escapeHtml))
+  const workspaceBody = activeTab === 'preferences' ? preferencesView(themePreference(), desktopPreferences, preferencesSaving, preferencesError, escapeHtml, schedulePreferencesMarkup(dashboard.schedule, { saving: schedulePreferencesSaving, error: schedulePreferencesError, backupRunning: dashboard.backupRunning }, escapeHtml), cloudMarkup())
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
-    : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions">${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button data-action="open-backups">Open backup folder</button></div><div class="backup-progress-slot">${progressPanel(currentProgressDashboard(), escapeHtml, formatNumber)}</div>${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
+    : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions"><button type="button" data-action="cloud-preferences">Cloud backup</button>${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button data-action="open-backups">Open backup folder</button></div><div class="backup-progress-slot">${progressPanel(currentProgressDashboard(), escapeHtml, formatNumber)}</div>${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
     : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
     : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readingPane({ ...selectedMessage, backupBusy: busy || dashboard.backupRunning }, escapeHtml, formatDate)}</div>`;
 
@@ -527,6 +563,7 @@ async function refresh(background = false, force = false) {
     updateBackupProgress();
     updateFolderCounts();
     updateStatusBar();
+    updateCloudBackup();
     if (background && (columnResizeActive() || paneResizeActive() || unchanged || ['options','scheduler','preferences'].includes(activeTab) || document.querySelector('dialog[open]'))) return;
     captureTabDraft();
     const focusAction = document.activeElement?.dataset?.action;
@@ -608,6 +645,7 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (action.startsWith('cloud-')) { void cloudOperation(action.slice(6)); return; }
   if (action === 'backup-message') { void backupOpenedMessage(); return; }
   if (action === 'universal-search') { universalSearch.open(); return; }
   if (notificationCenter.handle(action, button)) return;
@@ -713,6 +751,7 @@ app.addEventListener('input', event => {
 });
 
 app.addEventListener('change', event => {
+  if (event.target.id === 'cloud-automatic') { void cloudOperation('automatic', event.target.checked); return; }
   if (event.target.id === 'mail-page-size') {
     mailPageSize = Number(event.target.value);
     mailPage = 1;
@@ -1089,7 +1128,7 @@ installGlobalErrorHandlers(window, message => {
 
 dashboardPoller = createDashboardPoller({
   refresh: () => refresh(true),
-  state: () => ({ hidden: document.hidden && !desktopPreferences?.closeToTray, busy, controlBusy, backupRunning: Boolean(dashboard?.backupRunning) }),
+  state: () => ({ hidden: document.hidden && !desktopPreferences?.closeToTray, busy, controlBusy, backupRunning: Boolean(dashboard?.backupRunning || cloudOperations.size || ['connecting', 'uploading'].includes(dashboard?.cloudDrive?.stage)) }),
 });
 document.addEventListener('visibilitychange', () => dashboardPoller.wake());
 window.addEventListener('pagehide', () => dashboardPoller.stop());

@@ -1,7 +1,7 @@
 ﻿import { userMessage } from './errors.js';
 import { appearancePreference, fontFamilies, fontSizes } from './appearance.js';
 
-export function preferencesView(theme, preferences, saving, error, escape, scheduleSection = '') {
+export function preferencesView(theme, preferences, saving, error, escape, scheduleSection = '', cloudSection = '') {
   const appearance = appearancePreference();
   const options = (items, selected) => items.map(([value, label]) => `<option value="${value}" ${String(selected) === String(value) ? 'selected' : ''}>${label}</option>`).join('');
   const row = (id, label, description, control) => `<div class="preference-row"><div class="preference-copy"><label for="${id}">${label}</label><p id="${id}-hint">${description}</p></div>${control}</div>`;
@@ -25,6 +25,7 @@ export function preferencesView(theme, preferences, saving, error, escape, sched
           <p class="preferences-status" role="status">${saving ? 'Saving preference…' : !preferences && !error ? 'Loading desktop preferences…' : ''}</p>
           ${error ? `<p class="preferences-error" role="alert">${escape(userMessage(error))} <button data-action="retry-preferences">Reload preferences</button></p>` : ''}
         </section>
+        ${cloudSection}
       </div>
       ${scheduleSection ? `<aside class="preferences-backups" aria-label="Scheduled backup preferences">${scheduleSection}</aside>` : ''}
     </div>
