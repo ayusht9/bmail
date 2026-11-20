@@ -26,7 +26,20 @@ test('a refresh during a press is deferred until after the click can run', async
 test('the click handler can redraw without a duplicate pending refresh', async () => {
   const f = await fixture();
   f.send('pointerdown'); f.guard.defer(); f.send('pointerup');
+  f.send('click');
   assert.equal(f.guard.defer(), false);
+  f.flush();
+  assert.equal(f.redraws(), 0);
+});
+
+test('refreshes between pointerup and click cannot disconnect the first click target', async () => {
+  const f = await fixture();
+  f.send('pointerdown');
+  f.send('pointerup');
+  assert.equal(f.guard.defer(), true, 'Even a refresh first arriving after release must wait');
+  assert.equal(f.redraws(), 0);
+  f.send('click');
+  assert.equal(f.guard.defer(), false, 'The click handler can render its destination immediately');
   f.flush();
   assert.equal(f.redraws(), 0);
 });
