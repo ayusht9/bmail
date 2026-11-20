@@ -190,14 +190,16 @@ async function backup(client, root, config, log = console.log, context = {}) {
     if (manifest.user !== config.user || manifest.host !== config.host || manifest.version !== 1)
       throw new Error('Backup identity does not match configuration');
     const selection = normalizeSelection(config.backupOptions);
+    const target = config.backupMessage;
+    if (target && (typeof target.folder !== 'string' || !target.folder.trim() || target.folder.length > 1024 || !Number.isSafeInteger(target.uid) || target.uid < 1 || target.uid > 4294967295 || !/^[1-9]\d*$/.test(target.uidValidity) || Number(target.uidValidity) > 4294967295)) throw new Error('Reload the mailbox before backing up this email.');
     status.selection = selection;
     await client.connect();
     await controls.checkpoint();
     progress.publish({ phase: 'discovering' }, true);
     const available = (await client.list()).filter(folder => !folder.flags.has('\\Noselect'));
     atomicWrite(path.join(root, 'mailboxes.json'), JSON.stringify({ updatedAt: new Date().toISOString(), folders: available.map(f => f.path) }));
-    const folders = available.filter(f => (!selection.folders.length || selection.folders.includes(f.path)) && !selection.advanced.excludedFolders.includes(f.path));
-    if (selection.folders.some(f => !available.some(item => item.path === f))) throw new Error('A selected folder is unavailable. Reload folders and update your selection.');
+    const folders = available.filter(f => target ? f.path === target.folder : (!selection.folders.length || selection.folders.includes(f.path)) && !selection.advanced.excludedFolders.includes(f.path));
+    if ((target ? [target.folder] : selection.folders).some(f => !available.some(item => item.path === f))) throw new Error('A selected folder is unavailable. Reload folders and update your selection.');
     const plan = [];
     let budget = selection.maxMessages == null ? Infinity : Math.max(0, selection.maxMessages - context.downloaded);
     let remainingMessages = 0;
@@ -210,8 +212,10 @@ async function backup(client, root, config, log = console.log, context = {}) {
       try {
         const validity = String(client.mailbox.uidValidity);
         if (!/^\d+$/.test(validity)) throw new Error('Server did not supply UIDVALIDITY');
-        const uids = await client.search(searchForSelection(selection), { uid: true });
+        if (target && validity !== target.uidValidity) throw new Error('Mailbox identity changed. Sync the mailbox before backing up this email.');
+        const uids = await client.search(target ? { uid: String(target.uid) } : searchForSelection(selection), { uid: true });
         if (!Array.isArray(uids)) throw new Error('Unable to enumerate messages');
+        if (target && (uids.length !== 1 || uids[0] !== target.uid)) throw new Error('This email is no longer available on the server. Sync the mailbox.');
         const key = digest(Buffer.from(folder.path, 'utf8')) + '-' + validity;
         const previous = manifest.folders[key]?.messages || {};
         const selected = [];
@@ -402,6 +406,7 @@ async function backupWithRetries(makeClient, root, config, log = console.log, wa
 async function main() {
   const dataDirectory = resolveDataDirectory();
   const config = readJson(path.join(dataDirectory, 'backup-config.json'));
+  if (process.env.BMAIL_BACKUP_MESSAGE) config.backupMessage = JSON.parse(process.env.BMAIL_BACKUP_MESSAGE);
   if (process.argv.includes('--scheduled')) {
     const selected = scheduledSelection(config.backupOptions, readJson(path.join(dataDirectory, 'backup-schedule.json'), null));
     if (!selected) { console.log('Scheduled backup is paused or has been removed.'); return; }

@@ -249,3 +249,36 @@ test('migration preserves bytes, updates manifest, and is repeatable', () => {
     assert.equal(organize(root, manifest), 0);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('single email backup uses the archive policy without changing saved selection or downloading other messages', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-single-'));
+  const source = Buffer.from('From: sender@example.com\r\nDate: Sun, 1 Nov 2026 00:00:00 +0000\r\nSubject: Selected\r\n\r\nOnly this message');
+  const config = { user: 'test@example.com', host: 'imap.example.com', backupOptions: { folders: ['Sent'], advanced: { excludedFolders: ['INBOX'], subject: 'different' } }, backupMessage: { folder: 'INBOX', uid: 42, uidValidity: '1' } };
+  const before = JSON.stringify(config);
+  try {
+    const client = mockMailbox({ INBOX: { 41: source, 42: source }, Sent: { 1: source } }, () => {}, (folder, query) => {
+      assert.equal(folder, 'INBOX'); assert.deepEqual(query, { uid: '42' }); return [42];
+    });
+    assert.equal((await backup(client, root, config, () => {})).downloaded, 1);
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));
+    const folderKey = digest(Buffer.from('INBOX')) + '-1';
+    assert.deepEqual(Object.keys(manifest.folders), [folderKey]);
+    assert.deepEqual(Object.keys(manifest.folders[folderKey].messages), ['42']);
+    const record = manifest.folders[folderKey].messages['42'];
+    assert.equal(record.file, messageLocation('INBOX', folderKey, 42, source).file);
+    assert.deepEqual(fs.readFileSync(path.join(root, record.file)), source);
+    assert.equal(JSON.stringify(config), before);
+    assert.equal((await backup(mockMailbox({ INBOX: { 42: source } }, () => {}, () => [42]), root, config, () => {})).downloaded, 0, 'Repeated clicks reuse a verified saved copy');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('single email backup rejects a changed mailbox generation or a deleted message', async () => {
+  for (const uidValidity of ['2', '1']) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bmail-single-stale-'));
+    try {
+      const client = mockMailbox({ INBOX: {} }, () => assert.fail('Must not fetch stale mail'), () => []);
+      await assert.rejects(backup(client, root, { user: 'test@example.com', host: 'imap.example.com', backupMessage: { folder: 'INBOX', uid: 42, uidValidity } }, () => {}), uidValidity === '2' ? /identity changed/ : /no longer available/);
+      assert.equal(fs.existsSync(path.join(root, 'manifest.json')), false);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  }
+});

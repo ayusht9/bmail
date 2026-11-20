@@ -467,7 +467,12 @@ fn powershell(engine: &Path, data: &Path, script: &str) -> Result<std::process::
 }
 
 #[tauri::command]
-fn start_backup(app: tauri::AppHandle, process: tauri::State<BackupProcess>) -> Result<String, String> {
+fn start_backup(app: tauri::AppHandle, process: tauri::State<BackupProcess>, message: Option<BackupMessage>) -> Result<String, String> {
+    if let Some(target) = &message {
+        if target.folder.trim().is_empty() || target.folder.len() > 1024 || target.uid == 0 || target.uid_validity.parse::<u32>().ok().is_none_or(|v| v == 0) {
+            return Err("Reload the mailbox before backing up this email.".into());
+        }
+    }
     let root = data_root(&app)?;
     let engine = engine_root(&app)?;
     let mut child = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
@@ -478,12 +483,17 @@ fn start_backup(app: tauri::AppHandle, process: tauri::State<BackupProcess>) -> 
         return Err("A backup or verification is already running.".into());
     }
     *child = Some(hidden_command("powershell.exe").current_dir(&root).env("MAIL_VAULT_DATA_DIR", &root)
+        .env("BMAIL_BACKUP_MESSAGE", message.map(|target| serde_json::to_string(&target)).transpose().map_err(|e| e.to_string())?.unwrap_or_default())
         .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
         .arg(engine.join("Run-Backup.ps1")).stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn()
         .map_err(|e| format!("Could not start backup: {e}"))?);
     Ok("Backup started. Progress will appear here.".into())
 }
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BackupMessage { folder: String, uid: u32, uid_validity: String }
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
