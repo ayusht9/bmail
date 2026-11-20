@@ -978,6 +978,15 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     });
     await page.waitForTimeout(150);
     assert.equal(await page.evaluate(() => window.pressedTab.isConnected), true, 'Refreshing while a tab is pressed must preserve the click target');
+      await page.evaluate(() => {
+        // Force a dashboard response into the release/click gap, which a
+        // normal browser mouse.up dispatches too quickly to reproduce reliably.
+        window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1 }));
+        window.data.localStats.bytes++;
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await page.waitForTimeout(100);
+      assert.equal(await page.evaluate(() => window.pressedTab.isConnected), true, 'A refresh after release must still preserve the first click target');
     await page.mouse.up();
     await page.getByRole('tabpanel', { name: 'Activity', exact: true }).waitFor();
     await go('Home');
