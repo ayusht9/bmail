@@ -151,7 +151,28 @@ const { paginateMail } = require('../engine/mail-page.cjs');
       await page.waitForFunction(() => !document.querySelector('.mail-pane[aria-busy="true"]'));
     };
 
+    await page.waitForFunction(() => !document.querySelector('.mail-pane[aria-busy="true"]'));
+    await page.evaluate(() => { window.homeControl = document.querySelector('#tab-mailbox'); window.activityControl = document.querySelector('#tab-activity'); });
+    const homeWidth = await tab('Home').evaluate(el => el.getBoundingClientRect().width);
+    for (let i = 0; i < 4; i++) {
+      await go('Activity');
+      await page.evaluate(() => { window.data.localStats.bytes++; });
+      await refreshLocal();
+      await go('Home');
+      await page.evaluate(() => { window.data.localStats.bytes++; });
+      await refreshLocal();
+      assert.equal(await page.evaluate(() => window.homeControl === document.querySelector('#tab-mailbox') && window.activityControl === document.querySelector('#tab-activity')), true, 'Home and Activity controls survive navigation and dashboard redraws');
+    }
+    assert.equal(await tab('Home').evaluate(el => el.getBoundingClientRect().width), homeWidth, 'Selection does not shift tab widths');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await go('Activity');
+    assert.equal(await page.getByRole('tabpanel', { name: 'Activity', exact: true }).evaluate(el => el.getAnimations().length), 0, 'Reduced motion disables tab transitions');
+    await go('Home');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+
     const sidebar = page.getByRole('navigation', { name: 'Mailbox folders' });
+    // Start the existing history scenarios with a fresh navigation stack.
+    await page.reload();
     await page.waitForFunction(() => document.querySelector('.folder-row[data-folder="INBOX"] .new-mail-badge'));
     assert.equal(await page.evaluate(() => window.newMailChecks), 1);
     assert.equal(await page.locator('.statusbar .new-mail-badge').count(), 0);
