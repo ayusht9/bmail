@@ -88,6 +88,13 @@ archive encryption to the uploaded email files.
 
 ## Validation
 
+The Vite development server refreshes the allowlisted bundled engine sources at
+startup and after engine source edits. If the desktop backend was rebuilt outside
+the normal Tauri development command, run
+`npm.cmd run prepare:runtime -- --sources-only` to repair a stale runtime without
+replacing a Node executable already in use. New production dependencies still
+require a full runtime preparation.
+
 Run `npm.cmd test`, `npm.cmd run build`, and
 `cargo check --manifest-path src-tauri/Cargo.toml --lib`. Tests exercise PKCE,
 callback state/denial/timeouts, interrupted uploads, content hashes, quota and
