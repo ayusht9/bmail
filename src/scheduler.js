@@ -191,7 +191,7 @@ export function schedulePreferencesMarkup(status, { saving = false, error = '', 
   const s = { ...defaultSchedule(), ...status?.settings };
   const disabled = !ready || saving || backupRunning ? 'disabled' : '';
   return `<form id="schedule-preferences-form" class="schedule-preferences" aria-labelledby="schedule-preferences-title">
-    <header><h3 id="schedule-preferences-title">Scheduled backups</h3><p class="schedule-preferences-intro">Control how automatic backups handle power, connectivity, and interruptions.</p></header>
+    <header><h3 id="schedule-preferences-title">Scheduled backups</h3></header>
     ${ready ? '' : '<p class="muted">Save a schedule in Scheduler first.</p>'}
     <fieldset class="schedule-preferences-checks"><legend>Power &amp; connection</legend>
       ${powerCheck(s, 'startWhenAvailable', 'Run a missed backup when available', disabled)}${powerCheck(s, 'networkRequired', 'Require a network connection', disabled)}
