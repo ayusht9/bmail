@@ -14,6 +14,7 @@ import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
 import { createNavigation } from './navigation.js';
 import { preferencesView } from './preferences.js';
+import { createUniversalSearch } from './universal-search.js';
 import { createNotificationCenter } from './notification-center.js';
 import { setAppearance } from './appearance.js';
 import { windowControls, controlWindow, startupHeader } from './window-chrome.js';
@@ -124,8 +125,7 @@ function updateReader() {
   const pane = document.querySelector('.reading-pane');
   if (pane && activeTab === 'mailbox') pane.outerHTML = readingPane(selectedMessage, escapeHtml, formatDate);
 }
-function openMessage(file, id = file) {
-  const row = savedMail.rows.find(message => (message.id || message.file) === id);
+function openMessage(file, id = file, row = savedMail.rows.find(message => (message.id || message.file) === id)) {
   if (row && !row.backedUp) {
     selectedMessage = { id, file: '', unavailable: true, onServer: row.onServer, message: row };
     updateReader();
@@ -405,7 +405,7 @@ function render() {
         <div class="workspace-navigation"><nav class="navigation-buttons" aria-label="Navigation history">
           <button type="button" data-action="navigate-back" aria-label="Back" title="Back" ${busy || !navigation.canMove(-1) ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m9 4-6 6 6 6M3 10h14"/></svg></button>
           <button type="button" data-action="navigate-forward" aria-label="Forward" title="Forward" ${busy || !navigation.canMove(1) ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m11 4 6 6-6 6M3 10h14"/></svg></button>
-        </nav>${workspaceTabStrip(activeTab, busy)}</div>
+        </nav>${workspaceTabStrip(activeTab, busy)}<button type="button" class="universal-search-trigger" data-action="universal-search" aria-label="Search Bmail" title="Search Bmail (Ctrl+K)" aria-haspopup="dialog"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg></button></div>
         ${!['mailbox', 'activity'].includes(activeTab) ? `<section class="run-banner ${state}" aria-label="Backup status">${backupBannerContents()}</section>` : ''}
         ${operationFailure ? `<section class="operation-error" role="alert"><div><strong>${operationFailure.action === 'new-mail' ? 'New mail check failed' : operationFailure.action === 'stats' ? 'Mailbox sync failed' : 'Action failed'}</strong><p>${escapeHtml(userMessage(operationFailure.message))}</p></div><div><button data-action="${escapeHtml(operationFailure.action)}" ${busy ? 'disabled' : ''}>Retry</button><button data-action="dismiss-error">Dismiss</button></div></section>` : ''}
         ${!dashboard.credentialReady ? `<aside class="notice">Connect an account to start backing up. <button data-action="setup" ${busy ? 'disabled' : ''}>Set up mailbox</button></aside>` : ''}
@@ -557,6 +557,20 @@ async function run(action) {
   }
 }
 
+const universalSearch = createUniversalSearch({
+  invoke, escape: escapeHtml, account: () => dashboard?.user, unavailable: () => busy,
+  navigate: async (tab, selector) => {
+    if (tab === 'setup') { captureTabDraft(); document.querySelector('#mailbox-dialog').showModal(); return; }
+    await selectTab(tab);
+    const target = selector && document.querySelector(selector);
+    if (target) { target.scrollIntoView({ block: 'center' }); (target.matches('input, select, button') ? target : target.querySelector('input:not(:disabled), button:not(:disabled)'))?.focus({ preventScroll: true }); }
+  },
+  openMail: async row => {
+    captureTabDraft(); selectedFolder = row.folder || ''; rememberNavigation('mailbox', selectedFolder);
+    activeTab = 'mailbox'; render(); openMessage(row.file, row.id || row.file, row);
+  },
+});
+
 document.addEventListener('contextmenu', event => {
   if (!event.target.closest?.('input, textarea, [contenteditable="true"]')) event.preventDefault();
 });
@@ -565,6 +579,7 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (action === 'universal-search') { universalSearch.open(); return; }
   if (notificationCenter.handle(action, button)) return;
   if (action.startsWith('window-')) { void controlWindow(action).catch(error => toast(userMessage(error), true)); return; }
   if (action === 'backup-preset') {

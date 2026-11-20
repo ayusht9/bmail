@@ -14,6 +14,11 @@ function sortMail(rows, { sortColumn = 'sentAt', sortDirection = 'desc' } = {}) 
 }
 
 function paginateMail(rows, options = {}, presorted = false) {
+  const terms = String(options.query || '').trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length) rows = rows.filter(row => {
+    const text = [row.subject, row.sender, row.folder].join(' ').toLocaleLowerCase();
+    return terms.every(term => text.includes(term));
+  });
   let { page = 1, pageSize = 50 } = options;
   pageSize = [25, 50, 100].includes(Number(pageSize)) ? Number(pageSize) : 50;
   const sorted = presorted ? rows : sortMail(rows, options);
