@@ -56,6 +56,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
         if (name === 'set_mail_badge') { (window.badgeUpdates ||= []).push(args); return; }
         if (name === 'export_mail') { window.exports.push(args); if (window.holdExport) await new Promise(resolve => { window.finishExport = resolve; }); if (window.failExport) throw 'Export failed'; return 'Download saved.'; }
         if (name === 'start_backup') {
+          window.backupMessage = args?.message;
           window.data.backupRunning = true;
           window.data.progress = { runId: 'fixture-backup-controls', state: 'running', phase: 'downloading', totalMessages: 4, processedMessages: 1, plannedDownloads: 4, downloaded: 1 };
           return 'Backup started';
@@ -70,6 +71,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
         }
         if (name === 'get_saved_message') { if (window.failReader) throw 'Saved email is unavailable'; window.lastReadFile = args.file; return { subject: 'Preview subject', from: 'Sender <sender@example.com>', to: 'reader@example.com', date: '2026-11-16T09:00:00Z', html: '<p>Hello from the selected email</p><script>window.previewInjected=true</script><img alt="Remote logo" src="https://tracking.invalid/pixel"><img alt="Embedded logo" src="data:image/png;base64,iVBORw0KGgo="><a href="javascript:alert(1)">link</a>', text: '', attachments: [] }; }
         if (name === 'get_mail_page') return window.fixtureMailPage(window.data.localStats.recent.filter(mail => !args.folder || mail.folder === args.folder), args);
+        if (name === 'get_saved_mail') return window.data.localStats.recent.filter(mail => mail.backedUp && (!args.folder || mail.folder === args.folder));
         if (name === 'get_dashboard') { window.dashboardForces.push(args?.force); return structuredClone(window.data); }
         if (name === 'manage_schedule') {
           if (window.failSchedule) throw 'Windows scheduler unavailable';
@@ -764,7 +766,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.waitForFunction(() => document.querySelectorAll('.mail-table tbody tr').length === 50);
     await page.evaluate(() => {
       window.data.localStats.recent = [
-        { id: 'server-new', file: '', folder: 'INBOX', subject: 'New server mail', sender: 'sender@example.test', isNew: true, onServer: true, backedUp: false },
+        { id: 'aaaaaaaa-1:42', uid: 42, file: '', folder: 'INBOX', subject: 'New server mail', sender: 'sender@example.test', isNew: true, onServer: true, backedUp: false },
         { id: 'server-old', file: '', folder: 'INBOX', subject: 'Existing server mail', sender: 'sender@example.test', isNew: false, onServer: true, backedUp: false },
         { id: 'saved-new', file: 'saved-new.eml', folder: 'INBOX', subject: 'New saved mail', sender: 'sender@example.test', isNew: true, onServer: true, backedUp: true },
       ];
@@ -779,9 +781,24 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     assert.equal(await serverNew.locator('.download-icon').isDisabled(), true);
     await serverNew.locator('.mail-subject').click();
     await page.getByRole('region', { name: 'Email preview' }).getByRole('heading', { name: 'Not backed up', exact: true }).waitFor();
+    const readerBackup = page.getByRole('region', { name: 'Email preview' }).getByRole('button', { name: 'Back up this email', exact: true });
+    assert.equal(await readerBackup.locator('svg[aria-hidden="true"]').count(), 1, 'Unbacked messages show the backup action icon');
+    await readerBackup.click();
+    await page.waitForFunction(() => window.backupMessage?.uid === 42);
+    assert.deepEqual(await page.evaluate(() => window.backupMessage), { folder: 'INBOX', uid: 42, uidValidity: '1' });
+    assert.equal(await page.getByRole('tab', { name: 'Home', exact: true }).getAttribute('aria-selected'), 'true', 'Direct backup keeps the email open');
     assert.equal(await page.locator('.mail-table tbody tr').filter({ hasText: 'Existing server mail' }).locator('.state-new').count(), 0);
     assert.equal(await page.locator('.mail-table tbody tr').filter({ hasText: 'New saved mail' }).locator('.mail-state').count(), 2);
     if (process.env.BMAIL_MAIL_SCREENSHOT) await page.screenshot({ path: process.env.BMAIL_MAIL_SCREENSHOT });
+    await page.evaluate(() => {
+      const mail = window.data.localStats.recent.find(row => row.uid === 42);
+      mail.backedUp = true; mail.file = 'emails/INBOX/selected.eml';
+      window.data.backupRunning = false;
+      window.data.lastRun = { runId: 'selected-mail-backup', success: true, downloaded: 1, finishedAt: new Date().toISOString() };
+      window.data.progress = { state: 'completed' };
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await page.getByRole('region', { name: 'Email preview' }).getByRole('heading', { name: 'Preview subject', exact: true }).waitFor();
     await page.evaluate(() => sessionStorage.setItem('fixture-new-mail-failure', 'NEW_MAIL_CHECK_BUSY'));
     await page.reload();
     await page.waitForFunction(() => window.newMailChecks === 1 && document.querySelector('.status-message')?.textContent === '');
