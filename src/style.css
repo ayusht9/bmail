@@ -1275,3 +1275,6 @@ dialog.universal-search { position: fixed; inset: 0; margin: auto; padding: 0; w
 .search-message { color: var(--muted); margin: 12px 14px; line-height: 1.5; }
 .search-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 12px; }
 .universal-search > footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; border-top: 1px solid var(--line); padding: 12px 22px; color: var(--muted); font-size: calc(11px * var(--app-font-scale, 1)); }
+
+.reader-backup-action { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 7px 12px; }
+.reader-backup-action svg { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }

@@ -118,12 +118,13 @@ let selectedFolder = '';
 let folderFilter = '';
 let savedMail = { key: '', rows: [], loading: false, error: '' };
 let selectedMessage = { file: '', message: null, loading: false, error: '' };
+let pendingMessageBackup = null;
 let messageFolderKey = '';
 
 function mailList() { return savedMailPane(savedMail, selectedFolder, mailSort, escapeHtml, formatDate, selectedMessage.id || selectedMessage.file); }
 function updateReader() {
   const pane = document.querySelector('.reading-pane');
-  if (pane && activeTab === 'mailbox') pane.outerHTML = readingPane(selectedMessage, escapeHtml, formatDate);
+  if (pane && activeTab === 'mailbox') pane.outerHTML = readingPane({ ...selectedMessage, backupBusy: busy || dashboard?.backupRunning }, escapeHtml, formatDate);
 }
 function openMessage(file, id = file, row = savedMail.rows.find(message => (message.id || message.file) === id)) {
   if (row && !row.backedUp) {
@@ -141,6 +142,22 @@ function openMessage(file, id = file, row = savedMail.rows.find(message => (mess
     request.loading = false;
     if (selectedMessage === request) updateReader();
   });
+}
+
+async function backupOpenedMessage() {
+  if (busy || dashboard.backupRunning || !selectedMessage.unavailable) return;
+  const row = selectedMessage.message;
+  const uidValidity = /-(\d+):\d+$/.exec(row.id || '')?.[1];
+  if (!row.folder || !Number.isSafeInteger(row.uid) || row.uid < 1 || !uidValidity) {
+    toast('Sync the mailbox before backing up this email.', true); return;
+  }
+  busy = true; captureTabDraft(); updateReader();
+  pendingMessageBackup = { account: dashboard.user, id: row.id, folder: row.folder };
+  try {
+    await invoke('start_backup', { message: { folder: row.folder, uid: row.uid, uidValidity } });
+    toast('Backing up this email to your configured backup folder.');
+  } catch (error) { pendingMessageBackup = null; toast(userMessage(error), true); }
+  finally { busy = false; await refresh(); updateReader(); }
 }
 
 let mailSort = { column: 'sentAt', direction: 'desc' };
@@ -379,7 +396,7 @@ function render() {
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions">${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button data-action="open-backups">Open backup folder</button></div><div class="backup-progress-slot">${progressPanel(currentProgressDashboard(), escapeHtml, formatNumber)}</div>${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
     : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
-    : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readingPane(selectedMessage, escapeHtml, formatDate)}</div>`;
+    : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readingPane({ ...selectedMessage, backupBusy: busy || dashboard.backupRunning }, escapeHtml, formatDate)}</div>`;
 
 
   app.innerHTML = `
@@ -488,6 +505,13 @@ async function refresh(background = false, force = false) {
     const finishedBackup = dashboard?.user === next.user && !next.backupRunning && (dashboard.backupRunning || Boolean(next.lastRun?.runId && next.lastRun.finishedAt && next.lastRun.runId !== dashboard.lastRun?.runId));
     dashboard = next;
     if (finishedBackup) {
+      const pending = pendingMessageBackup;
+      pendingMessageBackup = null;
+      if (pending?.account === next.user && selectedMessage.id === pending.id) {
+        const rows = await invoke('get_saved_mail', { folder: pending.folder }).catch(() => []);
+        const saved = rows.find(row => row.id === pending.id && row.backedUp);
+        if (saved && dashboard.user === pending.account && selectedMessage.id === pending.id) openMessage(saved.file, saved.id, saved);
+      }
       const run = next.lastRun || {};
       const outcome = ['stopped', 'cancelled'].includes(next.progress?.state) ? next.progress.state : run.outcome || (run.success ? 'completed' : 'failed');
       const message = outcome === 'completed' ? `Backup completed. ${run.downloaded ?? next.progress?.downloaded ?? 0} emails saved.`
@@ -509,7 +533,7 @@ async function refresh(background = false, force = false) {
     const previousMessage = selectedMessage;
     const scrollPositions = [...document.querySelectorAll('.folder-list, .mail-workspace, .inspector, .table-wrap')].map(el => el.scrollTop);
     render();
-    if (previousReader && selectedMessage === previousMessage) document.querySelector('.reading-pane')?.replaceWith(previousReader);
+    if (previousReader && selectedMessage === previousMessage && !selectedMessage.unavailable) document.querySelector('.reading-pane')?.replaceWith(previousReader);
     document.querySelectorAll('.folder-list, .mail-workspace, .inspector, .table-wrap').forEach((el, index) => el.scrollTop = scrollPositions[index] || 0);
     if (filterInput) { document.querySelector('#folder-filter').replaceWith(filterInput); filterInput.focus({ preventScroll: true }); }
     if (focusAction === 'select-folder') [...document.querySelectorAll('[data-action="select-folder"]')].find(el => el.dataset.folder === focusFolder)?.focus({ preventScroll: true });
@@ -579,6 +603,7 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (action === 'backup-message') { void backupOpenedMessage(); return; }
   if (action === 'universal-search') { universalSearch.open(); return; }
   if (notificationCenter.handle(action, button)) return;
   if (action.startsWith('window-')) { void controlWindow(action).catch(error => toast(userMessage(error), true)); return; }
