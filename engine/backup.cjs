@@ -484,6 +484,7 @@ async function main() {
     } catch { console.log('Backup saved. Mailbox coverage could not refresh; use Check mailbox to try again.'); }
     finally { try { client.close(); } finally { release(); } }
   }
+  if (result?.success) await require('./cloud-drive.cjs').syncAfterBackup(dataDirectory);
 }
 if (require.main === module) main().catch(error => {
   console.error('Backup failed. No server emails were deleted.');

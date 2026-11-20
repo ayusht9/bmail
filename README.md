@@ -10,6 +10,7 @@ live progress, pause/resume/stop controls, and full-mailbox coverage statistics.
 - [Windows setup and development](docs/WINDOWS.md)
 - [Code map and contribution guide](CONTRIBUTING.md)
 - [Backup engine documentation](docs/BACKUP-README.md)
+- [Google Drive cloud backup and setup](docs/GOOGLE-DRIVE.md)
 - [Backup statistics](docs/STATS.md)
 - [Scheduler, advanced preferences, notifications and history](docs/SCHEDULER.md)
 

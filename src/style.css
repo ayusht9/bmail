@@ -1278,3 +1278,16 @@ dialog.universal-search { position: fixed; inset: 0; margin: auto; padding: 0; w
 
 .reader-backup-action { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 7px 12px; }
 .reader-backup-action svg { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+.cloud-provider { display: flex; align-items: center; gap: 12px; padding-top: 18px; }
+.cloud-provider svg { width: 30px; height: 30px; flex-shrink: 0; fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.cloud-provider p { margin: 3px 0 0; }
+.cloud-backup p { font-size: calc(12px * var(--app-font-scale, 1)); }
+.cloud-connection { color: var(--muted); font-size: calc(12px * var(--app-font-scale, 1)); }
+.cloud-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.cloud-actions button { min-height: 36px; }
+.preferences-page .cloud-automatic { display: flex; align-items: flex-start; gap: 8px; font-weight: 400; margin: 16px 0 8px; }
+.cloud-automatic input { margin-top: 3px; accent-color: var(--accent); }
+.cloud-note { margin-bottom: 0; }
+.cloud-progress progress { width: 100%; accent-color: var(--accent); }
+.cloud-progress p { margin: 5px 0; }
