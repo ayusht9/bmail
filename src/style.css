@@ -1212,22 +1212,18 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 
 /* Preferences: reading controls beside a dedicated backup settings panel. */
 .preferences-page { max-width: 1320px; margin: 0 auto; padding: 28px clamp(20px, 3vw, 44px) 40px; }
-.preferences-header { padding-bottom: 24px; border-bottom: 1px solid var(--line); margin-bottom: 28px; }
+.preferences-header { padding-bottom: 16px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }
 .preferences-page .preferences-header h2 { margin: 0 0 6px; font-size: calc(24px * var(--app-font-scale, 1)); font-weight: 600; letter-spacing: -.5px; }
-.preferences-header p { margin: 0; }
 .preferences-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, 1fr); gap: 32px; align-items: start; }
-.preferences-general, .preference-copy { min-width: 0; }
+.preferences-general { min-width: 0; }
 .preference-section + .preference-section { margin-top: 28px; }
 .preference-section > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .preferences-page .preference-section h3, .preferences-page .schedule-preferences h3 { margin: 0; font-size: calc(15px * var(--app-font-scale, 1)); font-weight: 600; }
-.preference-save-note { color: var(--muted); font-size: calc(11px * var(--app-font-scale, 1)); }
-.preference-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 46%); gap: 18px; align-items: center; padding: 16px 0; }
+.preference-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 52%); gap: 18px; align-items: center; padding: 10px 0; }
 .preference-row + .preference-row { border-top: 1px solid var(--line); }
-.preferences-page .preference-copy label { margin: 0 0 4px; font-weight: 600; }
-.preference-copy p { margin: 0; font-size: calc(12px * var(--app-font-scale, 1)); }
+.preferences-page .preference-row > label { margin: 0; font-weight: 400; }
 .preferences-page .preference-row select { width: 100%; max-width: 100%; min-width: 0; min-height: 36px; border-radius: 5px; padding: 7px 9px; text-overflow: ellipsis; }
 .preferences-backups { background: var(--sidebar); border: 1px solid var(--line); border-radius: 8px; padding: 22px; min-width: 0; }
-.schedule-preferences-intro { margin: 8px 0 20px; font-size: calc(12px * var(--app-font-scale, 1)); }
 .preferences-page .schedule-preferences fieldset { min-width: 0; padding: 0; margin: 20px 0 0; border: 0; }
 .schedule-preferences legend { padding: 0; margin-bottom: 8px; font-weight: 600; font-size: calc(12px * var(--app-font-scale, 1)); }
 .preferences-page .schedule-preferences label.folder-choice { gap: 9px; margin: 0; padding: 8px 0; align-items: flex-start; line-height: 1.5; }
@@ -1279,15 +1275,24 @@ dialog.universal-search { position: fixed; inset: 0; margin: auto; padding: 0; w
 .reader-backup-action { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 7px 12px; }
 .reader-backup-action svg { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
-.cloud-provider { display: flex; align-items: center; gap: 12px; padding-top: 18px; }
-.cloud-provider svg { width: 30px; height: 30px; flex-shrink: 0; fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.cloud-provider p { margin: 3px 0 0; }
+.cloud-providers { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 14px; padding-top: 16px; }
+.cloud-backup { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.cloud-provider { display: flex; align-items: center; gap: 10px; }
+.cloud-provider img { width: 32px; height: 32px; object-fit: contain; flex-shrink: 0; }
+.preferences-page .cloud-provider h4 { flex: 1; min-width: 0; margin: 0; font-size: calc(14px * var(--app-font-scale, 1)); font-weight: 600; }
 .cloud-backup p { font-size: calc(12px * var(--app-font-scale, 1)); }
-.cloud-connection { color: var(--muted); font-size: calc(12px * var(--app-font-scale, 1)); }
-.cloud-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
-.cloud-actions button { min-height: 36px; }
-.preferences-page .cloud-automatic { display: flex; align-items: flex-start; gap: 8px; font-weight: 400; margin: 16px 0 8px; }
+.cloud-connection { color: var(--muted); font-size: calc(11px * var(--app-font-scale, 1)); white-space: nowrap; }
+.cloud-account { margin: 10px 0; overflow-wrap: anywhere; }
+.cloud-details { margin: 10px 0; font-size: calc(12px * var(--app-font-scale, 1)); }
+.cloud-details > div { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.cloud-details dt { color: var(--muted); }
+.cloud-details dd { margin: 0; }
+.cloud-folder { margin-top: 10px; font-size: calc(12px * var(--app-font-scale, 1)); }
+.cloud-folder summary { cursor: pointer; color: var(--muted); }
+.cloud-folder p { margin-bottom: 0; overflow-wrap: anywhere; }
+.cloud-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 12px; }
+.cloud-actions button { min-height: 34px; max-width: 100%; }
+.preferences-page .cloud-automatic { display: flex; align-items: flex-start; gap: 8px; font-weight: 400; margin: 0; font-size: calc(12px * var(--app-font-scale, 1)); }
 .cloud-automatic input { margin-top: 3px; accent-color: var(--accent); }
-.cloud-note { margin-bottom: 0; }
 .cloud-progress progress { width: 100%; accent-color: var(--accent); }
 .cloud-progress p { margin: 5px 0; }
