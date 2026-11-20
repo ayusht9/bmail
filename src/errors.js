@@ -15,6 +15,7 @@ export const errorMessages = Object.freeze({
   schedule: 'Could not update the backup schedule. Check Windows Task Scheduler permissions and try again.',
   export: 'Could not save the email. Check the destination folder and available disk space, then try again.',
   preferences: 'Could not load or save your preferences. Restart Bmail and try again.',
+  cloud: 'Could not complete the Google Drive operation. Check Cloud backup in Preferences and try again.',
   setup: 'Could not save your mailbox settings. Review the details and try again.',
   runtime: 'A required Bmail component is unavailable. Reinstall Bmail and try again.',
   generic: 'Something went wrong. Please try again. If the problem continues, restart Bmail.',
@@ -84,7 +85,7 @@ export class PublicError extends Error {
 
 export function createSafeInvoke(nativeInvoke) {
   const contexts = { configure_mailbox: 'setup', begin_outlook_sign_in: 'outlook', get_saved_message: 'saved', export_mail: 'export',
-    manage_schedule: 'schedule', get_desktop_preferences: 'preferences', save_desktop_preferences: 'preferences' };
+    cloud_drive: 'cloud', manage_schedule: 'schedule', get_desktop_preferences: 'preferences', save_desktop_preferences: 'preferences' };
   return async (command, args) => {
     try { return await nativeInvoke(command, args); }
     catch (error) { throw new PublicError(error, contexts[command]); }
