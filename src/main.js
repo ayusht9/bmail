@@ -14,6 +14,7 @@ import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
 import { createNavigation } from './navigation.js';
 import { preferencesView } from './preferences.js';
+import { createRenderGuard } from './render-guard.js';
 import { createUniversalSearch } from './universal-search.js';
 import { createNotificationCenter } from './notification-center.js';
 import { setAppearance } from './appearance.js';
@@ -25,6 +26,7 @@ import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedu
 import { backupOptionsView, folderChoices, advancedFromForm } from './selection.js';
 
 const app = document.querySelector('#app');
+const renderGuard = createRenderGuard(window, () => render());
 let dashboard;
 const notificationCenter = createNotificationCenter({
   account: () => dashboard?.user || '',
@@ -372,6 +374,7 @@ function updateStatusBar() {
 }
 
 function render() {
+  if (renderGuard.defer()) return;
   if (!dashboard) {
     app.innerHTML = `${startupHeader(logoUrl)}<main class="loading startup-loading"><img src="${logoUrl}" width="72" height="72" alt=""><h1>Bmail</h1>${loadingIndicator('Opening your local mailbox...')}<button data-action="refresh">Retry startup</button></main>`;
     return;
