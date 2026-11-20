@@ -1,0 +1,15 @@
+{
+  "setup": "Dropbox sign-in is not configured in this build. Configure Bmail's Dropbox app key before building.",
+  "auth": "Dropbox access expired or was denied. Connect Dropbox again.",
+  "permission": "Dropbox permissions are missing. Enable account_info.read, files.metadata.read, and files.content.write in the app console, allow public clients, then connect again.",
+  "credentials": "Could not unlock Dropbox credentials. Connect again as this Windows user.",
+  "timeout": "Dropbox sign-in timed out. Connect Dropbox again.",
+  "port": "The Dropbox sign-in port is busy. Close the other sign-in window and retry.",
+  "network": "Dropbox could not be reached. Check your connection and retry.",
+  "quota": "Dropbox storage or request limits were reached. Free space or wait, then retry.",
+  "busy": "A Dropbox operation is already running for this mailbox.",
+  "files": "A saved email is missing or damaged. Repair the local backup before uploading.",
+  "archive": "Back up this mailbox locally before uploading to Dropbox.",
+  "checksum": "Dropbox did not confirm the uploaded file checksum. Retry cloud backup.",
+  "failed": "Dropbox backup could not finish. Your local backups are safe. Retry cloud backup."
+}

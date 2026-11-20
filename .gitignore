@@ -12,6 +12,12 @@ logs/
 mail_configuration
 backup-audit.json
 backup-config.json
+cloud-drive.json
+cloud-drive.json.*.pending
+cloud-dropbox.json
+cloud-dropbox.json.*.pending
+client_secret_*.json
+google-drive-client*.json
 *.db
 *.db-shm
 *.db-wal

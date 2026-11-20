@@ -4,18 +4,42 @@ use serde_json::Value;
 use std::{fs, path::{Path, PathBuf}, process::Command};
 use tauri::Manager;
 mod profile;
+mod microsoft;
 mod cache;
 mod export;
 mod mail;
+mod startup;
+mod notifications;
+mod taskbar;
+mod desktop;
+mod cloud;
 use std::sync::Mutex;
 
 #[derive(Default)]
 struct BackupProcess(Mutex<Option<std::process::Child>>);
 
+// Queried directly: launching tasklist.exe cost tens of milliseconds per
+// dashboard poll while a backup lock or progress file exists.
+#[cfg(windows)]
 fn process_running(pid: u64) -> bool {
-    hidden_command("tasklist.exe").args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
-        .output().is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(&format!("\"{pid}\"")))
+    use windows_sys::Win32::{Foundation::{CloseHandle, GetLastError, ERROR_ACCESS_DENIED, STILL_ACTIVE},
+        System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION}};
+    let Ok(pid) = u32::try_from(pid) else { return false; };
+    if pid == 0 { return false; }
+    // SAFETY: the handle is checked before use and closed exactly once.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        // A process Windows will not let us inspect still exists.
+        if handle.is_null() { return GetLastError() == ERROR_ACCESS_DENIED; }
+        let mut code = 0_u32;
+        let running = GetExitCodeProcess(handle, &mut code) != 0 && code == STILL_ACTIVE as u32;
+        CloseHandle(handle);
+        running
+    }
 }
+
+#[cfg(not(windows))]
+fn process_running(_pid: u64) -> bool { false }
 
 fn backup_root(root: &Path) -> PathBuf {
     let config = read_json(&root.join("backup-config.json")).unwrap_or(Value::Null);
@@ -38,6 +62,8 @@ struct LogSummary { name: String, tail: String }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Dashboard {
+    cloud_drive: Value,
+    cloud_dropbox: Value,
     user: String,
     host: String,
     port: u16,
@@ -62,6 +88,7 @@ struct Dashboard {
     accounts: Vec<String>,
     data_directory: String,
     migration_notice: Option<String>,
+    mail_index_stamp: Option<String>,
 }
 
 fn data_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -89,6 +116,10 @@ fn account_list(base: &Path) -> Vec<String> {
 }
 
 fn select_account(base: &Path, email: &str) -> Result<(), String> {
+    save_active_account(base, Some(email))
+}
+
+fn save_active_account(base: &Path, email: Option<&str>) -> Result<(), String> {
     let temporary = base.join("app-settings.json.pending");
     fs::write(&temporary, serde_json::to_vec(&serde_json::json!({"activeAccount": email})).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     fs::rename(&temporary, base.join("app-settings.json")).map_err(|e| e.to_string())
@@ -241,6 +272,9 @@ fn read_dashboard(app: &tauri::AppHandle, force: bool) -> Result<Dashboard, Stri
     let history = cache.json(&history_path, force).filter(Value::is_array);
     let history_error = if history_path.exists() && history.is_none() { Some("Backup history could not be read. The existing file was kept.".to_owned()) } else { None };
     Ok(Dashboard {
+        cloud_drive: cloud::status(&root),
+        cloud_dropbox: cloud::dropbox_status(&root),
+        mail_index_stamp: fs::metadata(backup_root.join("mail-index.json")).ok().and_then(|meta| meta.modified().ok().and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok()).map(|time| format!("{}:{}", meta.len(), time.as_nanos()))),
         host: config.get("host").and_then(Value::as_str).unwrap_or("imap.gmail.com").to_owned(),
         port: config.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).unwrap_or(993),
         credential_ready: config.get("user").and_then(Value::as_str).is_some() && root.join(".private/zoho-credential.xml").is_file(),
@@ -252,7 +286,7 @@ fn read_dashboard(app: &tauri::AppHandle, force: bool) -> Result<Dashboard, Stri
         local_stats: summary.map_or_else(|| local_statistics(None), |summary| summary.local_stats),
         mailbox_status: cache.project(&backup_root.join("mailbox-status.json"), force, |mut status| {
             if let Some(folders) = status.get_mut("folders").and_then(Value::as_array_mut) {
-                for folder in folders { if let Some(folder) = folder.as_object_mut() { folder.remove("uids"); } }
+                for folder in folders { if let Some(folder) = folder.as_object_mut() { folder.remove("uids"); folder.remove("newUids"); } }
             }
             status
         }),
@@ -275,10 +309,42 @@ struct MailboxSettings {
     host: String,
     port: u16,
     password: String,
+    #[serde(default, skip_deserializing)]
+    client_id: String,
+    #[serde(default)]
+    device_code: String,
+    #[serde(default)]
+    device_interval: u64,
 }
 
 #[tauri::command]
-async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings, process: tauri::State<'_, BackupProcess>) -> Result<String, String> {
+fn get_microsoft_sign_in_status() -> Value {
+    serde_json::json!({"available": microsoft::configured_client_id().is_some()})
+}
+
+#[tauri::command]
+async fn begin_outlook_sign_in(app: tauri::AppHandle) -> Result<Value, String> {
+    let client_id = microsoft::required_client_id()?.to_owned();
+    tauri::async_runtime::spawn_blocking(move || {
+        let output = hidden_command("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(engine_root(&app)?.join("Start-OutlookSignIn.ps1"))
+            .arg("-ClientId").arg(client_id).output()
+            .map_err(|_| "Could not start Microsoft sign-in".to_owned())?;
+        if !output.status.success() { return Err("Microsoft sign-in could not start. Check your connection and app registration.".into()); }
+        let response: Value = serde_json::from_slice(&output.stdout).map_err(|_| "Invalid Microsoft sign-in response".to_owned())?;
+        if response.get("device_code").and_then(Value::as_str).is_none() || response.get("user_code").and_then(Value::as_str).is_none() {
+            return Err("Microsoft sign-in could not start. Try again.".into());
+        }
+        Command::new("explorer.exe").arg("https://microsoft.com/devicelogin").spawn()
+            .map_err(|_| "Could not open Microsoft sign-in in your browser. Try again.".to_owned())?;
+        Ok(response)
+    }).await.map_err(|_| "Microsoft sign-in was interrupted".to_owned())?
+}
+
+#[tauri::command]
+async fn configure_mailbox(app: tauri::AppHandle, mut settings: MailboxSettings, process: tauri::State<'_, BackupProcess>) -> Result<String, String> {
+    if microsoft::outlook_host(&settings.host) { settings.client_id = microsoft::required_client_id()?.to_owned(); }
     {
         let guard = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
         if guard.as_ref().is_some_and(|child| process_running(child.id() as u64)) || active_backup(&backup_root(&data_root(&app)?)) {
@@ -305,6 +371,8 @@ async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings, pro
         if !output.status.success() || write_result.is_err() {
             let status = serde_json::from_slice::<Value>(&output.stdout).unwrap_or(Value::Null);
             let message = match status.get("errorCode").and_then(Value::as_str).unwrap_or("") {
+                "OUTLOOK_SIGN_IN_REQUIRED" => "Start Microsoft sign-in before saving this Outlook mailbox.",
+                "OUTLOOK_AUTH_FAILED" => "Microsoft sign-in failed or expired. Start sign-in again and use the same mailbox address. Check that IMAP is enabled and your organization permits access.",
                 "INVALID_EMAIL" => "Enter your complete email address.",
                 "INVALID_HOST" => "Enter a valid IMAP server hostname.",
                 "INVALID_PORT" => "Enter a TLS port between 1 and 65535.",
@@ -322,6 +390,7 @@ async fn configure_mailbox(app: tauri::AppHandle, settings: MailboxSettings, pro
             return Err(message.into());
         }
         select_account(&base, &settings.user)?;
+        let _ = notifications::apply(&app, &settings.user, 0);
         Ok("Mailbox saved. You can start your first backup.".into())
     }).await.map_err(|_| "Mailbox setup was interrupted".to_owned())?
 }
@@ -334,7 +403,67 @@ fn switch_account(app: tauri::AppHandle, email: String, process: tauri::State<Ba
     }
     let base = base_root(&app)?;
     if !account_list(&base).contains(&email) { return Err("That account has not been added to Bmail.".into()); }
-    select_account(&base, &email)
+    select_account(&base, &email)?;
+    // A cosmetic taskbar failure must not turn a successful account switch into an error.
+    let _ = notifications::apply(&app, &email, 0);
+    Ok(())
+}
+
+struct MailboxRemovalLock { path: PathBuf }
+impl Drop for MailboxRemovalLock {
+    fn drop(&mut self) { let _ = fs::remove_file(&self.path); }
+}
+
+#[tauri::command]
+async fn remove_mailbox(app: tauri::AppHandle, email: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let process = app.state::<BackupProcess>();
+        let mut process = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
+        let base = base_root(&app)?;
+        if !account_list(&base).contains(&email) { return Err("That mailbox has already been removed.".into()); }
+        let root = profile::checked_account_folder(&base, &email).map_err(|e| e.to_string())?;
+        if cloud::running(&root) { return Err("Finish the cloud backup operation before removing this mailbox.".into()); }
+        if fs::canonicalize(data_root(&app)?).map_err(|e| e.to_string())? != root {
+            return Err("Select that mailbox before removing it.".into());
+        }
+        let backup = backup_root(&root);
+        if process.as_mut().is_some_and(|child| child.try_wait().map_or(true, |status| status.is_none())) || active_backup(&backup) {
+            return Err("Finish or stop the current backup or mail check before removing this mailbox.".into());
+        }
+        // The same exclusive lock used by Node prevents a scheduled run starting
+        // while its account is being moved. Keep it until selection is updated.
+        fs::create_dir_all(&backup).map_err(|e| e.to_string())?;
+        let backup = fs::canonicalize(&backup).map_err(|e| e.to_string())?;
+        let lock_path = backup.join(".backup.lock");
+        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&lock_path)
+            .map_err(|_| "This mailbox is busy or its backup lock remains. Complete a mailbox check and try removing it again.".to_owned())?;
+        let mut lock = MailboxRemovalLock { path: lock_path };
+        file.write_all(format!("{{\"pid\":{}}}", std::process::id()).as_bytes()).map_err(|e| e.to_string())?;
+        drop(file);
+        let engine = engine_root(&app)?;
+        let mut child = hidden_command("powershell.exe").current_dir(dunce::simplified(&root)).env("MAIL_VAULT_DATA_DIR", dunce::simplified(&root))
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(engine.join("Manage-BackupSchedule.ps1"))
+            .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
+            .spawn().map_err(|e| format!("Could not remove the mailbox schedule: {e}"))?;
+        let written = child.stdin.take().ok_or("Schedule input is unavailable")?.write_all(br#"{"action":"remove"}"#);
+        let output = child.wait_with_output().map_err(|e| e.to_string())?;
+        if written.is_err() || !output.status.success() {
+            return Err("The mailbox was kept because its Windows schedule could not be removed. Check Task Scheduler permissions and try again.".into());
+        }
+        let next = account_list(&base).into_iter().find(|account| account != &email);
+        save_active_account(&base, next.as_deref())?;
+        let retained = match profile::retire_account(&base, &email) {
+            Ok(path) => path,
+            Err(error) => {
+                let _ = select_account(&base, &email);
+                return Err(format!("Mailbox removal could not finish: {error}"));
+            }
+        };
+        if let Ok(relative) = backup.strip_prefix(&root) { lock.path = retained.join(relative).join(".backup.lock"); }
+        let _ = notifications::apply(&app, next.as_deref().unwrap_or(""), 0);
+        Ok(format!("Mailbox removed. Local emails and account data are kept at {}. Saved sign-in and the backup schedule were removed.", dunce::simplified(&retained).display()))
+    }).await.map_err(|e| format!("Mailbox removal was interrupted: {e}"))?
 }
 
 fn powershell(engine: &Path, data: &Path, script: &str) -> Result<std::process::Output, String> {
@@ -344,7 +473,12 @@ fn powershell(engine: &Path, data: &Path, script: &str) -> Result<std::process::
 }
 
 #[tauri::command]
-fn start_backup(app: tauri::AppHandle, process: tauri::State<BackupProcess>) -> Result<String, String> {
+fn start_backup(app: tauri::AppHandle, process: tauri::State<BackupProcess>, message: Option<BackupMessage>) -> Result<String, String> {
+    if let Some(target) = &message {
+        if target.folder.trim().is_empty() || target.folder.len() > 1024 || target.uid == 0 || target.uid_validity.parse::<u32>().ok().is_none_or(|v| v == 0) {
+            return Err("Reload the mailbox before backing up this email.".into());
+        }
+    }
     let root = data_root(&app)?;
     let engine = engine_root(&app)?;
     let mut child = process.0.lock().map_err(|_| "Backup process state is unavailable")?;
@@ -355,12 +489,17 @@ fn start_backup(app: tauri::AppHandle, process: tauri::State<BackupProcess>) -> 
         return Err("A backup or verification is already running.".into());
     }
     *child = Some(hidden_command("powershell.exe").current_dir(&root).env("MAIL_VAULT_DATA_DIR", &root)
+        .env("BMAIL_BACKUP_MESSAGE", message.map(|target| serde_json::to_string(&target)).transpose().map_err(|e| e.to_string())?.unwrap_or_default())
         .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
         .arg(engine.join("Run-Backup.ps1")).stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn()
         .map_err(|e| format!("Could not start backup: {e}"))?);
     Ok("Backup started. Progress will appear here.".into())
 }
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BackupMessage { folder: String, uid: u32, uid_validity: String }
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -570,9 +709,18 @@ fn open_directory(app: tauri::AppHandle, kind: String) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .manage(BackupProcess::default())
+        .manage(notifications::MailBadgeState::default())
+        .manage(taskbar::TaskbarIconState::default())
         .manage(cache::DashboardCache::default())
-        .setup(|app| { initialize_profiles(app.handle()).map_err(std::io::Error::other)?; Ok(()) })
-        .invoke_handler(tauri::generate_handler![mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, configure_mailbox, switch_account, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
+        .manage(mail::MailReader::default())
+        .setup(|app| {
+            initialize_profiles(app.handle()).map_err(std::io::Error::other)?;
+            desktop::initialize(app.handle())?;
+            startup::install_deadline(app.handle());
+            Ok(())
+        })
+        .on_window_event(desktop::handle_window_event)
+        .invoke_handler(tauri::generate_handler![cloud::cloud_dropbox, cloud::cloud_drive, mail::get_mail_page, desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, get_microsoft_sign_in_status, begin_outlook_sign_in, configure_mailbox, switch_account, remove_mailbox, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }
@@ -580,6 +728,27 @@ pub fn run() {
 #[cfg(test)]
 mod dashboard_tests {
     use super::*;
+
+    #[test]
+    fn mailbox_requests_cannot_override_the_publishers_microsoft_app_id() {
+        let settings: MailboxSettings = serde_json::from_value(serde_json::json!({
+            "user": "fixture@outlook.com", "host": "outlook.office365.com", "port": 993, "password": "",
+            "client_id": "11111111-2222-3333-4444-555555555555"
+        })).unwrap();
+        assert!(settings.client_id.is_empty());
+    }
+
+    #[test]
+    fn process_checks_find_live_processes_and_reject_missing_ones() {
+        assert!(process_running(u64::from(std::process::id())));
+        let mut child = hidden_command("cmd.exe").args(["/c", "exit"]).spawn().unwrap();
+        let pid = u64::from(child.id());
+        child.wait().unwrap();
+        drop(child);
+        assert!(!process_running(pid));
+        assert!(!process_running(0));
+        assert!(!process_running(u64::MAX));
+    }
 
     #[test]
     fn new_mail_contention_is_distinct_from_connection_failures() {

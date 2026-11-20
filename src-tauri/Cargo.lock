@@ -159,13 +159,14 @@ dependencies = [
 
 [[package]]
 name = "bmail"
-version = "0.4.0"
+version = "0.6.4"
 dependencies = [
  "dunce",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

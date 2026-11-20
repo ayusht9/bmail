@@ -1,0 +1,4 @@
+{
+  "identifier": "com.bmail.desktop.lifecycle-smoke",
+  "app": { "appDirectoriesOverride": "$LOCALDATA/Bmail Lifecycle Smoke" }
+}
