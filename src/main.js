@@ -9,6 +9,7 @@ import { invoke as nativeInvoke } from '@tauri-apps/api/core';
 import { userMessage, createSafeInvoke, installGlobalErrorHandlers } from './errors.js';
 const invoke = createSafeInvoke(nativeInvoke);
 import { workspaceTabs, workspaceTabStrip } from './workspace.js';
+import { renderWorkspace } from './workspace-render.js';
 import { historyPane } from './history.js';
 import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
@@ -449,7 +450,7 @@ function render() {
     : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readingPane({ ...selectedMessage, backupBusy: busy || dashboard.backupRunning }, escapeHtml, formatDate)}</div>`;
 
 
-  app.innerHTML = `
+  renderWorkspace(app, `
     <header class="app-toolbar" data-tauri-drag-region>
       <div class="app-name" data-tauri-drag-region><img data-tauri-drag-region class="app-logo" src="${logoUrl}" alt="" width="28" height="28"><strong data-tauri-drag-region>Bmail</strong></div>
       <div class="toolbar-spacer" data-tauri-drag-region></div>
@@ -526,7 +527,7 @@ function render() {
         <div class="dialog-actions"><button type="button" class="ghost" data-action="cancel-remove-mailbox" autofocus>Cancel</button><button type="submit" class="danger-button">Remove mailbox</button></div>
       </form>
     </dialog>
-  `;
+  `);
   updateProviderHelp();
   if (activeTab === 'scheduler') initializeSchedulerView();
   notificationCenter.mount();
@@ -948,11 +949,16 @@ function initializeSchedulerView() {
 
 async function selectTab(tab, remember = true) {
   if (navigationBusy() || !workspaceTabs.some(([key]) => key === tab)) return;
+  if (remember && activeTab === tab) { document.querySelector(`#tab-${tab}`)?.focus({ preventScroll: true }); return; }
   captureTabDraft();
   if (remember) rememberNavigation(tab);
   activeTab = tab;
   render();
+  document.querySelector('.mail-workspace')?.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   document.querySelector(`#tab-${tab}`)?.focus({ preventScroll: true });
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.querySelector(`#view-${tab}`)?.animate([{ opacity: .65 }, { opacity: 1 }], { duration: 120, easing: 'ease-out' });
+  }
   if (tab === 'scheduler' && !schedulerLoaded && dashboard.credentialReady) await scheduleOperation('read', !schedulerDraft);
 }
 
