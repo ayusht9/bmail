@@ -14,8 +14,39 @@ pub fn status(root: &Path) -> Value {
 }
 
 pub fn running(root: &Path) -> bool {
-    std::fs::read_to_string(root.join(".private/drive.lock")).ok()
-        .and_then(|value| value.parse::<u64>().ok()).is_some_and(super::process_running)
+    ["drive", "dropbox"].iter().any(|provider| std::fs::read_to_string(root.join(format!(".private/{provider}.lock"))).ok()
+        .and_then(|value| value.parse::<u64>().ok()).is_some_and(super::process_running))
+}
+
+pub fn dropbox_status(root: &Path) -> Value {
+    let saved = super::read_json(&root.join("cloud-dropbox.json")).unwrap_or(json!({}));
+    let mut public = json!({"configured": option_env!("BMAIL_DROPBOX_APP_KEY").is_some() || saved["configured"] == true});
+    for key in ["connected", "automatic", "stage", "dropboxAccount", "folderName", "lastSyncedAt", "completedFiles", "totalFiles", "uploadedBytes", "totalBytes", "skippedFiles", "errorCode", "updatedAt"] {
+        if let Some(value) = saved.get(key).filter(|v| v.is_string() || v.is_boolean() || v.is_number()) { public[key] = value.clone(); }
+    }
+    if matches!(saved["stage"].as_str(), Some("connecting" | "uploading")) && !saved["pid"].as_u64().is_some_and(super::process_running) {
+        public["stage"] = json!("interrupted"); public["errorCode"] = json!("failed");
+    }
+    public
+}
+
+#[tauri::command]
+pub async fn cloud_dropbox(app: tauri::AppHandle, action: String, value: Option<bool>) -> Result<Value, String> {
+    if !["status", "connect", "automatic", "sync", "disconnect"].contains(&action.as_str()) { return Err("Unknown Dropbox action.".into()); }
+    let root = super::data_root(&app)?;
+    if action == "status" { return Ok(dropbox_status(&root)); }
+    if super::read_json(&root.join("backup-config.json")).and_then(|v| v["user"].as_str().map(str::to_owned)).is_none() { return Err("Set up a mailbox before connecting Dropbox.".into()); }
+    tauri::async_runtime::spawn_blocking(move || {
+        let engine = super::engine_root(&app)?;
+        let mut child = super::hidden_command(engine.join("node.exe"))
+            .arg(engine.join("cloud-dropbox.cjs")).current_dir(&root).env("MAIL_VAULT_DATA_DIR", &root)
+            .env("BMAIL_DROPBOX_APP_KEY", option_env!("BMAIL_DROPBOX_APP_KEY").unwrap_or(""))
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
+            .map_err(|_| "Could not start Dropbox backup. Reinstall Bmail and retry.".to_owned())?;
+        child.stdin.take().ok_or("Cloud backup input is unavailable.")?.write_all(json!({"action": action, "value": value}).to_string().as_bytes()).map_err(|_| "Could not start Dropbox backup.".to_owned())?;
+        let output = child.wait_with_output().map_err(|_| "Dropbox backup did not finish.".to_owned())?;
+        serde_json::from_slice(&output.stdout).map_err(|_| "Could not read Dropbox backup status.".to_owned())
+    }).await.map_err(|_| "Dropbox backup did not finish.".to_owned())?
 }
 
 #[tauri::command]

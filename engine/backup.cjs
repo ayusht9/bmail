@@ -484,7 +484,10 @@ async function main() {
     } catch { console.log('Backup saved. Mailbox coverage could not refresh; use Check mailbox to try again.'); }
     finally { try { client.close(); } finally { release(); } }
   }
-  if (result?.success) await require('./cloud-drive.cjs').syncAfterBackup(dataDirectory);
+  if (result?.success) for (const provider of ['./cloud-drive.cjs', './cloud-dropbox.cjs']) {
+    try { await require(provider).syncAfterBackup(dataDirectory); }
+    catch { console.log('Cloud backup could not finish. Your local backup is safe.'); }
+  }
 }
 if (require.main === module) main().catch(error => {
   console.error('Backup failed. No server emails were deleted.');

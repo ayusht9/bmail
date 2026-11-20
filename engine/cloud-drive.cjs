@@ -23,9 +23,9 @@ function publicStatus(data) {
   return result;
 }
 function alive(pid) { try { if (!Number.isSafeInteger(pid) || pid < 1) return false; process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; } }
-function acquire(data) {
+function acquire(data, provider = 'drive') {
   const directory = path.join(data, '.private'); fs.mkdirSync(directory, { recursive: true });
-  const file = path.join(directory, 'drive.lock');
+  const file = path.join(directory, `${provider}.lock`);
   for (let attempt = 0; attempt < 2; attempt++) {
     try { const fd = fs.openSync(file, 'wx'); fs.writeFileSync(fd, String(process.pid)); fs.closeSync(fd); return () => { try { fs.unlinkSync(file); } catch {} }; }
     catch (error) {
@@ -37,7 +37,7 @@ function acquire(data) {
   }
   throw new DriveError('busy');
 }
-function credentialStore(data, action, value) {
+function credentialStore(data, action, value, provider = 'google-drive') {
   return new Promise((resolve, reject) => {
     const child = spawn('powershell.exe', ['-NoProfile', '-STA', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'Drive-Credentials.ps1')],
       { windowsHide: true, env: { ...process.env, MAIL_VAULT_DATA_DIR: data }, stdio: ['pipe', 'pipe', 'ignore'] });
@@ -49,7 +49,7 @@ function credentialStore(data, action, value) {
       if (code !== 0) { reject(new DriveError(code === 2 ? 'client' : 'credentials')); return; }
       try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8').replace(/^\uFEFF/, ''))); } catch { reject(new DriveError('credentials')); }
     });
-    child.stdin.end(JSON.stringify({ action, value }));
+    child.stdin.end(JSON.stringify({ action, value, provider }));
   });
 }
 function openBrowser(url) {
@@ -97,7 +97,7 @@ async function describeFile(root, relative, record) {
   const sha = crypto.createHash('sha256'), md5 = crypto.createHash('md5');
   try { for await (const chunk of fs.createReadStream(source)) { sha.update(chunk); md5.update(chunk); } } catch { throw new DriveError('files'); }
   if (sha.digest('hex') !== record.sha256) throw new DriveError('files');
-  return { relative: relative.replace(/\\/g, '/'), name: path.posix.basename(relative.replace(/\\/g, '/')), source, size: stat.size, md5: md5.digest('hex') };
+  return { relative: relative.replace(/\\/g, '/'), name: path.posix.basename(relative.replace(/\\/g, '/')), source, size: stat.size, sha256: record.sha256, md5: md5.digest('hex') };
 }
 async function archiveFiles(root, config) {
   let base; try { base = fs.realpathSync(root); } catch { throw new DriveError('archive'); }
@@ -230,4 +230,4 @@ if (require.main === module) (async () => {
   if (!['status', 'setup', 'connect', 'automatic', 'sync', 'disconnect'].includes(request.action)) throw new DriveError('failed');
   process.stdout.write(JSON.stringify(await run(dataDirectory(), request.action, request.value)));
 })().catch(error => { const code = error instanceof DriveError ? error.code : 'failed'; process.stdout.write(JSON.stringify({ ...publicStatus(dataDirectory()), ...(code === 'busy' ? {} : { stage: 'error' }), errorCode: code })); process.exitCode = 1; });
-module.exports = { run, publicStatus, authorize, archiveFiles, describeFile, syncArchive, syncAfterBackup, credentialStore, readJson, writeJson, messages };
+module.exports = { run, publicStatus, authorize, archiveFiles, describeFile, syncArchive, syncAfterBackup, credentialStore, readJson, writeJson, messages, acquire, alive, openBrowser };
