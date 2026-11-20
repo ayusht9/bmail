@@ -191,18 +191,18 @@ export function schedulePreferencesMarkup(status, { saving = false, error = '', 
   const s = { ...defaultSchedule(), ...status?.settings };
   const disabled = !ready || saving || backupRunning ? 'disabled' : '';
   return `<form id="schedule-preferences-form" class="schedule-preferences" aria-labelledby="schedule-preferences-title">
-    <h3 id="schedule-preferences-title">Scheduled backups</h3>
+    <header><h3 id="schedule-preferences-title">Scheduled backups</h3><p class="schedule-preferences-intro">Control how automatic backups handle power, connectivity, and interruptions.</p></header>
     ${ready ? '' : '<p class="muted">Save a schedule in Scheduler first.</p>'}
-    <div class="schedule-preferences-checks">
+    <fieldset class="schedule-preferences-checks"><legend>Power &amp; connection</legend>
       ${powerCheck(s, 'startWhenAvailable', 'Run a missed backup when available', disabled)}${powerCheck(s, 'networkRequired', 'Require a network connection', disabled)}
       ${powerCheck(s, 'wakeComputer', 'Wake the computer to run', disabled)}${powerCheck(s, 'allowOnBattery', 'Allow starting on battery power', disabled)}
       ${powerCheck(s, 'stopOnBattery', 'Stop if the computer switches to battery', disabled)}
-    </div>
-    <div class="schedule-preferences-numbers">
+    </fieldset>
+    <fieldset class="schedule-preferences-numbers"><legend>Run limits &amp; recovery</legend>
       <div><label for="schedule-duration">Maximum run time (hours)</label><input id="schedule-duration" name="maxRunHours" type="number" min="1" max="168" value="${s.maxRunHours}" required ${disabled}></div>
       <div><label for="schedule-restarts">Restart attempts</label><input id="schedule-restarts" name="restartCount" type="number" min="0" max="10" value="${s.restartCount}" required ${disabled}></div>
       <div><label for="schedule-restart-delay">Restart interval (minutes)</label><input id="schedule-restart-delay" name="restartMinutes" type="number" min="1" max="1440" value="${s.restartMinutes}" required ${disabled}></div>
-    </div>
+    </fieldset>
     ${error ? `<p class="preferences-error" role="alert">${escape(error)}</p>` : ''}
     <button type="submit" class="primary" ${disabled}>${saving ? 'Saving…' : 'Save scheduled backup settings'}</button>
   </form>`;
