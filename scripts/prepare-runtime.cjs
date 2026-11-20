@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { syncRuntimeSources } = require('./runtime-sources.cjs');
 
 if (process.platform !== 'win32') throw new Error('Build the Windows installer on Windows.');
 const root = path.resolve(__dirname, '..');
@@ -9,16 +10,12 @@ if (target && !target.startsWith(`${process.arch === 'x64' ? 'x86_64' : process.
   throw new Error('Use a Node runtime matching the Windows build architecture.');
 }
 const output = path.join(root, 'src-tauri/resources/engine');
-fs.mkdirSync(output, { recursive: true });
-// Explicit allowlist: never package credentials, backups, logs, or local config.
-for (const file of [
-  'cloud-dropbox.cjs', 'dropbox-client.cjs', 'dropbox-messages.json',
-  'cloud-drive.cjs', 'drive-client.cjs', 'drive-messages.json', 'Drive-Credentials.ps1',
-  'mail-page.cjs', 'mail-index.cjs', 'paths.cjs', 'Data-Directory.ps1', 'read-mail.cjs', 'backup.cjs', 'backup-history.cjs', 'Notify-Backup.ps1', 'backup-stats.cjs', 'backup-progress.cjs', 'backup-selection.cjs', 'backup-control.cjs', 'Run-Backup.ps1', 'Invoke-BackupProcess.ps1', 'Backup-Paths.ps1',
-  'Install-BackupSchedule.ps1', 'Backup-Schedule.ps1', 'Manage-BackupSchedule.ps1', 'Setup-Backup.ps1', 'Protect-CredentialDirectory.ps1',
-  'Save-Mailbox.ps1', 'Outlook-Auth.ps1', 'Start-OutlookSignIn.ps1',
-  'backup-config.example.json',
-]) fs.copyFileSync(path.join(root, 'engine', file), path.join(output, file));
+if (process.argv.includes('--sources-only')) {
+  if (!fs.existsSync(path.join(output, 'node.exe'))) throw new Error('Prepare the full runtime once before refreshing its sources.');
+  console.log(`Refreshed ${syncRuntimeSources(root, output)} backup runtime source files.`);
+  process.exit(0);
+}
+syncRuntimeSources(root, output);
 for (const file of ['LICENSE', 'package.json', 'package-lock.json']) {
   fs.copyFileSync(path.join(root, file), path.join(output, file));
 }
