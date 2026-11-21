@@ -241,6 +241,19 @@ button.primary:hover:not(:disabled) {
   .sidebar-collapsed .compact-account, .sidebar-collapsed .compact-filter { animation:sidebar-control-appear 160ms ease-out; }
 }
 .resizing-sidebar .folder-sidebar { min-width:0; overflow:clip; }
+.resizing-sidebar .folder-list { overflow-x:hidden; }
+.resizing-sidebar .folder-row { overflow:hidden; padding-right:calc(6px * var(--sidebar-action-progress, 1)); }
+.resizing-sidebar .folder-row > .download-icon {
+  width:calc(32px * var(--sidebar-action-progress, 1)); min-width:0;
+  padding-inline:calc(6px * var(--sidebar-action-progress, 1)); border-width:0;
+  opacity:var(--sidebar-action-progress, 1); overflow:hidden; pointer-events:none; transition:none;
+}
+.resizing-sidebar .folder-row > .download-icon svg { flex-shrink:0; }
+.resizing-sidebar .folder-row > .new-mail-badge {
+  min-width:0; max-width:calc(60px * var(--sidebar-action-progress, 1));
+  padding-inline:calc(6px * var(--sidebar-action-progress, 1));
+  opacity:var(--sidebar-action-progress, 1); overflow:hidden; pointer-events:none; transition:none;
+}
 .resizing-sidebar .folder-sidebar .account-switcher,
 .resizing-sidebar .folder-sidebar .sidebar-heading,
 .resizing-sidebar .folder-sidebar .filter-field { min-width:160px; }
