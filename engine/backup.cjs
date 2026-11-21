@@ -97,7 +97,7 @@ function validateRecord(root, record) {
     return bytes.length === record.bytes && digest(bytes) === record.sha256;
   } catch (error) { if (error.code === 'ENOENT') return false; throw error; }
 }
-function acquireLock(root) {
+function acquireLock(root, kind = 'backup') {
   const filename = path.join(root, '.backup.lock');
   if (fs.existsSync(filename)) {
     const lock = readJson(filename);
@@ -106,7 +106,7 @@ function acquireLock(root) {
     if (alive) throw Object.assign(new Error('A backup or verification is already running'), { code: 'BACKUP_BUSY' });
     fs.unlinkSync(filename);
   }
-  try { fs.writeFileSync(filename, JSON.stringify({ pid: process.pid }), { flag: 'wx' }); }
+  try { fs.writeFileSync(filename, JSON.stringify({ pid: process.pid, kind }), { flag: 'wx' }); }
   catch (error) { if (error.code === 'EEXIST') throw Object.assign(new Error('A backup or verification is already running'), { code: 'BACKUP_BUSY' }); throw error; }
   return () => fs.unlinkSync(filename);
 }
@@ -450,6 +450,23 @@ async function main() {
     });
     return client;
   };
+  if (process.argv.includes('--watch-new-mail')) {
+    fs.mkdirSync(root, { recursive: true });
+    const client = makeClient();
+    const parent = Number(process.env.BMAIL_WATCH_PARENT);
+    await require('./mail-watch.cjs').watchMail(client, async () => {
+      let release;
+      try {
+        release = acquireLock(root, 'metadata');
+        await checkMailbox(client, root, null, { readJson, atomicWrite, newMailOnly: true, indexMessages: true });
+      } catch (error) { if (error.code !== 'BACKUP_BUSY') throw error; }
+      finally { release?.(); }
+    }, { parentAlive: () => {
+      if (!Number.isSafeInteger(parent) || parent <= 0) return false;
+      try { process.kill(parent, 0); process.kill(Number(process.env.BMAIL_WATCH_APP), 0); return true; } catch { return false; }
+    } });
+    return;
+  }
   if (process.argv.includes('--check-mailbox') || process.argv.includes('--new-mail') || process.argv.includes('--list-folders')) {
     fs.mkdirSync(root, { recursive: true });
     const release = acquireLock(root);

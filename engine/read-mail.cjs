@@ -3,7 +3,8 @@ const path = require('node:path');
 const readline = require('node:readline');
 const { dataDirectory } = require('./paths.cjs');
 const { readMailIndex } = require('./mail-index.cjs');
-const { paginateMail, sortMail } = require('./mail-page.cjs');
+const { paginateMail } = require('./mail-page.cjs');
+const { createHash } = require('node:crypto');
 
 // mailparser is comparatively slow to load. Listing pages only needs it for
 // legacy manifest records without sentAt, so load it on first use.
@@ -173,23 +174,19 @@ async function cachedMailbox(root) {
   const key = `${state.manifestStamp}|${stampOf(path.join(root, 'mail-index.json'))}`;
   if (state.list?.key === key && Date.now() - state.list.at < FILE_CHECK_MS) return state;
   const rows = mergeMailbox(await listSavedMail(root, '', true), readIndex(root));
-  state.list = { key, at: Date.now(), rows };
+  state.list = { key, at: Date.now(), rows, revision: createHash('sha256').update(JSON.stringify(rows)).digest('hex') };
   state.sorted.clear();
   return state;
 }
 
 async function listMailPage(root, options = {}) {
   const state = await cachedMailbox(root);
-  const folder = options.folder || '';
-  const sortKey = JSON.stringify([folder, options.sortColumn, options.sortDirection]);
-  let sorted = state.sorted.get(sortKey);
-  if (!sorted) {
-    const rows = folder ? state.list.rows.filter(row => row.folder === folder) : state.list.rows;
-    sorted = sortMail(rows, options);
-    if (state.sorted.size >= 8) state.sorted.delete(state.sorted.keys().next().value);
-    state.sorted.set(sortKey, sorted);
+  try {
+    return require('./mail-metadata.cjs').metadataPage(root, state.list.revision, state.list.rows, options);
+  } catch {
+    // Read-only storage, an older runtime, or a damaged derived DB must not hide mail.
+    return paginateMail(options.folder ? state.list.rows.filter(row => row.folder === options.folder) : state.list.rows, options);
   }
-  return paginateMail(sorted, options, true);
 }
 
 function backupRoot(data) {

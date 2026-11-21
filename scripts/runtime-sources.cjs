@@ -6,7 +6,7 @@ const path = require('node:path');
 const runtimeSources = [
   'cloud-dropbox.cjs', 'dropbox-client.cjs', 'dropbox-messages.json',
   'cloud-drive.cjs', 'drive-client.cjs', 'drive-messages.json', 'Drive-Credentials.ps1',
-  'mail-page.cjs', 'mail-index.cjs', 'paths.cjs', 'Data-Directory.ps1', 'read-mail.cjs', 'backup.cjs', 'backup-history.cjs', 'Notify-Backup.ps1', 'backup-stats.cjs', 'backup-progress.cjs', 'backup-selection.cjs', 'backup-control.cjs', 'Run-Backup.ps1', 'Invoke-BackupProcess.ps1', 'Backup-Paths.ps1',
+  'mail-watch.cjs', 'mail-metadata.cjs', 'mail-page.cjs', 'mail-index.cjs', 'paths.cjs', 'Data-Directory.ps1', 'read-mail.cjs', 'backup.cjs', 'backup-history.cjs', 'Notify-Backup.ps1', 'backup-stats.cjs', 'backup-progress.cjs', 'backup-selection.cjs', 'backup-control.cjs', 'Run-Backup.ps1', 'Invoke-BackupProcess.ps1', 'Backup-Paths.ps1',
   'Install-BackupSchedule.ps1', 'Backup-Schedule.ps1', 'Manage-BackupSchedule.ps1', 'Setup-Backup.ps1', 'Protect-CredentialDirectory.ps1',
   'Save-Mailbox.ps1', 'Outlook-Auth.ps1', 'Start-OutlookSignIn.ps1', 'backup-config.example.json',
 ];
