@@ -1355,11 +1355,18 @@ dialog.universal-search { position: fixed; inset: 0; margin: auto; padding: 0; w
 .reader-backup-action { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 7px 12px; }
 .reader-backup-action svg { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
-.cloud-providers { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 14px; padding-top: 16px; }
-.cloud-backup { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.cloud-providers { display: flex; flex-direction: column; padding-top: 4px; container-type: inline-size; }
+.cloud-backup { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(0, 1.2fr); align-items: start; gap: 16px; min-width: 0; padding: 20px 0; border-bottom: 1px solid var(--line); background: var(--surface); }
+.cloud-backup:last-child { border-bottom: 0; }
+.cloud-provider-info, .cloud-provider-name { min-width: 0; }
+.cloud-provider-info > :not(.cloud-provider) { margin-left: 42px; }
 .cloud-provider { display: flex; align-items: center; gap: 10px; }
 .cloud-provider img { width: 32px; height: 32px; object-fit: contain; flex-shrink: 0; }
-.preferences-page .cloud-provider h4 { flex: 1; min-width: 0; margin: 0; font-size: calc(14px * var(--app-font-scale, 1)); font-weight: 600; }
+.preferences-page .cloud-provider h4 { min-width: 0; margin: 0; font-size: calc(14px * var(--app-font-scale, 1)); font-weight: 600; }
+.cloud-provider-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; min-width: 0; }
+.cloud-backup-unavailable { align-items: center; color: var(--muted); }
+.cloud-backup-unavailable img { filter: grayscale(1); opacity: .55; }
+.cloud-coming-soon { padding: 4px 9px; border: 1px solid var(--line); border-radius: 4px; font-size: calc(11px * var(--app-font-scale, 1)); color: var(--muted); background: var(--sidebar); }
 .cloud-backup p { font-size: calc(12px * var(--app-font-scale, 1)); }
 .cloud-connection { color: var(--muted); font-size: calc(11px * var(--app-font-scale, 1)); white-space: nowrap; }
 .cloud-account { margin: 10px 0; overflow-wrap: anywhere; }
@@ -1370,12 +1377,19 @@ dialog.universal-search { position: fixed; inset: 0; margin: auto; padding: 0; w
 .cloud-folder { margin-top: 10px; font-size: calc(12px * var(--app-font-scale, 1)); }
 .cloud-folder summary { cursor: pointer; color: var(--muted); }
 .cloud-folder p { margin-bottom: 0; overflow-wrap: anywhere; }
-.cloud-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 12px; }
+.cloud-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin: 0; }
 .cloud-actions button { min-height: 34px; max-width: 100%; }
 .preferences-page .cloud-automatic { display: flex; align-items: flex-start; gap: 8px; font-weight: 400; margin: 0; font-size: calc(12px * var(--app-font-scale, 1)); }
 .cloud-automatic input { margin-top: 3px; accent-color: var(--accent); }
 .cloud-progress progress { width: 100%; accent-color: var(--accent); }
 .cloud-progress p { margin: 5px 0; }
+@container (max-width: 420px) {
+  .cloud-backup { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .cloud-provider-controls { align-items: flex-start; margin-left: 42px; }
+  .cloud-actions { justify-content: flex-start; }
+  .cloud-backup-unavailable { grid-template-columns: minmax(0, 1fr) auto; }
+  .cloud-backup-unavailable .cloud-provider-controls { margin-left: 0; }
+}
 
 /* Feedback stays on the control, so mail and settings never shift on press. */
 input, select, textarea { transition: border-color 120ms ease, box-shadow 120ms ease; }
