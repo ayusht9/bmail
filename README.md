@@ -35,3 +35,39 @@ include Bmail's license in `engine/LICENSE`, Node.js notices in
 `engine/NODE-LICENSE.txt`, and the production dependencies' distributed license files.
 
 For Outlook.com, Hotmail, and Microsoft 365, see [Outlook setup](docs/OUTLOOK.md).
+
+### Mail metadata and background updates
+
+Bmail keeps a disposable SQLite metadata index at `<backup directory>/.cache/mail-metadata.db`.
+It contains message headers, folder identity, backup status and local file references; email bodies
+and attachments stay in the existing `.eml` files. Sorting, search, counts and pagination use this
+index. Locale-aware sort orders are computed once per changed metadata snapshot and reused by
+indexed database queries. The manifest and JSON server index remain the recovery sources.
+The database is rebuilt if missing or corrupt; unavailable SQLite or unwritable storage falls back
+to the existing reader. SQLite uses Node's built-in `node:sqlite` (Node 22.13+).
+
+While the app runs, a read-only INBOX IMAP IDLE connection signals mailbox changes. Other folders
+are checked every minute; servers without IDLE use the same timed fallback. New-mail checks use
+UIDNEXT checkpoints and fetch only missing headers. A count mismatch, UIDVALIDITY change, missing
+checkpoint or 30-minute reconciliation deadline triggers a full UID enumeration. Manual mailbox
+coverage checks still validate all saved files. Local backups survive server-side deletions.
+
+The watcher releases the backup lock between checks, switches with the active account, and renews
+its session every ten minutes so Microsoft OAuth credentials can refresh. Failed sessions are
+retried on subsequent dashboard refreshes with a 30-second minimum retry interval. Closing the app
+ends monitoring; the next launch catches up. This requires no hosted webhook server. Provider API
+webhooks and full flag synchronization are not part of this implementation.
+
+### Search mail with filters
+
+Open Search with Ctrl+K and choose **Mails**, then expand **Mail filters**. Combine a
+sender name/address, folder, sent-date range and backup status with the search text.
+Filters apply in SQLite before pagination, and changing a filter returns to page one.
+Dates include both selected days in your local time; undated messages are excluded
+when a date range is active. **Clear filters** removes the mail filters while keeping
+your search text. Choosing Mails with an empty query browses all indexed mail.
+Search covers subject, sender and folder metadata; message bodies and attachments
+are not searched. The fallback reader honors the same filters if SQLite is unavailable.
+
+Run `npm.cmd run test:search:ui` for the search dialog checks (requires Microsoft Edge).
+This uses synthetic mail metadata and a temporary SQLite database, without a mailbox.

@@ -22,16 +22,34 @@ async function checkMailbox(client, root, manifest, { readJson, atomicWrite, val
     try {
       const uidValidity = String(client.mailbox.uidValidity);
       if (!/^\d+$/.test(uidValidity)) throw new Error('Server did not supply UIDVALIDITY');
-      const uids = await client.search({ all: true }, { uid: true });
+      const earlier = previous?.folders?.find(item => item.name === folder.path && item.uidValidity === uidValidity);
+      const uidNext = Number(client.mailbox.uidNext);
+      const exists = Number(client.mailbox.exists);
+      const checkpoint = Number(earlier?.uidNext);
+      const fullCheckedAt = earlier?.fullCheckedAt || previous?.checkedAt;
+      const recent = Date.now() - Date.parse(fullCheckedAt) < 30 * 60 * 1000;
+      let incremental = newMailOnly && recent && Array.isArray(earlier?.uids)
+        && Number.isSafeInteger(checkpoint) && checkpoint > 0
+        && Number.isSafeInteger(uidNext) && uidNext >= checkpoint
+        && Number.isSafeInteger(exists) && exists >= earlier.uids.length;
+      let uids;
+      if (incremental) {
+        const added = uidNext > checkpoint ? await client.search({ uid: `${checkpoint}:*` }, { uid: true }) : [];
+        if (!Array.isArray(added)) throw new Error('Unable to enumerate mailbox messages');
+        // IMAP n:* may include the last existing UID when n is above it.
+        uids = [...new Set([...earlier.uids, ...added.filter(uid => uid >= checkpoint)])];
+        incremental = uids.length === exists;
+      }
+      if (!incremental) uids = await client.search({ all: true }, { uid: true });
       if (!Array.isArray(uids)) throw new Error('Unable to enumerate mailbox messages');
       const key = crypto.createHash('sha256').update(folder.path).digest('hex') + '-' + uidValidity;
       const records = manifest?.folders?.[key]?.messages || {};
       const saved = newMailOnly ? 0 : uids.filter(uid => records[uid] && records[uid].complete !== false && validateRecord(root, records[uid])).length;
-      const earlier = previous?.folders?.find(item => item.name === folder.path && item.uidValidity === uidValidity);
       const known = new Set(earlier?.uids || []);
       const reset = !earlier && previous?.folders?.some(item => item.name === folder.path);
       const newUids = previous && !reset ? (earlier ? uids.filter(uid => !known.has(uid)) : uids) : [];
-      const summary = { name: folder.path, uidValidity, uids, newUids, serverMessages: uids.length, savedMessages: saved,
+      const summary = { name: folder.path, uidValidity, uidNext: Number.isSafeInteger(uidNext) ? uidNext : null,
+        fullCheckedAt: incremental ? fullCheckedAt : new Date().toISOString(), uids, newUids, serverMessages: uids.length, savedMessages: saved,
         missingMessages: uids.length - saved, newMessages: previous && !reset ? newUids.length : null };
       folders.push(summary);
       if (indexMessages) indexedFolders[key] = await indexFolder(client, summary, previousIndex[key], records);
@@ -42,7 +60,7 @@ async function checkMailbox(client, root, manifest, { readJson, atomicWrite, val
   const total = field => folders.reduce((sum, folder) => sum + (folder[field] || 0), 0);
   const complete = folders.every(folder => folder.missingMessages === 0);
   if (newMailOnly) {
-    const snapshot = { checkedAt, previousCheckedAt: previous?.checkedAt || null, folders: folders.map(({ name, uidValidity, uids, newUids, newMessages }) => ({ name, uidValidity, uids, newUids, newMessages })) };
+    const snapshot = { checkedAt, previousCheckedAt: previous?.checkedAt || null, folders: folders.map(({ name, uidValidity, uidNext, fullCheckedAt, uids, newUids, newMessages }) => ({ name, uidValidity, uidNext, fullCheckedAt, uids, newUids, newMessages })) };
     atomicWrite(filename, JSON.stringify(snapshot, null, 2) + '\n');
     return snapshot;
   }

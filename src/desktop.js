@@ -24,7 +24,7 @@ export function folderNavigation(dashboard, selected, filter, escape, number, ne
   const counts = new Map();
   for (const folder of dashboard.localStats?.folders || []) counts.set(folder.name, (counts.get(folder.name) || 0) + folder.messages);
   return mailboxFolders(dashboard).filter(name => name.toLowerCase().includes(filter.toLowerCase())).map(name =>
-    `<div class="folder-row" data-folder="${escape(name)}"><button class="folder-item ${selected === name ? 'selected' : ''}" data-action="select-folder" data-folder="${escape(name)}" aria-pressed="${selected === name}">${folderIcon(name)}<span>${escape(name)}</span><small>${number(counts.get(name) || 0)}</small></button>${newMailBadge(newMail.get(name), escape, name)}${downloadButton('download-folder', `data-folder="${escape(name)}"`, `Download ${name} (.zip)`, escape, !counts.get(name))}</div>`).join('');
+    `<div class="folder-row" data-folder="${escape(name)}"><button class="folder-item ${selected === name ? 'selected' : ''}" data-action="select-folder" data-folder="${escape(name)}" title="${escape(name)}" aria-pressed="${selected === name}">${folderIcon(name)}<span>${escape(name)}</span><small>${number(counts.get(name) || 0)}</small></button>${newMailBadge(newMail.get(name), escape, name)}${downloadButton('download-folder', `data-folder="${escape(name)}"`, `Download ${name} (.zip)`, escape, !counts.get(name))}</div>`).join('');
 }
 
 export function mailSize(bytes = 0) {

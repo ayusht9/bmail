@@ -96,6 +96,7 @@ button.primary:hover:not(:disabled) {
 .folder-sidebar {
   display:flex;
   flex-direction:column;
+  min-width:0;
   background:var(--sidebar);
   border-right:1px solid var(--line);
   min-height:0;
@@ -196,13 +197,62 @@ button.primary:hover:not(:disabled) {
   border-top:1px solid var(--line);
 }
 .sidebar-tools button {
-  display:block;
+  display:flex;
+  align-items:center;
+  gap:8px;
   width:100%;
   text-align:left;
   border-color:transparent;
   background:transparent;
   padding-left:7px;
 }
+.sidebar-tools svg, .compact-account svg, .compact-filter svg, .sidebar-toggle svg {
+  width:18px; height:18px; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:1.4; stroke-linecap:round; stroke-linejoin:round;
+}
+.compact-account, .compact-filter { display:none; }
+.statusbar .sidebar-toggle { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:30px; min-height:22px; height:22px; padding:2px 5px; border-color:transparent; background:transparent; }
+.sidebar-toggle[aria-expanded="false"] svg { transform:scaleX(-1); }
+.statusbar { padding-left:4px; }
+.sidebar-collapsed .folder-sidebar { min-width:0; }
+.sidebar-collapsed .account-switcher { padding:8px 6px; }
+.sidebar-collapsed .account-heading { flex-direction:column; gap:4px; margin:4px 0 0; }
+.sidebar-collapsed .account-heading label, .sidebar-collapsed #active-account,
+.sidebar-collapsed .sidebar-heading, .sidebar-collapsed .filter-field,
+.sidebar-collapsed .folder-row > .download-icon, .sidebar-collapsed .sidebar-empty { display:none; }
+.sidebar-collapsed .compact-account, .sidebar-collapsed .compact-filter { display:flex; justify-content:center; align-items:center; width:32px; height:32px; min-height:32px; padding:6px; margin:0 auto; background:transparent; border-color:transparent; }
+.sidebar-collapsed .compact-filter { margin-bottom:6px; }
+.sidebar-collapsed .folder-list { overflow-x:hidden; }
+.sidebar-collapsed .folder-row { position:relative; padding:0; }
+.sidebar-collapsed .folder-item { justify-content:center; padding:10px 0; min-height:40px; }
+.sidebar-collapsed .folder-item svg { width:20px; height:20px; }
+.sidebar-collapsed .folder-item span, .sidebar-collapsed .folder-item small, .sidebar-collapsed .sidebar-tools span {
+  position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;
+}
+.sidebar-collapsed .folder-row > .new-mail-badge { position:absolute; top:3px; right:5px; margin:0; width:7px; min-width:7px; height:7px; padding:0; font-size:0; pointer-events:none; }
+.sidebar-collapsed .sidebar-tools { padding:7px 5px; }
+.sidebar-collapsed .sidebar-tools button { justify-content:center; min-height:34px; padding:5px; }
+/* Follow the pointer directly; ease only the final settle and button toggles. */
+@media (prefers-reduced-motion: no-preference) {
+  .desktop-layout.sidebar-animate { transition:grid-template-columns 180ms cubic-bezier(.2,.7,.2,1); }
+  .resizing-sidebar .desktop-layout { transition:none; }
+  .folder-sidebar .folder-item { transition:padding 180ms ease, min-height 180ms ease, background-color 100ms ease; }
+  .folder-sidebar .folder-item span, .folder-sidebar .folder-item small,
+  .folder-sidebar .sidebar-tools span { transition:opacity 120ms ease; }
+  .sidebar-collapsed .compact-account, .sidebar-collapsed .compact-filter { animation:sidebar-control-appear 160ms ease-out; }
+}
+.resizing-sidebar .folder-sidebar { min-width:0; overflow:clip; }
+.resizing-sidebar .folder-sidebar .account-switcher,
+.resizing-sidebar .folder-sidebar .sidebar-heading,
+.resizing-sidebar .folder-sidebar .filter-field { min-width:160px; }
+.resizing-sidebar .folder-sidebar .folder-item span,
+.resizing-sidebar .folder-sidebar .folder-item small,
+.resizing-sidebar .folder-sidebar .sidebar-tools span,
+.resizing-sidebar .folder-sidebar .account-switcher,
+.resizing-sidebar .folder-sidebar .sidebar-heading,
+.resizing-sidebar .folder-sidebar .filter-field { opacity:var(--sidebar-label-opacity, 1); }
+.folder-sidebar .folder-item span, .folder-sidebar .folder-item small,
+.folder-sidebar .sidebar-tools span { opacity:var(--sidebar-label-opacity, 1); }
+@keyframes sidebar-control-appear { from { opacity:0; } to { opacity:1; } }
 .mail-workspace {
   min-width:0;
   overflow:auto;
@@ -1271,6 +1321,20 @@ dialog.universal-search { position: fixed; inset: 0; margin: auto; padding: 0; w
 .search-filters { display: flex; gap: 6px; padding: 16px 22px; border-bottom: 1px solid var(--line); }
 .search-filters button { border-color: transparent; background: transparent; color: var(--muted); border-radius: 5px; }
 .search-filters [aria-pressed="true"] { color: var(--link); background: var(--sidebar); border-color: var(--line); font-weight: 600; }
+.mail-search-filters { padding: 10px 22px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.mail-search-filters summary { cursor: pointer; color: var(--muted); padding: 4px 0; }
+.mail-search-filters summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.mail-search-filters [data-filter-count] { color: var(--link); }
+.mail-search-filters fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; border: 0; padding: 12px 0 0; margin: 0; }
+.mail-search-filters label { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: calc(12px * var(--app-font-scale, 1)); }
+.mail-search-filters input, .mail-search-filters select { width: 100%; min-width: 0; }
+.mail-search-filters [data-clear-mail-filters] { align-self: end; justify-self: end; }
+.mail-search-filters p { margin: 10px 0 2px; font-size: calc(11px * var(--app-font-scale, 1)); color: var(--muted); }
+@media (max-width: 480px), (max-height: 580px) {
+  .universal-search[open] { overflow-y: auto; }
+  .mail-search-filters fieldset { grid-template-columns: minmax(0, 1fr); }
+  .universal-search-results { flex-shrink: 0; }
+}
 .universal-search-results { overflow-y: auto; min-height: 100px; padding: 8px; }
 .universal-search-result { display: flex; align-items: center; justify-content: space-between; text-align: left; gap: 16px; width: 100%; padding: 12px 14px; border: 0; border-radius: 5px; }
 .universal-search-result > span:first-child { min-width: 0; }
