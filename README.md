@@ -62,6 +62,8 @@ webhooks and full flag synchronization are not part of this implementation.
 
 Open Search with Ctrl+K and choose **Mails**, then expand **Mail filters**. Combine a
 sender name/address, folder, sent-date range and backup status with the search text.
+The sender field offers choices from the account's full index and also accepts typed
+text. Empty date fields show today's local date as a placeholder without applying a filter.
 Filters apply in SQLite before pagination, and changing a filter returns to page one.
 Dates include both selected days in your local time; undated messages are excluded
 when a date range is active. **Clear filters** removes the mail filters while keeping
