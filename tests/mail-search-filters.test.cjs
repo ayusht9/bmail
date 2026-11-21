@@ -27,6 +27,9 @@ test('SQLite and fallback combine sender, folder, dates, backup status and searc
         assert.deepEqual(metadataPage(root, '1', rows, options), paginateMail(rows, options));
       }
     }
+    const senderChoices = metadataPage(root, '1', rows, { includeSenders: true, query: 'no matching messages', filters: { sender: 'nobody' } });
+    assert.equal(senderChoices.total, 0);
+    assert.deepEqual(senderChoices.senders, ['Alice@example.test', 'Bob %_@example.test']);
     const oneDay = metadataPage(root, '1', rows, { filters: { dateFrom: '2026-11-02', dateTo: '2026-11-02' }, pageSize: 100 });
     assert.equal(oneDay.total, 30);
     assert.ok(oneDay.rows.every(row => new Date(row.sentAt).getDate() === 2));
@@ -58,5 +61,8 @@ test('reader still honors filters when the SQLite cache cannot be created', asyn
     const result = await listMailPage(root, { query: 'invoice', filters: { sender: 'ALICE', dateFrom: '2026-11-02', dateTo: '2026-11-02', backupStatus: 'missing' } });
     assert.equal(result.total, 15);
     assert.ok(result.rows.every(row => row.sender === 'Alice@example.test' && !row.backedUp));
+    const choices = await listMailPage(root, { includeSenders: true, query: 'no matches' });
+    assert.equal(choices.total, 0);
+    assert.deepEqual(choices.senders, ['Alice@example.test', 'Bob %_@example.test']);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

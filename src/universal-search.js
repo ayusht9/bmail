@@ -60,8 +60,15 @@ export function createUniversalSearch({ invoke, escape, navigate, openMail, acco
     dialog = document.createElement('dialog');
     dialog.className = 'universal-search';
     dialog.setAttribute('aria-labelledby', 'universal-search-title');
-    dialog.innerHTML = `<header><h2 id="universal-search-title">Search Bmail</h2><button type="button" data-close aria-label="Close search">Esc</button></header><div class="universal-search-field">${icon}<label class="sr-only" for="universal-search-input">Search mail, settings, and features</label><input id="universal-search-input" type="search" placeholder="Search mail, settings, and features…" autocomplete="off" autofocus></div><div class="search-filters" role="group" aria-label="Search filters">${[['all', 'All'], ['mails', 'Mails'], ['settings', 'Settings'], ['features', 'Features']].map(([value, label]) => `<button type="button" data-filter="${value}" aria-pressed="${value === 'all'}">${label}</button>`).join('')}</div>${mailSearchFilters(folders(), escape)}<div class="universal-search-results" aria-label="Search results" aria-busy="false"></div><footer>Search in your current account. <span>Ctrl+K to open</span></footer>`;
+    dialog.innerHTML = `<header><h2 id="universal-search-title">Search Bmail</h2><button type="button" data-close aria-label="Close search"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></header><div class="universal-search-field">${icon}<label class="sr-only" for="universal-search-input">Search mail, settings, and features</label><input id="universal-search-input" type="search" placeholder="Search mail, settings, and features…" autocomplete="off" autofocus></div><div class="search-filters" role="group" aria-label="Search filters">${[['all', 'All'], ['mails', 'Mails'], ['settings', 'Settings'], ['features', 'Features']].map(([value, label]) => `<button type="button" data-filter="${value}" aria-pressed="${value === 'all'}">${label}</button>`).join('')}</div>${mailSearchFilters(folders(), escape)}<div class="universal-search-results" aria-label="Search results" aria-busy="false"></div>`;
     document.body.append(dialog);
+    const owner = dialog;
+    const ownerAccount = account();
+    // Sender choices cover the full account index, independently of current filters.
+    void invoke('get_mail_page', { page: 1, pageSize: 25, includeSenders: true }).then(result => {
+      if (dialog !== owner || !owner.open || account() !== ownerAccount) return;
+      owner.querySelector('#mail-sender-options').innerHTML = (result.senders || []).map(sender => `<option value="${escape(sender)}"></option>`).join('');
+    }).catch(() => { /* Typing a sender remains available if suggestions cannot load. */ });
     filter = 'all'; mailPage = 1;
     function selectFilter(value) {
       filter = value;
@@ -69,6 +76,7 @@ export function createUniversalSearch({ invoke, escape, navigate, openMail, acco
       dialog.querySelector('.mail-search-filters').hidden = !['all', 'mails'].includes(value);
     }
     function scheduleSearch(event) {
+      if (event.target.matches('input[type="date"]')) event.target.dataset.empty = String(!event.target.value);
       clearTimeout(timer); generation++; mailPage = 1;
       if (event.target.closest('.mail-search-filters')) selectFilter('mails');
       const target = dialog.querySelector('.universal-search-results');
@@ -88,7 +96,7 @@ export function createUniversalSearch({ invoke, escape, navigate, openMail, acco
       if (button.hasAttribute('data-close')) { close(); return; }
       if (button.hasAttribute('data-clear-mail-filters')) {
         clearTimeout(timer);
-        dialog.querySelectorAll('.mail-search-filters input, .mail-search-filters select').forEach(control => { control.value = ''; });
+        dialog.querySelectorAll('.mail-search-filters input, .mail-search-filters select').forEach(control => { control.value = ''; if (control.type === 'date') control.dataset.empty = 'true'; });
         selectFilter('mails'); mailPage = 1; void search(); return;
       }
       if (button.dataset.filter) {

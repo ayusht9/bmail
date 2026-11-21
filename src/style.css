@@ -1313,11 +1313,13 @@ dialog.universal-search { position: fixed; inset: 0; margin: auto; padding: 0; w
 .universal-search[open] { display: flex; flex-direction: column; }
 .universal-search > header { display: flex; align-items: center; justify-content: space-between; padding: 20px 22px 12px; gap: 16px; }
 .universal-search h2 { font-size: calc(18px * var(--app-font-scale, 1)); margin: 0; font-weight: 600; }
-.universal-search [data-close] { color: var(--muted); font-size: calc(11px * var(--app-font-scale, 1)); }
+.universal-search [data-close] { color: var(--muted); border: 0; background: transparent; padding: 6px; }
+.universal-search [data-close] svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 .universal-search-field { display: flex; align-items: center; gap: 12px; margin: 0 22px; padding: 10px 12px; border: 1px solid var(--input-border); border-radius: 6px; }
-.universal-search-field:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.universal-search-field:focus-within { border-color: var(--accent); }
 .universal-search-field svg { flex-shrink: 0; color: var(--muted); }
-.universal-search-field input { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--text); padding: 3px 0; outline: none; }
+.universal-search .universal-search-field input,
+.universal-search .universal-search-field input:focus-visible { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--text); padding: 3px 0; outline: none; box-shadow: none; }
 .search-filters { display: flex; gap: 6px; padding: 16px 22px; border-bottom: 1px solid var(--line); }
 .search-filters button { border-color: transparent; background: transparent; color: var(--muted); border-radius: 5px; }
 .search-filters [aria-pressed="true"] { color: var(--link); background: var(--sidebar); border-color: var(--line); font-weight: 600; }
@@ -1328,6 +1330,10 @@ dialog.universal-search { position: fixed; inset: 0; margin: auto; padding: 0; w
 .mail-search-filters fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; border: 0; padding: 12px 0 0; margin: 0; }
 .mail-search-filters label { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: calc(12px * var(--app-font-scale, 1)); }
 .mail-search-filters input, .mail-search-filters select { width: 100%; min-width: 0; }
+.mail-date-field { position: relative; display: block; }
+.mail-date-field > span { display: none; position: absolute; inset: 0 34px 0 10px; align-items: center; color: var(--muted); pointer-events: none; font: inherit; }
+.mail-date-field input[data-empty="true"]:not(:focus)::-webkit-datetime-edit { color: transparent; }
+.mail-date-field input[data-empty="true"]:not(:focus) + span { display: flex; }
 .mail-search-filters [data-clear-mail-filters] { align-self: end; justify-self: end; }
 .mail-search-filters p { margin: 10px 0 2px; font-size: calc(11px * var(--app-font-scale, 1)); color: var(--muted); }
 @media (max-width: 480px), (max-height: 580px) {
