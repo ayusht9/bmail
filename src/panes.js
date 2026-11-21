@@ -20,6 +20,37 @@ export function toggleSidebar(root, focusTarget) {
   if (focusTarget) root.querySelector(focusTarget)?.focus({ preventScroll: true });
 }
 
+export function readerToggle() {
+  const expanded = preferences.readerCollapsed !== true;
+  const label = expanded ? 'Collapse mail reader' : 'Expand mail reader';
+  return `<button type="button" class="reader-toggle" data-action="toggle-reader" aria-controls="mail-reader" aria-expanded="${expanded}" aria-label="${label}" title="${label}"><span>Mail reader</span><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m5 8 5 5 5-5"/></svg></button>`;
+}
+
+export function syncReaderVisibility(root) {
+  const panes = root.querySelector('.mailbox-panes');
+  if (!panes) return;
+  const collapsed = preferences.readerCollapsed === true;
+  const reader = panes.querySelector('.reading-pane');
+  const divider = panes.querySelector('[data-pane-divider="mail"]');
+  const toggle = panes.querySelector('.reader-toggle');
+  if (collapsed && (reader?.contains(document.activeElement) || divider === document.activeElement)) toggle?.focus({ preventScroll: true });
+  if (reader) { reader.id = 'mail-reader'; reader.hidden = collapsed; }
+  if (divider) divider.hidden = collapsed;
+  panes.classList.toggle('reader-collapsed', collapsed);
+  const label = collapsed ? 'Expand mail reader' : 'Collapse mail reader';
+  toggle?.setAttribute('aria-expanded', String(!collapsed));
+  toggle?.setAttribute('aria-label', label); toggle?.setAttribute('title', label);
+}
+
+export function toggleReader(root) {
+  preferences.readerCollapsed = preferences.readerCollapsed !== true;
+  apply(root); save();
+}
+
+function mailAvailable(panes) {
+  return Math.max(0, panes.clientHeight - 6 - (panes.querySelector('.reader-toggle')?.offsetHeight || 0));
+}
+
 export function paneDivider(kind, label) {
   const sidebar = kind === 'sidebar';
   return `<div class="pane-divider ${sidebar ? 'sidebar-divider' : 'mail-divider'}" role="separator" tabindex="0" aria-label="${label || (sidebar ? 'Resize folder sidebar' : 'Resize mail list and reading pane')}" aria-orientation="${sidebar ? 'vertical' : 'horizontal'}" data-pane-divider="${kind}" title="Drag or use arrow keys to resize; double-click to reset"></div>`;
@@ -28,6 +59,7 @@ export function paneDivider(kind, label) {
 function save() { try { localStorage.setItem(storageKey, JSON.stringify(preferences)); } catch {} }
 function defaultSidebar() { return innerWidth <= 850 ? 166 : innerWidth <= 1050 ? 184 : 224; }
 function apply(root) {
+  syncReaderVisibility(root);
   const layout = root.querySelector('.desktop-layout');
   if (layout) {
     const max = Math.max(160, layout.clientWidth - 440);
@@ -47,7 +79,7 @@ function apply(root) {
   }
   const panes = root.querySelector('.mailbox-panes');
   if (panes && panes.clientHeight) {
-    const available = Math.max(0, panes.clientHeight - 6);
+    const available = mailAvailable(panes);
     const min = Math.min(120, available / 2);
     const max = Math.max(min, available - Math.min(140, available / 2));
     const ratio = Number.isFinite(preferences.mailRatio) ? preferences.mailRatio : .42;
@@ -70,7 +102,7 @@ export function installPaneResizing(root) {
   sync();
   root.addEventListener('pointerdown', event => {
     const divider = event.target.closest('[data-pane-divider]');
-    if (!divider || event.button !== 0) return;
+    if (!divider || divider.hidden || event.button !== 0) return;
     const kind = divider.dataset.paneDivider;
     drag = { kind, id: event.pointerId, x: event.clientX, y: event.clientY,
       start: kind === 'sidebar' ? root.querySelector('.folder-sidebar').getBoundingClientRect().width : Number(divider.getAttribute('aria-valuenow')) };
@@ -81,7 +113,7 @@ export function installPaneResizing(root) {
   });
   function resize(kind, value) {
     const divider = root.querySelector(`[data-pane-divider="${kind}"]`);
-    if (!divider) return;
+    if (!divider || divider.hidden) return;
     const size = bound(value, Number(divider.getAttribute('aria-valuemin')), Number(divider.getAttribute('aria-valuemax')));
     if (kind === 'sidebar') {
       if (drag?.kind === 'sidebar') drag.width = size;
@@ -91,7 +123,7 @@ export function installPaneResizing(root) {
         if (!preferences.collapsed) preferences.sidebar = Math.max(160, size);
       }
     }
-    else preferences.mailRatio = size / Math.max(1, root.querySelector('.mailbox-panes').clientHeight - 6);
+    else preferences.mailRatio = size / Math.max(1, mailAvailable(root.querySelector('.mailbox-panes')));
     apply(root);
   }
   root.addEventListener('pointermove', event => {
@@ -113,7 +145,7 @@ export function installPaneResizing(root) {
   for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) root.addEventListener(name, finish);
   root.addEventListener('keydown', event => {
     const divider = event.target.closest('[data-pane-divider]');
-    if (!divider) return;
+    if (!divider || divider.hidden) return;
     const kind = divider.dataset.paneDivider;
     const keys = kind === 'sidebar' ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown'];
     if (!keys.includes(event.key)) return;
@@ -127,7 +159,7 @@ export function installPaneResizing(root) {
   });
   root.addEventListener('dblclick', event => {
     const divider = event.target.closest('[data-pane-divider]');
-    if (!divider) return;
+    if (!divider || divider.hidden) return;
     delete preferences[divider.dataset.paneDivider === 'sidebar' ? 'sidebar' : 'mailRatio'];
     if (divider.dataset.paneDivider === 'sidebar') {
       preferences.collapsed = false;

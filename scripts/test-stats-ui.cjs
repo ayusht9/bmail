@@ -109,7 +109,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
           if (['stop', 'cancel'].includes(args.command)) { window.data.backupRunning = false; window.data.progress.state = args.command === 'stop' ? 'stopped' : 'cancelled'; }
           return 'Control applied';
         }
-        if (name === 'get_saved_message') { if (window.failReader) throw 'Saved email is unavailable'; window.lastReadFile = args.file; return { subject: 'Preview subject', from: 'Sender <sender@example.com>', to: 'reader@example.com', date: '2026-11-16T09:00:00Z', html: '<p>Hello from the selected email</p><script>window.previewInjected=true</script><img alt="Remote logo" src="https://tracking.invalid/pixel"><img alt="Embedded logo" src="data:image/png;base64,iVBORw0KGgo="><a href="javascript:alert(1)">link</a>', text: '', attachments: [] }; }
+        if (name === 'get_saved_message') { if (window.holdReader) await new Promise(resolve => { window.finishReader = resolve; }); if (window.failReader) throw 'Saved email is unavailable'; window.lastReadFile = args.file; return { subject: 'Preview subject', from: 'Sender <sender@example.com>', to: 'reader@example.com', date: '2026-11-16T09:00:00Z', html: '<p>Hello from the selected email</p><script>window.previewInjected=true</script><img alt="Remote logo" src="https://tracking.invalid/pixel"><img alt="Embedded logo" src="data:image/png;base64,iVBORw0KGgo="><a href="javascript:alert(1)">link</a>', text: '', attachments: [] }; }
         if (name === 'get_mail_page') return window.fixtureMailPage(window.data.localStats.recent.filter(mail => !args.folder || mail.folder === args.folder), args);
         if (name === 'get_saved_mail') return window.data.localStats.recent.filter(mail => mail.backedUp && (!args.folder || mail.folder === args.folder));
         if (name === 'get_dashboard') { window.dashboardForces.push(args?.force); return structuredClone(window.data); }
@@ -284,6 +284,39 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.frameLocator('iframe[title="Email content"]').getByText('Hello from the selected email', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.previewInjected), undefined);
     assert.match(content, /data:image\/png/);
+    const expandedMailHeight = await page.locator('.mail-pane').evaluate(pane => pane.getBoundingClientRect().height);
+    const splitBeforeCollapse = await page.evaluate(() => JSON.parse(localStorage.getItem('bmail-pane-sizes') || '{}').mailRatio ?? null);
+    const readsBeforeCollapse = await page.evaluate(() => window.calls.filter(name => name === 'get_saved_message').length);
+    await page.evaluate(() => {
+      window.retainedEmailFrame = document.querySelector('.email-body');
+      const pane = document.querySelector('.reading-pane'); pane.scrollTop = 35; window.retainedReaderScroll = pane.scrollTop;
+    });
+    await page.getByRole('button', { name: 'Collapse mail reader', exact: true }).click();
+    assert.equal(await page.getByRole('button', { name: 'Expand mail reader', exact: true }).getAttribute('aria-expanded'), 'false');
+    assert.equal(await page.locator('#mail-reader').isVisible(), false);
+    assert.equal(await page.locator('[data-pane-divider="mail"]').isVisible(), false);
+    assert.ok(await page.locator('.mail-pane').evaluate(pane => pane.getBoundingClientRect().height) > expandedMailHeight + 50);
+    assert.equal(await page.evaluate(() => window.retainedEmailFrame.isConnected), true, 'Collapsing retains the email document');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('bmail-pane-sizes')).readerCollapsed), true);
+    await page.getByRole('button', { name: 'Expand mail reader', exact: true }).press('Space');
+    await reader.getByRole('heading', { name: 'Preview subject', exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.retainedEmailFrame === document.querySelector('.email-body')), true, 'Expanding does not reload the selected email');
+    assert.equal(await page.evaluate(() => document.querySelector('.reading-pane').scrollTop === window.retainedReaderScroll), true);
+    assert.equal(await page.evaluate(() => window.calls.filter(name => name === 'get_saved_message').length), readsBeforeCollapse);
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('bmail-pane-sizes')).mailRatio ?? null), splitBeforeCollapse);
+    assert.ok(Math.abs(await page.locator('.mail-pane').evaluate(pane => pane.getBoundingClientRect().height) - expandedMailHeight) < 2);
+    await page.evaluate(() => { window.holdReader = true; });
+    await recent.locator('.mail-subject').first().click();
+    await page.waitForFunction(() => Boolean(window.finishReader));
+    await page.getByRole('button', { name: 'Collapse mail reader', exact: true }).click();
+    await page.evaluate(() => { window.holdReader = false; window.finishReader(); });
+    await page.waitForFunction(() => !document.querySelector('.reading-pane').hasAttribute('aria-busy'));
+    assert.equal(await page.locator('#mail-reader').isVisible(), false, 'A finished message request respects the collapsed state');
+    assert.equal(await page.getByRole('button', { name: 'Expand mail reader', exact: true }).getAttribute('aria-expanded'), 'false');
+    await page.screenshot({ path: '.cache/collapsed-mail-reader.png' });
+    await page.getByRole('button', { name: 'Expand mail reader', exact: true }).click();
+    await reader.getByRole('heading', { name: 'Preview subject', exact: true }).waitFor();
+
     await go('Preferences');
     await page.getByLabel('Email images', { exact: true }).selectOption('hidden');
     await go('Home');
@@ -797,8 +830,14 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     const storedList = await listHeight();
     await go('Activity'); await go('Home');
     assert.ok(Math.abs(await listHeight() - storedList) < 2);
+    await page.getByRole('button', { name: 'Collapse mail reader', exact: true }).click();
     await page.reload();
     await page.locator('.mail-table tbody tr').first().waitFor();
+    await page.getByRole('button', { name: 'Expand mail reader', exact: true }).waitFor();
+    assert.equal(await page.locator('.reading-pane').isVisible(), false, 'Reader collapse survives reload');
+    await go('Activity'); await go('Home');
+    assert.equal(await page.locator('.reading-pane').isVisible(), false, 'Reader collapse survives tab changes');
+    await page.getByRole('button', { name: 'Expand mail reader', exact: true }).click();
     await page.waitForFunction(expected => Math.abs(document.querySelector('.folder-sidebar').getBoundingClientRect().width - expected) < 2, storedSidebar);
     assert.ok(Math.abs(await listHeight() - storedList) < 2, 'Pane sizes persist after reload');
     await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click();

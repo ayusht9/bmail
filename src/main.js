@@ -3,7 +3,7 @@ import { outlookHost, outlookAddressHost, providerForHost } from './mail-provide
 import { loadingIndicator } from './loading.js';
 import './style.css';
 import logoUrl from '../src-tauri/icons/app.svg';
-import { paneDivider, installPaneResizing, paneResizeActive, sidebarToggle, toggleSidebar } from './panes.js';
+import { paneDivider, installPaneResizing, paneResizeActive, sidebarToggle, toggleSidebar, readerToggle, toggleReader, syncReaderVisibility } from './panes.js';
 import { installColumnResizing, columnResizeActive } from './columns.js';
 import { themePreference, setTheme } from './theme.js';
 import { invoke as nativeInvoke } from '@tauri-apps/api/core';
@@ -177,7 +177,10 @@ let messageFolderKey = '';
 function mailList() { return savedMailPane(savedMail, selectedFolder, mailSort, escapeHtml, formatDate, selectedMessage.id || selectedMessage.file); }
 function updateReader() {
   const pane = document.querySelector('.reading-pane');
-  if (pane && activeTab === 'mailbox') pane.outerHTML = readingPane({ ...selectedMessage, backupBusy: busy || dashboard?.backupRunning }, escapeHtml, formatDate);
+  if (pane && activeTab === 'mailbox') {
+    pane.outerHTML = readingPane({ ...selectedMessage, backupBusy: busy || dashboard?.backupRunning }, escapeHtml, formatDate);
+    syncReaderVisibility(app);
+  }
 }
 function openMessage(file, id = file, row = savedMail.rows.find(message => (message.id || message.file) === id)) {
   if (row && !row.backedUp) {
@@ -465,7 +468,7 @@ function render() {
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions"><button type="button" data-action="cloud-preferences">Cloud backup</button>${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button data-action="open-backups">Open backup folder</button></div><div class="backup-progress-slot">${progressPanel(currentProgressDashboard(), escapeHtml, formatNumber)}</div>${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
     : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
-    : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readingPane({ ...selectedMessage, backupBusy: busy || dashboard.backupRunning }, escapeHtml, formatDate)}</div>`;
+    : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readerToggle()}${readingPane({ ...selectedMessage, backupBusy: busy || dashboard.backupRunning }, escapeHtml, formatDate)}</div>`;
 
 
   renderWorkspace(app, `
@@ -677,6 +680,7 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (action === 'toggle-reader') { toggleReader(app); return; }
   if (action === 'toggle-sidebar') { toggleSidebar(app); return; }
   if (action === 'expand-account' || action === 'expand-folder-filter') { toggleSidebar(app, action === 'expand-account' ? '#active-account' : '#folder-filter'); return; }
   if (action.startsWith('icloud-')) { void cloudOperation(action.slice(7), undefined, 'icloud'); return; }

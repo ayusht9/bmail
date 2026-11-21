@@ -70,6 +70,11 @@ isolated profile without mailbox connections.
 
 ## Reading and appearance preferences
 
+Use the **Mail reader** bar below the message list to collapse or expand the reader.
+Collapsing gives the list the remaining space and keeps the selected message loaded.
+Expanding restores the saved split height. The collapsed state is saved on this device,
+including across tab changes and app restarts. Message loading continues to respect it.
+
 Preferences includes a Font selector and Font size (12-20 px). Changes apply
 immediately to the interface and default email reading text and are saved on
 this device. Email images can be hidden, restricted to embedded images (the
