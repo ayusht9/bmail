@@ -1,6 +1,6 @@
 [package]
 name = "bmail"
-version = "0.10.0"
+version = "0.10.1"
 description = "A local, read-only email backup dashboard for Gmail and Zoho"
 authors = ["Ayush Kumar"]
 license = "MIT"

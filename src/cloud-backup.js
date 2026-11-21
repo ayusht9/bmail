@@ -53,7 +53,6 @@ export function icloudBackupView(status = {}, { pending = '', backupRunning = fa
   const problem = error || icloudMessages[status.errorCode];
   return `<article id="icloud-backup-settings" class="cloud-backup" aria-labelledby="icloud-provider-title">
     <div class="cloud-provider-info"><header class="cloud-provider"><img src="${icloudIcon}" alt="" width="32" height="32"><div class="cloud-provider-name"><h4 id="icloud-provider-title">iCloud Drive</h4><span class="cloud-connection" role="status">${label}</span></div></header>
-      <p>Choose the local iCloud Drive folder managed by iCloud for Windows. Apple handles cloud uploads; Bmail confirms local copies only.</p>
       ${!ready ? '<p class="cloud-required">Set up a mailbox first.</p>' : ''}
       ${status.connected && status.folderName ? `<details class="cloud-folder"><summary>Copy destination</summary><p>${escape(status.folderName)}</p></details>` : ''}
       ${status.connected && status.lastCopiedAt ? `<dl class="cloud-details"><div><dt>Last local copy</dt><dd>${escape(date(status.lastCopiedAt))}</dd></div></dl>` : ''}
