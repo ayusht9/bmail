@@ -1,3 +1,4 @@
+import { mailProviderPicker, installMailProviderPicker, syncMailProviderPicker } from './mail-provider-picker.js';
 import { outlookHost, outlookAddressHost, providerForHost } from './mail-providers.js';
 import { loadingIndicator } from './loading.js';
 import './style.css';
@@ -324,6 +325,7 @@ async function startOutlookSignIn(button) {
 }
 
 function updateProviderHelp() {
+  syncMailProviderPicker(app);
   const google = document.querySelector('#mail-provider').value === 'google';
   const icloud = document.querySelector('#mail-provider').value === 'icloud';
   const outlook = document.querySelector('#mail-provider').value === 'outlook';
@@ -505,14 +507,7 @@ function render() {
       <form id="mailbox-form">
         <div class="mailbox-settings-heading"><h2 id="setup-title">${hasAccount ? (outlookHost(mailHost) ? 'Mailbox settings' : 'Update app password') : 'Set up your mailbox'}</h2>${hasAccount ? `<button type="button" class="account-sync account-remove" data-action="remove-mailbox" aria-label="Remove mailbox" title="Remove mailbox" ${busy || dashboard.backupRunning || activeExports ? 'disabled' : ''}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M8 5V3h4v2M5 5l1 12h8l1-12M8 8v6m4-6v6"/></svg></button>` : ''}</div>
         <p id="setup-description">Connect using your IMAP server and application-specific password. Credentials are encrypted for this Windows user.</p>
-        <label for="mail-provider">Email provider</label>
-        <select id="mail-provider" ${hasAccount ? 'disabled' : ''}>
-          <option value="google" ${providerForHost(mailHost) === 'google' ? 'selected' : ''}>Gmail</option>
-          <option value="outlook" disabled ${providerForHost(mailHost) === 'outlook' ? 'selected' : ''}>Outlook (Coming soon)</option>
-          <option value="zoho" ${providerForHost(mailHost) === 'zoho' ? 'selected' : ''}>Zoho</option>
-          <option value="icloud" ${providerForHost(mailHost) === 'icloud' ? 'selected' : ''}>iCloud</option>
-          <option value="other" ${providerForHost(mailHost) === 'other' ? 'selected' : ''}>Others</option>
-        </select>
+        ${mailProviderPicker(mailHost, hasAccount, escapeHtml)}
         <label for="mail-user">Email address</label>
         <input id="mail-user" name="user" type="email" autocomplete="username" value="${hasAccount ? escapeHtml(dashboard.user) : ''}" ${hasAccount ? 'readonly' : ''} required>
         <label for="mail-host">IMAP server</label>
@@ -1184,6 +1179,7 @@ document.addEventListener('visibilitychange', () => dashboardPoller.wake());
 window.addEventListener('pagehide', () => dashboardPoller.stop());
 installColumnResizing(app);
 installPaneResizing(app);
+installMailProviderPicker(app);
 render();
 Promise.all([refresh(), loadDesktopPreferences(), loadMicrosoftSignIn()]).finally(() => {
   dashboardPoller.start();
