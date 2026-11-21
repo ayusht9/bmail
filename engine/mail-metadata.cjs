@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
-const { sortMail } = require('./mail-page.cjs');
+const { sortMail, normalizeMailFilters } = require('./mail-page.cjs');
 const columns = new Set(['subject', 'sender', 'folder', 'sentAt', 'bytes']);
 
 // A disposable, account-local index. The manifest and .eml files remain authoritative.
@@ -10,18 +10,29 @@ function queryPage(root, revision, rows, options = {}) {
   fs.mkdirSync(directory, { recursive: true });
   const db = new DatabaseSync(path.join(directory, 'mail-metadata.db'));
   try {
-    db.exec(`PRAGMA busy_timeout=5000;
+    db.exec('PRAGMA busy_timeout=5000');
+    // This is a derived cache: migrate the old schema by rebuilding metadata.
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      if (db.prepare('PRAGMA user_version').get().user_version !== 2) {
+        db.exec('DROP TABLE IF EXISTS revision; DROP TABLE IF EXISTS messages; DROP TABLE IF EXISTS ordering; PRAGMA user_version=2;');
+      }
+      db.exec(`
       CREATE TABLE IF NOT EXISTS revision (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT);
-      CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, folder TEXT, search TEXT, payload TEXT);
+      CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, folder TEXT, search TEXT, payload TEXT, sender TEXT, sent_at INTEGER, backed_up INTEGER);
       CREATE INDEX IF NOT EXISTS messages_folder ON messages(folder);
+      CREATE INDEX IF NOT EXISTS messages_date ON messages(sent_at);
+      CREATE INDEX IF NOT EXISTS messages_backup_date ON messages(backed_up, sent_at);
       CREATE TABLE IF NOT EXISTS ordering (sort TEXT, id TEXT, rank INTEGER, PRIMARY KEY(sort, id));
       CREATE INDEX IF NOT EXISTS ordering_rank ON ordering(sort, rank);`);
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
     if (db.prepare('SELECT value FROM revision WHERE id=1').get()?.value !== revision) {
       db.exec('BEGIN IMMEDIATE');
       try {
         db.exec('DELETE FROM messages; DELETE FROM ordering;');
-        const insert = db.prepare('INSERT INTO messages VALUES (?, ?, ?, ?)');
-        for (const row of rows) insert.run(row.id, row.folder || '', [row.subject, row.sender, row.folder].join(' ').toLocaleLowerCase(), JSON.stringify(row));
+        const insert = db.prepare('INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?)');
+        for (const row of rows) insert.run(row.id, row.folder || '', [row.subject, row.sender, row.folder].join(' ').toLocaleLowerCase(), JSON.stringify(row), String(row.sender || '').toLocaleLowerCase(), Number.isFinite(Date.parse(row.sentAt)) ? Date.parse(row.sentAt) : null, row.backedUp ? 1 : 0);
         db.prepare('INSERT OR REPLACE INTO revision VALUES (1, ?)').run(revision);
         db.exec('COMMIT');
       } catch (error) { db.exec('ROLLBACK'); throw error; }
@@ -40,12 +51,17 @@ function queryPage(root, revision, rows, options = {}) {
         db.exec('COMMIT');
       } catch (error) { db.exec('ROLLBACK'); throw error; }
     }
+    const filters = normalizeMailFilters(options.filters);
     const clauses = [];
     const args = [];
     if (options.folder) { clauses.push('m.folder=?'); args.push(options.folder); }
     for (const term of String(options.query || '').trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)) {
       clauses.push('instr(m.search, ?) > 0'); args.push(term);
     }
+    if (filters.sender) { clauses.push('instr(m.sender, ?) > 0'); args.push(filters.sender); }
+    if (filters.after !== null) { clauses.push('m.sent_at >= ?'); args.push(filters.after); }
+    if (filters.before !== null) { clauses.push('m.sent_at < ?'); args.push(filters.before); }
+    if (filters.backupStatus) { clauses.push('m.backed_up = ?'); args.push(filters.backupStatus === 'saved' ? 1 : 0); }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const total = db.prepare(`SELECT count(*) AS total FROM messages m ${where}`).get(...args).total;
     const pageSize = [25, 50, 100].includes(Number(options.pageSize)) ? Number(options.pageSize) : 50;

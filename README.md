@@ -57,3 +57,17 @@ its session every ten minutes so Microsoft OAuth credentials can refresh. Failed
 retried on subsequent dashboard refreshes with a 30-second minimum retry interval. Closing the app
 ends monitoring; the next launch catches up. This requires no hosted webhook server. Provider API
 webhooks and full flag synchronization are not part of this implementation.
+
+### Search mail with filters
+
+Open Search with Ctrl+K and choose **Mails**, then expand **Mail filters**. Combine a
+sender name/address, folder, sent-date range and backup status with the search text.
+Filters apply in SQLite before pagination, and changing a filter returns to page one.
+Dates include both selected days in your local time; undated messages are excluded
+when a date range is active. **Clear filters** removes the mail filters while keeping
+your search text. Choosing Mails with an empty query browses all indexed mail.
+Search covers subject, sender and folder metadata; message bodies and attachments
+are not searched. The fallback reader honors the same filters if SQLite is unavailable.
+
+Run `npm.cmd run test:search:ui` for the search dialog checks (requires Microsoft Edge).
+This uses synthetic mail metadata and a temporary SQLite database, without a mailbox.

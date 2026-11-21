@@ -1321,6 +1321,20 @@ dialog.universal-search { position: fixed; inset: 0; margin: auto; padding: 0; w
 .search-filters { display: flex; gap: 6px; padding: 16px 22px; border-bottom: 1px solid var(--line); }
 .search-filters button { border-color: transparent; background: transparent; color: var(--muted); border-radius: 5px; }
 .search-filters [aria-pressed="true"] { color: var(--link); background: var(--sidebar); border-color: var(--line); font-weight: 600; }
+.mail-search-filters { padding: 10px 22px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.mail-search-filters summary { cursor: pointer; color: var(--muted); padding: 4px 0; }
+.mail-search-filters summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.mail-search-filters [data-filter-count] { color: var(--link); }
+.mail-search-filters fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; border: 0; padding: 12px 0 0; margin: 0; }
+.mail-search-filters label { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: calc(12px * var(--app-font-scale, 1)); }
+.mail-search-filters input, .mail-search-filters select { width: 100%; min-width: 0; }
+.mail-search-filters [data-clear-mail-filters] { align-self: end; justify-self: end; }
+.mail-search-filters p { margin: 10px 0 2px; font-size: calc(11px * var(--app-font-scale, 1)); color: var(--muted); }
+@media (max-width: 480px), (max-height: 580px) {
+  .universal-search[open] { overflow-y: auto; }
+  .mail-search-filters fieldset { grid-template-columns: minmax(0, 1fr); }
+  .universal-search-results { flex-shrink: 0; }
+}
 .universal-search-results { overflow-y: auto; min-height: 100px; padding: 8px; }
 .universal-search-result { display: flex; align-items: center; justify-content: space-between; text-align: left; gap: 16px; width: 100%; padding: 12px 14px; border: 0; border-radius: 5px; }
 .universal-search-result > span:first-child { min-width: 0; }

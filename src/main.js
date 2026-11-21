@@ -655,6 +655,7 @@ async function run(action) {
 
 const universalSearch = createUniversalSearch({
   invoke, escape: escapeHtml, account: () => dashboard?.user, unavailable: () => busy,
+  folders: () => mailboxFolders(dashboard || {}),
   navigate: async (tab, selector) => {
     if (tab === 'setup') { captureTabDraft(); document.querySelector('#mailbox-dialog').showModal(); return; }
     await selectTab(tab);
