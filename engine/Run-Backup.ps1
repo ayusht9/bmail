@@ -1,4 +1,4 @@
-param([ValidateSet('Backup', 'Folders', 'Stats', 'NewMail')][string]$Mode = 'Backup', [switch]$Scheduled)
+param([ValidateSet('Backup', 'Folders', 'Stats', 'NewMail', 'Watch')][string]$Mode = 'Backup', [switch]$Scheduled)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Invoke-BackupProcess.ps1')
 . (Join-Path $PSScriptRoot 'Backup-Paths.ps1')
@@ -26,7 +26,8 @@ try {
     $logDirectory = Join-Path $dataDirectory 'logs'
     New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
     $logPath = Join-Path $logDirectory ((Get-Date -Format 'yyyy-MM-dd_HH-mm-ss') + '.log')
-    $engineArgument = if ($Mode -eq 'Folders') { '--list-folders' } elseif ($Mode -eq 'NewMail') { '--new-mail' } elseif ($Mode -eq 'Stats') { '--check-mailbox' } elseif ($Scheduled) { '--scheduled' } else { '' }
+    if ($Mode -eq 'Watch') { $env:BMAIL_WATCH_PARENT = [string]$PID }
+    $engineArgument = if ($Mode -eq 'Watch') { '--watch-new-mail' } elseif ($Mode -eq 'Folders') { '--list-folders' } elseif ($Mode -eq 'NewMail') { '--new-mail' } elseif ($Mode -eq 'Stats') { '--check-mailbox' } elseif ($Scheduled) { '--scheduled' } else { '' }
     $result = Invoke-BackupProcess -NodePath $nodePath -ScriptPath (Join-Path $PSScriptRoot 'backup.cjs') -Payload $payload -LogPath $logPath -EngineArgument $engineArgument
     $payload = $null
     $credential = $null

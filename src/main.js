@@ -548,6 +548,7 @@ function toast(message, isError = false, account = dashboard?.user || '') {
   notificationCenter.notify(message, { level: isError ? 'error' : 'success', account });
 }
 
+const watchSnapshotStamp = new Map();
 let refreshing = false;
 let refreshFinished = Promise.resolve();
 async function refresh(background = false, force = false) {
@@ -561,6 +562,14 @@ async function refresh(background = false, force = false) {
   refreshFinished = new Promise(resolve => { finished = resolve; });
   try {
     const next = await invoke('get_dashboard', { force });
+    // The native watcher owns its lifecycle and returns only public mail metadata.
+    if (!busy && !next.backupRunning) {
+      const snapshot = await invoke('watch_mail', { enabled: Boolean(next.credentialReady) }).catch(() => null);
+      if (snapshot?.checkedAt && snapshot.checkedAt !== watchSnapshotStamp.get(next.user)) {
+        watchSnapshotStamp.set(next.user, snapshot.checkedAt);
+        rememberNewMail(snapshot, next.user);
+      }
+    }
     if (force) savedMail.key = '';
     next.newMailFolders = [...(newMailByAccount.get(next.user)?.keys() || [])];
     const unchanged = JSON.stringify(next) === JSON.stringify(dashboard);

@@ -8,6 +8,7 @@ mod microsoft;
 mod cache;
 mod export;
 mod mail;
+mod mail_watch;
 mod startup;
 mod notifications;
 mod taskbar;
@@ -259,7 +260,9 @@ fn read_dashboard(app: &tauri::AppHandle, force: bool) -> Result<Dashboard, Stri
         }
     } else { false };
     drop(child);
-    let lock_running = !launching && active_backup(&backup_root);
+    let metadata_check = read_json(&backup_root.join(".backup.lock"))
+        .is_some_and(|v| v.get("kind").and_then(Value::as_str) == Some("metadata"));
+    let lock_running = !launching && !metadata_check && active_backup(&backup_root);
     let cache_state = app.state::<cache::DashboardCache>();
     let mut cache = cache_state.0.lock().map_err(|_| "Dashboard cache is unavailable")?;
     let summary = cache.manifest(&root, &backup_root.join("manifest.json"), force, |manifest| {
@@ -713,6 +716,7 @@ pub fn run() {
         .manage(taskbar::TaskbarIconState::default())
         .manage(cache::DashboardCache::default())
         .manage(mail::MailReader::default())
+        .manage(mail_watch::MailWatcher::default())
         .setup(|app| {
             initialize_profiles(app.handle()).map_err(std::io::Error::other)?;
             desktop::initialize(app.handle())?;
@@ -720,7 +724,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(desktop::handle_window_event)
-        .invoke_handler(tauri::generate_handler![cloud::cloud_dropbox, cloud::cloud_drive, mail::get_mail_page, desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, get_microsoft_sign_in_status, begin_outlook_sign_in, configure_mailbox, switch_account, remove_mailbox, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
+        .invoke_handler(tauri::generate_handler![cloud::cloud_dropbox, cloud::cloud_drive, mail_watch::watch_mail, mail::get_mail_page, desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, get_microsoft_sign_in_status, begin_outlook_sign_in, configure_mailbox, switch_account, remove_mailbox, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }
