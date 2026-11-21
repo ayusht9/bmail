@@ -1,7 +1,12 @@
 # Repository workflow
 
-- Create every new feature on a separate `feature/<name>` branch from `dev`.
-- Commit each completed feature, then merge it into `dev` with a merge commit.
+- Keep `main` permanent for stable, production-ready releases and `dev` permanent
+  for integration and testing (`develop` is the default name in new projects).
+- Create each feature on a temporary `feature/<name>` branch from `dev`.
+- Fix bugs on a temporary `bugfix/<name>` branch from `dev`, keeping related fixes together.
+- Commit completed work. Once related bugs are fixed and verified, merge the bugfix
+  branch into `dev` with a merge commit immediately. Merge completed, verified
+  feature branches into `dev` with a merge commit too.
 - Keep `main` for releases. After release verification, merge `dev` into `main`
   and push `main` to the configured remote when releasing.
 - Never commit credentials, personal configuration, email backups, logs, or

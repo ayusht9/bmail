@@ -35,6 +35,7 @@ function apply(root) {
       : preferences.collapsed ? railWidth : bound(Number.isFinite(preferences.sidebar) ? preferences.sidebar : defaultSidebar(), 160, max);
     layout.style.setProperty('--sidebar-width', `${width}px`);
     layout.style.setProperty('--sidebar-label-opacity', bound((width - 100) / 60, 0, 1));
+    layout.style.setProperty('--sidebar-action-progress', bound((width - collapseThreshold) / (160 - collapseThreshold), 0, 1));
     layout.classList.toggle('sidebar-collapsed', Boolean(preferences.collapsed));
     const divider = layout.querySelector('[data-pane-divider="sidebar"]');
     divider?.setAttribute('aria-valuenow', Math.round(width)); divider?.setAttribute('aria-valuemin', railWidth); divider?.setAttribute('aria-valuemax', max);
