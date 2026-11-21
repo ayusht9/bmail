@@ -304,7 +304,7 @@ async function loadMicrosoftSignIn() {
 
 async function startOutlookSignIn(button) {
   const form = button.form;
-  if (!microsoftSignIn?.available) return;
+  if (button.disabled || !microsoftSignIn?.available) return;
   const status = document.querySelector('#outlook-sign-in-status');
   form.elements.device_code.value = '';
   button.disabled = true;
@@ -323,20 +323,19 @@ function updateProviderHelp() {
   const google = document.querySelector('#mail-provider').value === 'google';
   const outlook = document.querySelector('#mail-provider').value === 'outlook';
   document.querySelector('#outlook-auth').hidden = !outlook;
-  const available = Boolean(microsoftSignIn?.available);
   const signInButton = document.querySelector('[data-action="outlook-sign-in"]');
-  signInButton.disabled = !available;
-  document.querySelector('#mailbox-form [type="submit"]').disabled = outlook && !available;
+  signInButton.disabled = true;
+  document.querySelector('#mailbox-form [type="submit"]').disabled = outlook;
   const availability = document.querySelector('#outlook-availability');
-  availability.hidden = !outlook || available;
-  availability.textContent = microsoftSignIn === null ? 'Checking Microsoft sign-in availability...' : 'Microsoft sign-in is not set up for this Bmail build. Outlook accounts cannot be connected yet.';
+  availability.hidden = !outlook;
+  availability.textContent = 'Coming soon';
   const password = document.querySelector('#mail-password');
   password.required = !outlook;
   password.hidden = outlook;
   document.querySelector('label[for="mail-password"]').style.display = outlook ? 'none' : '';
   document.querySelector('#provider-help').textContent = google
     ? 'Turn on Google 2-Step Verification, then create an app password. Use that 16-character password here. Some work or school accounts do not allow app passwords.'
-    : outlook ? 'Connect using your Microsoft account. Your password is entered only on the Microsoft website. Enable IMAP in Outlook settings before connecting.' : 'Use the application-specific password supplied by your email provider.';
+    : outlook ? 'Outlook support is coming soon.' : 'Use the application-specific password supplied by your email provider.';
   document.querySelector('[data-action="google-help"]').hidden = !google;
   const port = document.querySelector('#mail-port');
   port.readOnly = google || outlook;
@@ -498,14 +497,14 @@ function render() {
     ${notificationCenter.shell()}
     <dialog id="mailbox-dialog" aria-labelledby="setup-title" aria-describedby="setup-description">
       <form id="mailbox-form">
-        <div class="mailbox-settings-heading"><h2 id="setup-title">${hasAccount ? (outlookHost(mailHost) ? 'Sign in to Microsoft again' : 'Update app password') : 'Set up your mailbox'}</h2>${hasAccount ? `<button type="button" class="account-sync account-remove" data-action="remove-mailbox" aria-label="Remove mailbox" title="Remove mailbox" ${busy || dashboard.backupRunning || activeExports ? 'disabled' : ''}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M8 5V3h4v2M5 5l1 12h8l1-12M8 8v6m4-6v6"/></svg></button>` : ''}</div>
-        <p id="setup-description">Connect with Microsoft sign-in or your IMAP server and application-specific password. Credentials are encrypted for this Windows user.</p>
+        <div class="mailbox-settings-heading"><h2 id="setup-title">${hasAccount ? (outlookHost(mailHost) ? 'Mailbox settings' : 'Update app password') : 'Set up your mailbox'}</h2>${hasAccount ? `<button type="button" class="account-sync account-remove" data-action="remove-mailbox" aria-label="Remove mailbox" title="Remove mailbox" ${busy || dashboard.backupRunning || activeExports ? 'disabled' : ''}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M8 5V3h4v2M5 5l1 12h8l1-12M8 8v6m4-6v6"/></svg></button>` : ''}</div>
+        <p id="setup-description">Connect using your IMAP server and application-specific password. Credentials are encrypted for this Windows user.</p>
         <label for="mail-provider">Email provider</label>
         <select id="mail-provider" ${hasAccount ? 'disabled' : ''}>
-          <option value="google" ${providerForHost(mailHost) === 'google' ? 'selected' : ''}>Google / Gmail</option>
-          <option value="outlook" ${providerForHost(mailHost) === 'outlook' ? 'selected' : ''}>Microsoft Outlook / Hotmail / Microsoft 365</option>
-          <option value="zoho" ${providerForHost(mailHost) === 'zoho' ? 'selected' : ''}>Zoho India</option>
-          <option value="other" ${providerForHost(mailHost) === 'other' ? 'selected' : ''}>Other IMAP server</option>
+          <option value="google" ${providerForHost(mailHost) === 'google' ? 'selected' : ''}>Gmail</option>
+          <option value="outlook" disabled ${providerForHost(mailHost) === 'outlook' ? 'selected' : ''}>Outlook (Coming soon)</option>
+          <option value="zoho" ${providerForHost(mailHost) === 'zoho' ? 'selected' : ''}>Zoho</option>
+          <option value="other" ${providerForHost(mailHost) === 'other' ? 'selected' : ''}>Others</option>
         </select>
         <label for="mail-user">Email address</label>
         <input id="mail-user" name="user" type="email" autocomplete="username" value="${hasAccount ? escapeHtml(dashboard.user) : ''}" ${hasAccount ? 'readonly' : ''} required>
@@ -514,7 +513,6 @@ function render() {
         <label for="mail-port">TLS port</label>
         <input id="mail-port" name="port" type="number" min="1" max="65535" value="${mailPort}" ${hasAccount ? 'readonly' : ''} required>
         <p id="provider-help"></p>
-        ${repairOutlookHost ? '<p role="status">The saved server was an Outlook email domain. Save with Microsoft sign-in to correct it to outlook.office365.com.</p>' : ''}
         <button type="button" class="text-button" data-action="google-help" hidden>How to create a Google app password</button>
         <label for="mail-password">Application-specific password</label>
         <input id="mail-password" name="password" type="password" autocomplete="new-password" aria-describedby="provider-help" required>
@@ -809,6 +807,7 @@ app.addEventListener('change', event => {
   if (event.target.id === 'all-folders') {
     document.querySelector('#folder-choices').disabled = event.target.checked;
   }
+  if (['mail-provider', 'mail-host'].includes(event.target.id)) document.querySelector('#setup-error').textContent = '';
   if (event.target.id === 'mail-provider') {
     document.querySelector('[name="device_code"]').value = '';
     document.querySelector('#outlook-sign-in-status').textContent = '';
@@ -1121,8 +1120,8 @@ app.addEventListener('submit', async event => {
     device_code: values.get('device_code') || '',
     device_interval: Number(values.get('device_interval')) || 10,
   };
-  if (outlookHost(settings.host) && !settings.device_code) {
-    document.querySelector('#setup-error').textContent = 'Start Microsoft sign-in first.';
+  if (outlookHost(settings.host)) {
+    document.querySelector('#setup-error').textContent = 'Outlook support is coming soon.';
     return;
   }
   busy = true;

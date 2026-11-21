@@ -34,7 +34,7 @@ Third-party components retain their own licenses and notices. Packaged builds
 include Bmail's license in `engine/LICENSE`, Node.js notices in
 `engine/NODE-LICENSE.txt`, and the production dependencies' distributed license files.
 
-For Outlook.com, Hotmail, and Microsoft 365, see [Outlook setup](docs/OUTLOOK.md).
+Mailbox setup lists Gmail, Outlook, Zoho, and Others. Outlook is disabled and marked **Coming soon**; Microsoft sign-in is unavailable in the setup dialog. The existing [Outlook integration notes](docs/OUTLOOK.md) remain available for reference.
 
 ### Mail metadata and background updates
 

@@ -928,32 +928,45 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.locator('.operation-error').getByRole('button', { name: 'Retry', exact: true }).click();
     await page.waitForFunction(() => window.newMailChecks === 2 && !document.querySelector('.operation-error') && document.querySelector('.folder-row[data-folder="INBOX"] .new-mail-badge'));
     await page.locator('[data-action="add-account"]').click();
-    await page.locator('#mail-provider').selectOption('outlook');
-    assert.equal(await page.locator('#mail-host').inputValue(), 'outlook.office365.com');
+    const providerOptions = await page.locator('#mail-provider option').evaluateAll(options => options.map(option => ({ label: option.textContent, value: option.value, disabled: option.disabled })));
+    assert.deepEqual(providerOptions, [
+      { label: 'Gmail', value: 'google', disabled: false },
+      { label: 'Outlook (Coming soon)', value: 'outlook', disabled: true },
+      { label: 'Zoho', value: 'zoho', disabled: false },
+      { label: 'Others', value: 'other', disabled: false },
+    ]);
+    await page.locator('#mail-provider').selectOption('zoho');
+    assert.equal(await page.locator('#mail-host').inputValue(), 'imappro.zoho.in');
+    assert.equal(await page.locator('#mailbox-form [type="submit"]').isEnabled(), true);
+    await page.locator('#mail-provider').selectOption('other');
+    await page.locator('#mail-host').fill('outlook.office365.com');
+    await page.locator('#mail-host').press('Tab');
+    await page.locator('#mail-user').fill('fixture@outlook.com');
+    assert.equal(await page.locator('#mail-provider').inputValue(), 'outlook');
     assert.equal(await page.locator('#mail-port').inputValue(), '993');
     assert.equal(await page.locator('#mail-password').isVisible(), false);
-    assert.equal(await page.locator('label[for="mail-password"]').isVisible(), false);
-    await page.locator('#mail-user').fill('fixture@outlook.com');
-    assert.equal(await page.locator('#outlook-client-id').count(), 0);
-    await page.locator('#mailbox-form [type="submit"]').click();
-    await page.getByText('Start Microsoft sign-in first.', { exact: true }).waitFor();
-    await page.getByRole('button', { name: 'Sign in with Microsoft', exact: true }).click();
-    await page.locator('#outlook-sign-in-status').filter({ hasText: 'TEST-CODE' }).waitFor();
-    await page.locator('#mailbox-form [type="submit"]').click();
-    await page.waitForFunction(() => window.mailboxSettings?.device_code === 'fixture-device');
-    assert.deepEqual(await page.evaluate(() => window.mailboxSettings), {
-      user: 'fixture@outlook.com', host: 'outlook.office365.com', port: 993,
-      password: '', device_code: 'fixture-device', device_interval: 5,
+    await page.locator('#outlook-availability').filter({ hasText: /^Coming soon$/ }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Sign in with Microsoft', exact: true }).isDisabled(), true);
+    assert.equal(await page.locator('#mailbox-form [type="submit"]').isDisabled(), true);
+    await page.evaluate(() => {
+      document.querySelector('[name="device_code"]').value = 'fixture-device';
+      document.querySelector('#mailbox-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
-    await page.waitForFunction(() => !document.querySelector('#mailbox-dialog').open);
+    await page.locator('#setup-error').filter({ hasText: /^Outlook support is coming soon\.$/ }).waitFor();
+    assert.equal(await page.evaluate(() => Boolean(window.microsoftSignInArgs || window.mailboxSettings)), false, 'Coming-soon Outlook cannot sign in or save through custom-host entry');
+    await page.locator('#mail-provider').selectOption('google');
+    assert.equal(await page.locator('#mail-host').inputValue(), 'imap.gmail.com');
+    assert.equal(await page.locator('#mailbox-form [type="submit"]').isEnabled(), true);
+    assert.equal(await page.locator('#setup-error').textContent(), '');
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.evaluate(() => { window.data.host = 'outlook.in'; window.data.hasManifest = false; });
     await refreshLocal();
     await page.locator('[data-action="setup"]').first().click();
     assert.equal(await page.locator('#mail-provider').inputValue(), 'outlook');
     assert.equal(await page.locator('#mail-host').inputValue(), 'outlook.office365.com');
     assert.equal(await page.locator('#mail-password').isVisible(), false);
-    await page.getByText('The saved server was an Outlook email domain.', { exact: false }).waitFor();
-    assert.match(await page.locator('#provider-help').textContent(), /password is entered only on the Microsoft/);
+    assert.equal(await page.locator('#provider-help').textContent(), 'Outlook support is coming soon.');
+    assert.equal(await page.locator('#mailbox-form [type="submit"]').isDisabled(), true);
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.locator('[data-action="add-account"]').click();
     await page.locator('#mail-provider').selectOption('other');
@@ -980,8 +993,10 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.evaluate(() => sessionStorage.setItem('fixture-microsoft-unavailable', 'true'));
     await page.reload();
     await page.locator('[data-action="add-account"]').click();
-    await page.locator('#mail-provider').selectOption('outlook');
-    await page.locator('#outlook-availability').filter({ hasText: 'Outlook accounts cannot be connected yet.' }).waitFor();
+    await page.locator('#mail-provider').selectOption('other');
+    await page.locator('#mail-host').fill('outlook.office365.com');
+    await page.locator('#mail-host').press('Tab');
+    await page.locator('#outlook-availability').filter({ hasText: 'Coming soon' }).waitFor();
     assert.equal(await page.locator('#outlook-client-id').count(), 0);
     assert.equal(await page.getByRole('button', { name: 'Sign in with Microsoft', exact: true }).isDisabled(), true);
     assert.equal(await page.locator('#mailbox-form [type="submit"]').isDisabled(), true);
