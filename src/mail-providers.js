@@ -8,5 +8,5 @@ export function outlookHost(host) {
 
 export function providerForHost(host) {
   const normalized = host?.trim().toLowerCase();
-  return outlookHost(host) ? 'outlook' : normalized === 'imap.gmail.com' ? 'google' : normalized === 'imappro.zoho.in' ? 'zoho' : 'other';
+  return outlookHost(host) ? 'outlook' : normalized === 'imap.gmail.com' ? 'google' : normalized === 'imappro.zoho.in' ? 'zoho' : normalized === 'imap.mail.me.com' ? 'icloud' : 'other';
 }

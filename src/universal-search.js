@@ -8,6 +8,7 @@ export const searchDestinations = [
   ['Email images', 'Privacy, embedded and remote images', 'preferences', '#email-image-preference'],
   ['Window behavior', 'Close, quit, system tray', 'preferences', '#close-behavior'],
   ['Google Drive', 'Cloud backup, connect, upload, automatic sync', 'preferences', '#cloud-backup-settings'],
+  ['iCloud Drive', 'Cloud backup, select folder, copy after local backups', 'preferences', '#icloud-backup-settings'],
   ['Dropbox', 'Cloud backup, connect, upload, automatic sync', 'preferences', '#dropbox-backup-settings'],
   ['Scheduled backup settings', 'Battery, power, network, recovery, restart, run limits', 'preferences', '#schedule-preferences-form'],
   ['Home', 'Browse mail, folders, read messages', 'mailbox'],

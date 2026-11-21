@@ -4,6 +4,7 @@ const path = require('node:path');
 // Share one allowlist between installer preparation and local development.
 // Personal configuration, credentials, mail and logs never enter the runtime.
 const runtimeSources = [
+  'cloud-icloud.cjs', 'icloud-messages.json', 'Select-ICloudFolder.ps1',
   'cloud-dropbox.cjs', 'dropbox-client.cjs', 'dropbox-messages.json',
   'cloud-drive.cjs', 'drive-client.cjs', 'drive-messages.json', 'Drive-Credentials.ps1',
   'mail-watch.cjs', 'mail-metadata.cjs', 'mail-page.cjs', 'mail-index.cjs', 'paths.cjs', 'Data-Directory.ps1', 'read-mail.cjs', 'backup.cjs', 'backup-history.cjs', 'Notify-Backup.ps1', 'backup-stats.cjs', 'backup-progress.cjs', 'backup-selection.cjs', 'backup-control.cjs', 'Run-Backup.ps1', 'Invoke-BackupProcess.ps1', 'Backup-Paths.ps1',

@@ -32,6 +32,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
       window.scheduleState = { installed: false, enabled: false, state: 'Not installed', settings: null, checkedAt: new Date().toISOString() };
       window.data = { user: 'fixture@example.com', accounts: ['fixture@example.com'], host: 'imap.gmail.com', port: 993,
         credentialReady: true, hasManifest: true, backupRunning: false, backupOptions: { folders: ['INBOX'] }, folderCount: 1,
+        cloudIcloud: { connected: false, automatic: false, stage: 'disconnected' },
         cloudDropbox: { configured: true, connected: false, automatic: false, stage: 'disconnected' },
         localStats: { messages: 3, bytes: 1048576, folders: [{ name: 'INBOX', messages: 3 }], recent: [
           { file: 'emails/INBOX/one.eml', subject: '<img src=x onerror="window.injected=true">', sender: 'fixture@example.com', folder: 'INBOX', sentAt: '2020-01-02T00:00:00Z', bytes: 2048, backedUp: true, backedUpAt: '2026-11-15T00:00:00Z' },
@@ -47,6 +48,19 @@ const { paginateMail } = require('../engine/mail-page.cjs');
         }
         if (name === 'configure_mailbox') { window.mailboxSettings = { ...args.settings }; return 'Mailbox saved'; }
 
+        if (name === 'open_icloud_help') { window.openedAppleHelp = true; return; }
+        if (name === 'cloud_icloud') {
+          const state = window.data.cloudIcloud;
+          if (args.action === 'setup' && !window.cancelIcloudSetup) Object.assign(state, { connected: true, automatic: false, stage: 'ready', folderName: 'iCloud Drive/Bmail/fixture', errorCode: '' });
+          if (args.action === 'automatic') state.automatic = args.value;
+          if (args.action === 'sync') {
+            Object.assign(state, { stage: 'copying', totalFiles: 2, completedFiles: 0, errorCode: '' });
+            if (window.holdIcloud) await new Promise(resolve => { window.finishIcloud = resolve; });
+            Object.assign(state, window.failIcloud ? { stage: 'error', errorCode: 'files' } : { stage: 'copied', completedFiles: 2, lastCopiedAt: new Date().toISOString() });
+          }
+          if (args.action === 'disconnect') Object.assign(state, { connected: false, automatic: false, stage: 'disconnected', folderName: '' });
+          return { ...state };
+        }
         if (name === 'open_directory') { window.openedDirectory = args.kind; return; }
         if (name === 'get_desktop_preferences') return { closeToTray: sessionStorage.getItem('fixture-close-to-tray') !== 'false' };
         if (name === 'cloud_dropbox') {
@@ -933,8 +947,25 @@ const { paginateMail } = require('../engine/mail-page.cjs');
       { label: 'Gmail', value: 'google', disabled: false },
       { label: 'Outlook (Coming soon)', value: 'outlook', disabled: true },
       { label: 'Zoho', value: 'zoho', disabled: false },
+      { label: 'iCloud', value: 'icloud', disabled: false },
       { label: 'Others', value: 'other', disabled: false },
     ]);
+    await page.locator('#mail-provider').selectOption('icloud');
+    assert.equal(await page.locator('#mail-host').inputValue(), 'imap.mail.me.com');
+    assert.equal(await page.locator('#mail-port').inputValue(), '993');
+    assert.equal(await page.locator('#mail-port').getAttribute('readonly'), '');
+    assert.equal(await page.locator('#mail-password').isVisible(), true);
+    assert.match(await page.locator('#provider-help').textContent(), /Apple app-specific password/);
+    await page.getByRole('button', { name: 'How to create an Apple app-specific password', exact: true }).click();
+    await page.waitForFunction(() => window.openedAppleHelp === true);
+    await page.locator('#mail-user').fill('mail-fixture@icloud.com');
+    await page.locator('#mail-password').fill('fixture-apple-app-password');
+    await page.locator('#mailbox-form [type="submit"]').click();
+    await page.waitForFunction(() => window.mailboxSettings?.host === 'imap.mail.me.com');
+    assert.equal(await page.evaluate(() => window.mailboxSettings.port), 993);
+    await page.waitForFunction(() => !document.querySelector('#mailbox-dialog').open);
+    await page.evaluate(() => { window.mailboxSettings = null; });
+    await page.locator('[data-action="add-account"]').click();
     await page.locator('#mail-provider').selectOption('zoho');
     assert.equal(await page.locator('#mail-host').inputValue(), 'imappro.zoho.in');
     assert.equal(await page.locator('#mailbox-form [type="submit"]').isEnabled(), true);
@@ -1023,10 +1054,10 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await go('Preferences');
     const cloud = page.locator('#cloud-backup-settings');
     const cloudGroup = page.getByRole('region', { name: 'Cloud backup', exact: true });
-    assert.equal(await cloudGroup.getByRole('article').count(), 3, 'Available and upcoming providers belong to the single Cloud backup section');
+    assert.equal(await cloudGroup.getByRole('article').count(), 4, 'Available and upcoming providers belong to the single Cloud backup section');
     assert.equal(await page.getByRole('heading', { name: 'Cloud backup', exact: true }).count(), 1);
     assert.equal(await page.locator('.preferences-header p').count(), 0, 'Preferences has no introductory filler');
-    assert.equal(await cloudGroup.locator('img').count(), 3);
+    assert.equal(await cloudGroup.locator('img').count(), 4);
     await page.waitForFunction(() => [...document.querySelectorAll('.cloud-provider img')].every(img => img.complete && img.naturalWidth > 0));
     const upcomingCloud = page.locator('#onedrive-backup-settings');
     assert.equal(await upcomingCloud.getAttribute('aria-disabled'), 'true');
@@ -1034,7 +1065,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     assert.equal(await upcomingCloud.locator('button, input, a').count(), 0);
     const cloudRows = await cloudGroup.getByRole('article').evaluateAll(rows => rows.map(row => { const rect = row.getBoundingClientRect(); return { x: rect.x, y: rect.y, bottom: rect.bottom, width: rect.width }; }));
     assert.ok(cloudRows.every(row => Math.abs(row.x - cloudRows[0].x) < 1 && Math.abs(row.width - cloudRows[0].width) < 1));
-    assert.ok(cloudRows[1].y >= cloudRows[0].bottom && cloudRows[2].y >= cloudRows[1].bottom, 'Cloud providers use stacked rows');
+    assert.ok(cloudRows[1].y >= cloudRows[0].bottom && cloudRows[2].y >= cloudRows[1].bottom && cloudRows[3].y >= cloudRows[2].bottom, 'Cloud providers use stacked rows');
     await page.locator('.cloud-backup-group').screenshot({ path: '.cache/cloud-provider-list.png' });
     await cloud.getByRole('button', { name: 'Set up Google Drive', exact: true }).click();
     await cloud.getByRole('button', { name: 'Connect Google Drive', exact: true }).click();
@@ -1076,6 +1107,34 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await dropbox.getByRole('button', { name: 'Disconnect Dropbox', exact: true }).click();
     await dropbox.getByRole('button', { name: 'Connect Dropbox', exact: true }).waitFor();
     assert.equal(await dropbox.getByLabel('Upload to Dropbox after successful local backups', { exact: true }).isChecked(), false);
+    const icloud = page.locator('#icloud-backup-settings');
+    await page.evaluate(() => { window.cancelIcloudSetup = true; });
+    await icloud.getByRole('button', { name: 'Choose iCloud Drive folder', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('[data-action="icloud-setup"]').disabled);
+    assert.equal(await icloud.getByText('No folder selected', { exact: true }).isVisible(), true);
+    await page.evaluate(() => { window.cancelIcloudSetup = false; });
+    await icloud.getByRole('button', { name: 'Choose iCloud Drive folder', exact: true }).click();
+    await icloud.getByText('Folder selected', { exact: true }).waitFor();
+    await icloud.getByLabel('Copy to iCloud Drive after successful local backups', { exact: true }).check();
+    await page.waitForFunction(() => window.data.cloudIcloud.automatic === true);
+    assert.equal(await page.evaluate(() => window.data.cloudDrive.automatic), false);
+    await page.evaluate(() => { window.holdIcloud = true; });
+    await icloud.getByRole('button', { name: 'Copy backup now', exact: true }).click();
+    await page.waitForFunction(() => Boolean(window.finishIcloud));
+    await icloud.getByRole('progressbar', { name: 'iCloud Drive local copy progress', exact: true }).waitFor();
+    await go('Home'); await go('Preferences');
+    assert.equal(await icloud.getByRole('button', { name: 'Copying...', exact: true }).isDisabled(), true);
+    await page.evaluate(() => { window.holdIcloud = false; window.finishIcloud(); });
+    await icloud.getByText('Copied locally', { exact: true }).waitFor();
+    await icloud.getByText('Last local copy', { exact: true }).waitFor();
+    assert.equal(await icloud.getByText('Last backup', { exact: true }).count(), 0);
+    await page.locator('.cloud-backup-group').screenshot({ path: '.cache/icloud-backup-list.png' });
+    await page.evaluate(() => { window.failIcloud = true; });
+    await icloud.getByRole('button', { name: 'Copy backup now', exact: true }).click();
+    await icloud.getByRole('alert').filter({ hasText: 'Some local backup files are incomplete, missing, or changed.' }).waitFor();
+    await icloud.getByRole('button', { name: 'Remove destination', exact: true }).click();
+    await icloud.getByRole('button', { name: 'Choose iCloud Drive folder', exact: true }).waitFor();
+    assert.equal(await icloud.getByLabel('Copy to iCloud Drive after successful local backups', { exact: true }).isDisabled(), true);
     await go('Home');
     const activityBounds = await tab('Activity').boundingBox();
     await page.mouse.move(activityBounds.x + activityBounds.width / 2, activityBounds.y + activityBounds.height / 2);

@@ -1,6 +1,6 @@
 # Bmail
 
-A Windows desktop app for local, read-only Gmail and Zoho email backups.
+A Windows desktop app for local, read-only Gmail, Zoho, and iCloud Mail backups.
 Built with Tauri 2, a bundled Node.js backup engine, and Windows-encrypted
 mailbox credentials. Supports isolated accounts, backup selection, schedules,
 live progress, pause/resume/stop controls, and full-mailbox coverage statistics.
@@ -12,6 +12,7 @@ live progress, pause/resume/stop controls, and full-mailbox coverage statistics.
 - [Backup engine documentation](docs/BACKUP-README.md)
 - [Google Drive cloud backup and setup](docs/GOOGLE-DRIVE.md)
 - [Dropbox cloud backup and public app registration](docs/DROPBOX.md)
+- [iCloud Mail and iCloud Drive folder copies](docs/ICLOUD.md)
 - [Backup statistics](docs/STATS.md)
 - [Scheduler, advanced preferences, notifications and history](docs/SCHEDULER.md)
 
@@ -34,7 +35,7 @@ Third-party components retain their own licenses and notices. Packaged builds
 include Bmail's license in `engine/LICENSE`, Node.js notices in
 `engine/NODE-LICENSE.txt`, and the production dependencies' distributed license files.
 
-Mailbox setup lists Gmail, Outlook, Zoho, and Others. Outlook is disabled and marked **Coming soon**; Microsoft sign-in is unavailable in the setup dialog. The existing [Outlook integration notes](docs/OUTLOOK.md) remain available for reference.
+Mailbox setup lists Gmail, Outlook, Zoho, iCloud, and Others. Outlook is disabled and marked **Coming soon**; Microsoft sign-in is unavailable in the setup dialog. The existing [Outlook integration notes](docs/OUTLOOK.md) remain available for reference.
 
 ### Mail metadata and background updates
 

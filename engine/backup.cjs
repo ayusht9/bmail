@@ -501,7 +501,7 @@ async function main() {
     } catch { console.log('Backup saved. Mailbox coverage could not refresh; use Check mailbox to try again.'); }
     finally { try { client.close(); } finally { release(); } }
   }
-  if (result?.success) for (const provider of ['./cloud-drive.cjs', './cloud-dropbox.cjs']) {
+  if (result?.success) for (const provider of ['./cloud-drive.cjs', './cloud-dropbox.cjs', './cloud-icloud.cjs']) {
     try { await require(provider).syncAfterBackup(dataDirectory); }
     catch { console.log('Cloud backup could not finish. Your local backup is safe.'); }
   }

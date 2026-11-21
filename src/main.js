@@ -16,7 +16,7 @@ import { createDashboardPoller } from './polling.js';
 import { createNavigation } from './navigation.js';
 import { preferencesView } from './preferences.js';
 import { createRenderGuard } from './render-guard.js';
-import { cloudBackupView, dropboxBackupView, onedriveBackupView } from './cloud-backup.js';
+import { cloudBackupView, dropboxBackupView, icloudBackupView, onedriveBackupView } from './cloud-backup.js';
 import { createUniversalSearch } from './universal-search.js';
 import { createNotificationCenter } from './notification-center.js';
 import { setAppearance } from './appearance.js';
@@ -48,21 +48,25 @@ let schedulePreferencesError = '';
 const cloudOperations = new Map();
 const cloudErrors = new Map();
 
+const cloudProviders = {
+  drive: { view: cloudBackupView, field: 'cloudDrive', id: 'cloud-backup-settings', command: 'cloud_drive' },
+  dropbox: { view: dropboxBackupView, field: 'cloudDropbox', id: 'dropbox-backup-settings', command: 'cloud_dropbox' },
+  icloud: { view: icloudBackupView, field: 'cloudIcloud', id: 'icloud-backup-settings', command: 'cloud_icloud' },
+};
 const cloudKey = provider => `${dashboard.user}:${provider}`;
 function cloudMarkup(provider = 'drive') {
-  const view = provider === 'dropbox' ? dropboxBackupView : cloudBackupView;
-  const status = provider === 'dropbox' ? dashboard.cloudDropbox : dashboard.cloudDrive;
+  const { view, field } = cloudProviders[provider];
+  const status = dashboard[field];
   return view(status, { pending: cloudOperations.get(cloudKey(provider)), backupRunning: dashboard.backupRunning,
     ready: dashboard.user.includes('@'), error: cloudErrors.get(cloudKey(provider)) }, escapeHtml, formatDate);
 }
 
 function updateCloudBackup() {
   if (activeTab !== 'preferences') return;
-  for (const provider of ['dropbox', 'drive']) {
-    const id = provider === 'dropbox' ? 'dropbox-backup-settings' : 'cloud-backup-settings';
+  for (const [provider, { id, field }] of Object.entries(cloudProviders)) {
     const panel = document.getElementById(id);
     if (!panel) continue;
-    const status = provider === 'dropbox' ? dashboard.cloudDropbox : dashboard.cloudDrive;
+    const status = dashboard[field];
     const signature = JSON.stringify([status, cloudOperations.get(cloudKey(provider)), cloudErrors.get(cloudKey(provider)), dashboard.backupRunning]);
     if (panel.dataset.signature === signature || renderGuard.defer()) continue;
     const focus = panel.contains(document.activeElement) ? document.activeElement.id : '';
@@ -80,9 +84,9 @@ async function cloudOperation(action, value, provider = 'drive') {
   if (cloudOperations.has(key) || action === 'sync' && dashboard.backupRunning) return;
   cloudOperations.set(key, action); cloudErrors.delete(key); updateCloudBackup(); dashboardPoller?.reschedule();
   try {
-    const result = await invoke(provider === 'dropbox' ? 'cloud_dropbox' : 'cloud_drive', { action, value: value ?? null });
-    if (dashboard.user === account) dashboard[provider === 'dropbox' ? 'cloudDropbox' : 'cloudDrive'] = result;
-  } catch (error) { cloudErrors.set(key, userMessage(error)); }
+    const result = await invoke(cloudProviders[provider].command, { action, value: value ?? null });
+    if (dashboard.user === account) dashboard[cloudProviders[provider].field] = result;
+  } catch (error) { cloudErrors.set(key, userMessage(error, provider === 'icloud' ? 'icloud' : provider === 'dropbox' ? 'dropbox' : 'cloud')); }
   finally {
     cloudOperations.delete(key);
     if (dashboard.user === account) updateCloudBackup();
@@ -321,6 +325,7 @@ async function startOutlookSignIn(button) {
 
 function updateProviderHelp() {
   const google = document.querySelector('#mail-provider').value === 'google';
+  const icloud = document.querySelector('#mail-provider').value === 'icloud';
   const outlook = document.querySelector('#mail-provider').value === 'outlook';
   document.querySelector('#outlook-auth').hidden = !outlook;
   const signInButton = document.querySelector('[data-action="outlook-sign-in"]');
@@ -335,11 +340,12 @@ function updateProviderHelp() {
   document.querySelector('label[for="mail-password"]').style.display = outlook ? 'none' : '';
   document.querySelector('#provider-help').textContent = google
     ? 'Turn on Google 2-Step Verification, then create an app password. Use that 16-character password here. Some work or school accounts do not allow app passwords.'
-    : outlook ? 'Outlook support is coming soon.' : 'Use the application-specific password supplied by your email provider.';
+    : outlook ? 'Outlook support is coming soon.' : icloud ? 'Use your full iCloud Mail address and an Apple app-specific password. Enable two-factor authentication on your Apple Account, then generate a password for Bmail.' : 'Use the application-specific password supplied by your email provider.';
   document.querySelector('[data-action="google-help"]').hidden = !google;
+  document.querySelector('[data-action="apple-mail-help"]').hidden = !icloud;
   const port = document.querySelector('#mail-port');
-  port.readOnly = google || outlook;
-  if (google || outlook) port.value = '993';
+  port.readOnly = google || outlook || icloud;
+  if (google || outlook || icloud) port.value = '993';
 }
 
 const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, char => ({
@@ -453,7 +459,7 @@ function render() {
   if (activeTab === 'mailbox') loadSavedMail();
   const folderKey = JSON.stringify([dashboard.user, selectedFolder]);
   if (messageFolderKey !== folderKey) { messageFolderKey = folderKey; selectedMessage = { file: '', message: null, loading: false, error: '' }; }
-  const workspaceBody = activeTab === 'preferences' ? preferencesView(themePreference(), desktopPreferences, preferencesSaving, preferencesError, escapeHtml, schedulePreferencesMarkup(dashboard.schedule, { saving: schedulePreferencesSaving, error: schedulePreferencesError, backupRunning: dashboard.backupRunning }, escapeHtml), cloudMarkup() + cloudMarkup('dropbox') + onedriveBackupView())
+  const workspaceBody = activeTab === 'preferences' ? preferencesView(themePreference(), desktopPreferences, preferencesSaving, preferencesError, escapeHtml, schedulePreferencesMarkup(dashboard.schedule, { saving: schedulePreferencesSaving, error: schedulePreferencesError, backupRunning: dashboard.backupRunning }, escapeHtml), cloudMarkup() + cloudMarkup('dropbox') + cloudMarkup('icloud') + onedriveBackupView())
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
     : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions"><button type="button" data-action="cloud-preferences">Cloud backup</button>${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button data-action="open-backups">Open backup folder</button></div><div class="backup-progress-slot">${progressPanel(currentProgressDashboard(), escapeHtml, formatNumber)}</div>${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
     : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
@@ -504,6 +510,7 @@ function render() {
           <option value="google" ${providerForHost(mailHost) === 'google' ? 'selected' : ''}>Gmail</option>
           <option value="outlook" disabled ${providerForHost(mailHost) === 'outlook' ? 'selected' : ''}>Outlook (Coming soon)</option>
           <option value="zoho" ${providerForHost(mailHost) === 'zoho' ? 'selected' : ''}>Zoho</option>
+          <option value="icloud" ${providerForHost(mailHost) === 'icloud' ? 'selected' : ''}>iCloud</option>
           <option value="other" ${providerForHost(mailHost) === 'other' ? 'selected' : ''}>Others</option>
         </select>
         <label for="mail-user">Email address</label>
@@ -514,6 +521,7 @@ function render() {
         <input id="mail-port" name="port" type="number" min="1" max="65535" value="${mailPort}" ${hasAccount ? 'readonly' : ''} required>
         <p id="provider-help"></p>
         <button type="button" class="text-button" data-action="google-help" hidden>How to create a Google app password</button>
+        <button type="button" class="text-button" data-action="apple-mail-help" hidden>How to create an Apple app-specific password</button>
         <label for="mail-password">Application-specific password</label>
         <input id="mail-password" name="password" type="password" autocomplete="new-password" aria-describedby="provider-help" required>
         <div id="outlook-auth" hidden>
@@ -676,6 +684,7 @@ app.addEventListener('click', event => {
   const action = button.dataset.action;
   if (action === 'toggle-sidebar') { toggleSidebar(app); return; }
   if (action === 'expand-account' || action === 'expand-folder-filter') { toggleSidebar(app, action === 'expand-account' ? '#active-account' : '#folder-filter'); return; }
+  if (action.startsWith('icloud-')) { void cloudOperation(action.slice(7), undefined, 'icloud'); return; }
   if (action.startsWith('dropbox-')) { void cloudOperation(action.slice(8), undefined, 'dropbox'); return; }
   if (action.startsWith('cloud-')) { void cloudOperation(action.slice(6)); return; }
   if (action === 'backup-message') { void backupOpenedMessage(); return; }
@@ -754,6 +763,7 @@ app.addEventListener('click', event => {
   else if (action === 'selection') selectTab('options');
   else if (action === 'load-folders') loadFolders();
   else if (action === 'outlook-sign-in') startOutlookSignIn(button);
+  else if (action === 'apple-mail-help') invoke('open_icloud_help').catch(error => toast(userMessage(error), true));
   else if (action === 'google-help') invoke('open_google_help').catch(error => toast(userMessage(error), true));
   else if (action === 'cancel-setup') {
     document.querySelector('#mail-password').value = '';
@@ -783,6 +793,7 @@ app.addEventListener('input', event => {
 });
 
 app.addEventListener('change', event => {
+  if (event.target.id === 'icloud-automatic') { void cloudOperation('automatic', event.target.checked, 'icloud'); return; }
   if (event.target.id === 'dropbox-automatic') { void cloudOperation('automatic', event.target.checked, 'dropbox'); return; }
   if (event.target.id === 'cloud-automatic') { void cloudOperation('automatic', event.target.checked); return; }
   if (event.target.id === 'mail-page-size') {
@@ -814,7 +825,7 @@ app.addEventListener('change', event => {
   }
   if (event.target.id === 'mail-provider') {
     const provider = event.target.value;
-    document.querySelector('#mail-host').value = provider === 'google' ? 'imap.gmail.com' : provider === 'outlook' ? 'outlook.office365.com' : provider === 'zoho' ? 'imappro.zoho.in' : '';
+    document.querySelector('#mail-host').value = provider === 'google' ? 'imap.gmail.com' : provider === 'outlook' ? 'outlook.office365.com' : provider === 'zoho' ? 'imappro.zoho.in' : provider === 'icloud' ? 'imap.mail.me.com' : '';
     document.querySelector('#mail-port').value = '993';
     updateProviderHelp();
   } else if (event.target.id === 'mail-host') {
