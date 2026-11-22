@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bmail — local, read-only email backups for Windows</title>
+<meta name="description" content="Bmail is a free, open-source Windows app that backs up Gmail, Zoho, iCloud Mail and IMAP mailboxes to your own disk as standard .eml files. Read-only, encrypted credentials, scheduled backups.">
+<meta property="og:title" content="Bmail">
+<meta property="og:description" content="Local, read-only email backups for Windows. Gmail, Zoho, iCloud Mail and IMAP.">
+<meta property="og:type" content="website">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<style>
+  :root {
+    --ink: #0d2a2e;
+    --ink-soft: #3d5a5e;
+    --muted: #6a8285;
+    --bg: #f6faf9;
+    --surface: #ffffff;
+    --line: #d9e6e4;
+    --brand: #103d43;
+    --mint: #35bca6;
+    --mint-deep: #1f8f7d;
+    --mint-wash: #e3f6f2;
+    --warn-wash: #fff7e6;
+    --warn-line: #f0d9a8;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e6f2f0;
+      --ink-soft: #b4c9c6;
+      --muted: #84a09c;
+      --bg: #0a1d20;
+      --surface: #10292d;
+      --line: #1f3f43;
+      --brand: #0d3338;
+      --mint: #4fd1bb;
+      --mint-deep: #4fd1bb;
+      --mint-wash: #12363a;
+      --warn-wash: #2b2412;
+      --warn-line: #57472066;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font: 16px/1.6 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--mint-deep); text-underline-offset: 3px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding-inline: 24px; }
+
+  /* Header */
+  header.top {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .top .wrap { display: flex; align-items: center; gap: 24px; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--ink); text-decoration: none; }
+  .brand img { width: 30px; height: 30px; }
+  .top nav { margin-left: auto; display: flex; gap: 22px; font-size: 15px; }
+  .top nav a { color: var(--ink-soft); text-decoration: none; }
+  .top nav a:hover { color: var(--ink); }
+  @media (max-width: 640px) { .top nav a:not(.gh) { display: none; } }
+
+  /* Hero */
+  .hero { padding-block: 88px 72px; text-align: center; }
+  .hero img.mark { width: 88px; height: 88px; margin-bottom: 28px; filter: drop-shadow(0 10px 24px rgb(16 61 67 / .25)); }
+  .hero h1 {
+    font-size: clamp(36px, 6vw, 60px); line-height: 1.08; letter-spacing: -0.025em;
+    margin: 0 auto 20px; max-width: 14ch; font-weight: 750;
+  }
+  .hero h1 em { font-style: normal; color: var(--mint-deep); }
+  .hero p.lede { font-size: clamp(17px, 2.2vw, 20px); color: var(--ink-soft); max-width: 40em; margin: 0 auto 36px; }
+  .ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 13px 22px; border-radius: 10px; font-weight: 600; font-size: 16px;
+    text-decoration: none; border: 1px solid transparent; transition: transform .12s, background .12s;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn.primary { background: var(--brand); color: #f4fffc; }
+  @media (prefers-color-scheme: dark) { .btn.primary { background: var(--mint); color: #08201f; } }
+  .btn.ghost { border-color: var(--line); color: var(--ink); background: var(--surface); }
+  .btn svg { width: 18px; height: 18px; }
+  .fine { margin-top: 18px; font-size: 14px; color: var(--muted); }
+
+  .providers { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 44px; }
+  .pill {
+    font-size: 14px; padding: 6px 14px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--line); color: var(--ink-soft);
+  }
+  .pill.soon { opacity: .6; }
+  .providers .label { width: 100%; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 4px; }
+
+  /* Sections */
+  section { padding-block: 72px; }
+  section.alt { background: var(--surface); border-block: 1px solid var(--line); }
+  h2 { font-size: clamp(26px, 3.6vw, 36px); letter-spacing: -0.02em; line-height: 1.15; margin: 0 0 12px; }
+  .kicker { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--mint-deep); margin-bottom: 10px; }
+  .sub { color: var(--ink-soft); max-width: 40em; margin: 0 0 44px; font-size: 17px; }
+
+  .grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 26px;
+  }
+  section.alt .card { background: var(--bg); }
+  .card .ic {
+    width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
+    background: var(--mint-wash); color: var(--mint-deep); margin-bottom: 16px;
+  }
+  .card .ic svg { width: 22px; height: 22px; }
+  .card h3 { margin: 0 0 6px; font-size: 18px; }
+  .card p { margin: 0; color: var(--ink-soft); font-size: 15px; }
+
+  /* Steps */
+  ol.steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); counter-reset: s; }
+  ol.steps li { counter-increment: s; padding-top: 52px; position: relative; }
+  ol.steps li::before {
+    content: counter(s); position: absolute; top: 0; left: 0;
+    width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+    font-weight: 700; background: var(--brand); color: #f4fffc;
+  }
+  @media (prefers-color-scheme: dark) { ol.steps li::before { background: var(--mint); color: #08201f; } }
+  ol.steps h3 { margin: 0 0 6px; font-size: 18px; }
+  ol.steps p { margin: 0; color: var(--ink-soft); font-size: 15px; }
+
+  /* Docs list */
+  .docs { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .docs a {
+    display: block; padding: 18px 20px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--surface); text-decoration: none; color: var(--ink);
+  }
+  section.alt .docs a { background: var(--bg); }
+  .docs a:hover { border-color: var(--mint); }
+  .docs strong { display: block; font-size: 16px; }
+  .docs span { color: var(--muted); font-size: 14px; }
+
+  .note {
+    margin-top: 36px; padding: 18px 20px; border-radius: 12px;
+    background: var(--warn-wash); border: 1px solid var(--warn-line); font-size: 15px; color: var(--ink-soft);
+  }
+  .note strong { color: var(--ink); }
+
+  footer { padding-block: 40px; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="logo.svg" alt="">Bmail</a>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#docs">Docs</a>
+      <a class="gh" href="https://github.com/ayusht9/bmail">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="hero wrap">
+    <img class="mark" src="logo.svg" alt="Bmail logo">
+    <h1>Your email, <em>on your own disk</em>.</h1>
+    <p class="lede">Bmail is a free, open-source Windows app that keeps a local, read-only backup of your mailboxes as standard <code>.eml</code> files. You can browse, search and export them, and Bmail can check for new mail on a schedule.</p>
+    <div class="ctas">
+      <a class="btn primary" href="https://github.com/ayusht9/bmail/releases/latest">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>
+        Download for Windows
+      </a>
+      <a class="btn ghost" href="https://github.com/ayusht9/bmail">View source</a>
+    </div>
+    <p class="fine">Windows (x64) · MIT licensed · No account or server required</p>
+
+    <div class="providers" aria-label="Supported mailboxes">
+      <span class="label">Works with</span>
+      <span class="pill">Gmail</span>
+      <span class="pill">Zoho Mail</span>
+      <span class="pill">iCloud Mail</span>
+      <span class="pill">Other IMAP servers</span>
+      <span class="pill soon">Outlook (coming soon)</span>
+    </div>
+  </div>
+
+  <section id="features" class="alt">
+    <div class="wrap">
+      <div class="kicker">Features</div>
+      <h2>A complete copy that stays yours</h2>
+      <p class="sub">Bmail only reads from your mail server. It never deletes, moves or flags messages, and local backups remain even if mail is later removed from the server.</p>
+      <div class="grid">
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/></svg></div>
+          <h3>Read-only and private</h3>
+          <p>Mailbox credentials are encrypted with Windows. Your mail stays on your computer, and no hosted service is involved.</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4zM4 9h16M9 9v11"/></svg></div>
+          <h3>Standard .eml files</h3>
+          <p>Messages and attachments are saved in a portable format that other mail apps can open. You can export any folder as a ZIP archive.</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></div>
+          <h3>Browse and search</h3>
+          <p>A built-in reader with sortable columns and safely isolated HTML. Press Ctrl+K to search by sender, folder, date range or backup status.</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+          <h3>Scheduled and incremental</h3>
+          <p>Run backups on a schedule. New-mail checks fetch only what's missing, and backups can be paused, resumed or stopped at any time.</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a5 5 0 0 1-.6-9.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"/></svg></div>
+          <h3>Optional cloud copies</h3>
+          <p>Copy verified backups to Google Drive, Dropbox or your iCloud Drive folder. This is off until you turn it on.</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10m6 10V4m6 16v-7m4 7H2"/></svg></div>
+          <h3>Coverage you can check</h3>
+          <p>Statistics compare your local copy with the full mailbox, so you can see what has been saved and what hasn't.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="kicker">How it works</div>
+      <h2>Up and running in a few minutes</h2>
+      <p class="sub">For most providers you'll need an app password, which you can create in your mail account's security settings.</p>
+      <ol class="steps">
+        <li>
+          <h3>Install</h3>
+          <p>Download the setup file from the latest release and install it for your Windows user. The backup runtime is included.</p>
+        </li>
+        <li>
+          <h3>Add a mailbox</h3>
+          <p>Choose Gmail, Zoho, iCloud or another IMAP server, then sign in with an app password.</p>
+        </li>
+        <li>
+          <h3>Pick folders</h3>
+          <p>Choose which folders to back up and where the backup should be stored on your disk.</p>
+        </li>
+        <li>
+          <h3>Back up</h3>
+          <p>Start a backup and follow its progress live. You can also set a schedule and let Bmail keep your copy current.</p>
+        </li>
+      </ol>
+      <div class="note">
+        <strong>Heads up:</strong> the installer isn't code-signed yet, so Windows SmartScreen may show a warning. Each release includes a SHA-256 checksum that you can use to verify your download.
+      </div>
+    </div>
+  </section>
+
+  <section id="docs" class="alt">
+    <div class="wrap">
+      <div class="kicker">Documentation</div>
+      <h2>Learn more</h2>
+      <p class="sub">Setup guides and technical notes live in the repository.</p>
+      <div class="docs">
+        <a href="https://github.com/ayusht9/bmail/blob/dev/docs/WINDOWS.md"><strong>Windows setup</strong><span>Install, build and develop</span></a>
+        <a href="https://github.com/ayusht9/bmail/blob/dev/docs/BACKUP-README.md"><strong>Backup engine</strong><span>How backups are stored and verified</span></a>
+        <a href="https://github.com/ayusht9/bmail/blob/dev/docs/SCHEDULER.md"><strong>Scheduler</strong><span>Schedules, notifications and history</span></a>
+        <a href="https://github.com/ayusht9/bmail/blob/dev/docs/ICLOUD.md"><strong>iCloud</strong><span>iCloud Mail and iCloud Drive copies</span></a>
+        <a href="https://github.com/ayusht9/bmail/blob/dev/docs/GOOGLE-DRIVE.md"><strong>Google Drive</strong><span>Cloud backup setup</span></a>
+        <a href="https://github.com/ayusht9/bmail/blob/dev/docs/DROPBOX.md"><strong>Dropbox</strong><span>Cloud backup setup</span></a>
+        <a href="https://github.com/ayusht9/bmail/blob/dev/docs/STATS.md"><strong>Statistics</strong><span>Mailbox coverage checks</span></a>
+        <a href="https://github.com/ayusht9/bmail/blob/dev/RELEASES.md"><strong>Release notes</strong><span>What's new in each version</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Ayush Kumar · Released under the <a href="https://github.com/ayusht9/bmail/blob/dev/LICENSE">MIT License</a></span>
+    <span><a href="https://github.com/ayusht9/bmail">GitHub</a> · <a href="https://github.com/ayusht9/bmail/issues">Report an issue</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
