@@ -137,10 +137,8 @@ function rememberNewMail(snapshot, account = dashboard.user) {
   savedMail.key = '';
   newMailByAccount.set(account, new Map((snapshot?.folders || []).map(folder => [folder.name, normalizeNewMailCount(folder.newMessages)])));
   if (account === dashboard?.user) void syncMailBadge(account, totalNewMail(mailIndicators()));
-  const count = totalNewMail(mailIndicators());
-  if (account === dashboard?.user && count > 0) notificationCenter.notify(`${count} new email${count === 1 ? '' : 's'} found in your mailbox.`, {
-    level: 'info', transient: false, key: `mail:${snapshot.checkedAt || JSON.stringify(snapshot.folders)}`,
-  });
+  const count = totalNewMail(newMailByAccount.get(account));
+  notificationCenter.syncMail(count, account);
 }
 
 async function checkStartupMail() {
