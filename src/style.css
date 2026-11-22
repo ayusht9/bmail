@@ -217,11 +217,11 @@ button.primary:hover:not(:disabled) {
 .statusbar .status-icon { display:inline-flex; align-items:center; justify-content:center; min-width:44px; min-height:24px; height:24px; padding:1px 3px; border-color:transparent; background:transparent; color:var(--muted); }
 .status-icon svg, .backup-icon svg { width:18px; height:18px; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
 .statusbar .status-icon[aria-checked="true"] { color:var(--strong-link); }
-.status-switch-track { position:relative; width:36px; height:20px; flex-shrink:0; border-radius:12px; background:var(--button-border); }
-.status-switch-thumb { display:flex; align-items:center; justify-content:center; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:var(--surface); color:var(--muted); }
-.status-switch-thumb svg { width:12px; height:12px; }
+.status-switch-track { position:relative; width:40px; height:22px; flex-shrink:0; border-radius:12px; background:var(--button-border); }
+.status-switch-thumb { display:flex; align-items:center; justify-content:center; position:absolute; top:1px; left:1px; width:20px; height:20px; border-radius:50%; background:var(--surface); color:var(--muted); }
+.status-switch-thumb svg { width:14px; height:14px; }
 .status-icon[aria-checked="true"] .status-switch-track { background:var(--accent); }
-.status-icon[aria-checked="true"] .status-switch-thumb { transform:translateX(16px); background:#fff; color:var(--accent); }
+.status-icon[aria-checked="true"] .status-switch-thumb { transform:translateX(18px); background:#fff; color:var(--accent); }
 @media (prefers-reduced-motion: no-preference) { .status-switch-track, .status-switch-thumb { transition:background-color 150ms ease, transform 150ms ease; } }
 .backup-page-actions .backup-icon { display:inline-flex; align-items:center; justify-content:center; min-width:36px; width:36px; padding:7px; }
 .toggle-control { display:inline-flex; align-items:center; gap:9px; position:relative; cursor:pointer; font-size:calc(12px * var(--app-font-scale, 1)); }
