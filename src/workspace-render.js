@@ -9,6 +9,17 @@ export function renderWorkspace(root, html) {
   if (!current || !next) { root.replaceChildren(template.content); return; }
 
   const attributes = (element, replacement) => {
+    // The pane controller owns these values. Keep them on the connected layout
+    // while replacing its children so navigation never paints an expanded rail.
+    if (element.classList.contains('desktop-layout')) {
+      for (const name of ['sidebar-collapsed', 'sidebar-animate']) {
+        replacement.classList.toggle(name, element.classList.contains(name));
+      }
+      for (const name of ['--sidebar-width', '--sidebar-label-opacity', '--sidebar-action-progress']) {
+        const value = element.style.getPropertyValue(name);
+        if (value) replacement.style.setProperty(name, value);
+      }
+    }
     for (const { name } of [...element.attributes]) if (!replacement.hasAttribute(name)) element.removeAttribute(name);
     for (const { name, value } of replacement.attributes) if (element.getAttribute(name) !== value) element.setAttribute(name, value);
   };
@@ -28,13 +39,13 @@ export function renderWorkspace(root, html) {
   let parent = root;
   for (let i = 0; i < currentPath.length; i++) {
     const retained = currentPath[i], replacement = nextPath[i];
+    attributes(retained, replacement);
     for (const child of [...parent.childNodes]) if (child !== retained) child.remove();
     const siblings = [...replacement.parentNode.childNodes];
     const position = siblings.indexOf(replacement);
     const before = siblings.slice(0, position), after = siblings.slice(position + 1);
     for (const child of before) parent.insertBefore(child, retained);
     for (const child of after) parent.append(child);
-    attributes(retained, replacement);
     parent = retained;
   }
 }

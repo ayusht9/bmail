@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const crypto = require('node:crypto');
-const { dataDirectory } = require('./paths.cjs');
+const { dataDirectory, backupEnabled } = require('./paths.cjs');
 const { readJson, writeJson, acquire, alive, archiveFiles, openBrowser, credentialStore: windowsStore } = require('./cloud-drive.cjs');
 const { DropboxClient, DropboxError, validAppKey, oauthRequest, tokenRequest, contentHash, REDIRECT_URI } = require('./dropbox-client.cjs');
 
@@ -78,6 +78,7 @@ async function syncArchive(data, config, credentials, update, { store = credenti
   let uploadedBytes = 0, completedFiles = 0, skippedFiles = 0;
   // archiveFiles supplies the manifest last, after all referenced emails.
   for (const file of files) {
+    if (!backupEnabled(data, 'cloud')) { update({ stage: 'ready', errorCode: '' }); return; }
     const destination = root + '/' + file.relative;
     await ensureFolder(path.posix.dirname(destination));
     const result = await client.upload(file, destination, bytes => update({ uploadedBytes: uploadedBytes + bytes }));
@@ -87,6 +88,7 @@ async function syncArchive(data, config, credentials, update, { store = credenti
   update({ stage: 'ready', errorCode: '', lastSyncedAt: new Date().toISOString() });
 }
 async function run(data, action, value, options = {}) {
+  if (action === 'sync' && !backupEnabled(data, 'cloud')) return publicStatus(data);
   if (action === 'status') return publicStatus(data, options);
   let release;
   try { release = acquire(data, 'dropbox'); } catch (error) { throw new DropboxError(error.code); }

@@ -132,10 +132,9 @@ export function calendarMarkup(schedule, month, focusDate, escape, now = new Dat
 
 export function schedulerView(dashboard, escape, draft = null) {
   const s = { ...defaultSchedule(), ...dashboard.schedule?.settings, ...draft };
-  const checkbox = (name, label) => `<label class="folder-choice"><input type="checkbox" name="${name}" ${s[name] ? 'checked' : ''}>${label}</label>`;
   const ticks = Array.from({ length: 60 }, (_, minute) => `<line class="tick${minute % 5 ? '' : ' hour'}" x1="50" y1="5" x2="50" y2="${minute % 5 ? 8 : 11}" transform="rotate(${minute * 6} 50 50)"/>`).join('');
   return `<section id="scheduler-panel" class="scheduler-page" aria-labelledby="scheduler-title"><form id="scheduler-form">
-    <header class="scheduler-head"><h2 id="scheduler-title">Backup scheduler</h2>${checkbox('enabled', 'Enable scheduled backups')}</header>
+    <header class="scheduler-head"><h2 id="scheduler-title">Backup scheduler</h2><label class="toggle-control"><input type="checkbox" role="switch" name="enabled" ${s.enabled ? 'checked' : ''}><span class="toggle-track" aria-hidden="true"></span><span>Enable scheduled backups</span></label></header>
     <div class="scheduler-layout">
       <aside class="scheduler-calendar-pane">
         <div class="scheduler-clock"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="face" cx="50" cy="50" r="47"/>${ticks}<line id="clock-hour" x1="50" y1="53" x2="50" y2="27"/><line id="clock-minute" x1="50" y1="55" x2="50" y2="14"/><line id="clock-second" x1="50" y1="59" x2="50" y2="10"/><circle class="hub" cx="50" cy="50" r="2.4"/></svg>

@@ -62,7 +62,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
           return { ...state };
         }
         if (name === 'open_directory') { window.openedDirectory = args.kind; return; }
-        if (name === 'get_desktop_preferences') return { closeToTray: sessionStorage.getItem('fixture-close-to-tray') !== 'false' };
+        if (name === 'get_desktop_preferences') return { closeToTray: sessionStorage.getItem('fixture-close-to-tray') !== 'false', scheduledBackupsEnabled: true, cloudBackupsEnabled: true, ...JSON.parse(sessionStorage.getItem('fixture-backup-switches') || '{}') };
         if (name === 'cloud_dropbox') {
           const state = window.data.cloudDropbox;
           if (args.action === 'connect') Object.assign(state, { connected: true, stage: 'ready', dropboxAccount: 'dropbox-fixture@example.test', errorCode: '' });
@@ -91,6 +91,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
         if (name === 'save_desktop_preferences') {
           if (window.failPreferences) throw 'Could not save desktop preferences';
           sessionStorage.setItem('fixture-close-to-tray', String(args.preferences.closeToTray));
+          sessionStorage.setItem('fixture-backup-switches', JSON.stringify(args.preferences));
           return args.preferences;
         }
         if (name === 'set_mail_badge') { (window.badgeUpdates ||= []).push(args); return; }
@@ -198,9 +199,9 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     assert.equal(await page.evaluate(() => window.badgeUpdates.at(-1).account), 'fixture@example.com');
     assert.equal(await page.locator('.app-toolbar [data-action="notifications-open"]').count(), 1);
     assert.equal(await page.locator('.statusbar [data-action="notifications-open"]').count(), 0);
-    const summaryBox = await page.locator('.status-summary').boundingBox();
+    const summaryBox = await page.locator('.status-toggles').boundingBox();
     const footerBox = await page.locator('.statusbar').boundingBox();
-    assert.ok(Math.abs(summaryBox.x + summaryBox.width - footerBox.x - footerBox.width + 12) <= 2, 'Folder and schedule summaries align with the right status-bar edge');
+    assert.ok(Math.abs(summaryBox.x + summaryBox.width - footerBox.x - footerBox.width + 12) <= 2, 'Backup toggles align with the right status-bar edge');
     assert.equal(await sidebar.locator('.folder-row[data-folder="INBOX"] .new-mail-badge').count(), 1);
     assert.equal(await sidebar.locator('.folder-row[data-folder="Sent"] .new-mail-badge').count(), 0);
     assert.equal(await sidebar.locator('.folder-row[data-folder="INBOX"] svg[data-folder-icon]').getAttribute('data-folder-icon'), 'inbox');
@@ -332,7 +333,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await go('Home');
 
     assert.equal(await page.locator('.workspace-heading, .run-banner, .folder-pane').count(), 0, 'Mailbox starts directly with the email list');
-    assert.match(await page.locator('.status-folder').textContent(), /saved.*on server.*last mailbox check/);
+    assert.match(await page.locator('.status-folder').textContent(), /saved.*on server.*remaining$/);
     const listBox = await recent.boundingBox(); const readerBox = await reader.boundingBox();
     assert.ok(readerBox.y >= listBox.y + listBox.height - 1, 'The reader is below the message list');
     if (process.env.BMAIL_READER_SCREENSHOT) await page.screenshot({ path: process.env.BMAIL_READER_SCREENSHOT });
@@ -556,6 +557,16 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     assert.equal(await page.evaluate(() => window.scheduleState.settings.allFolders), false);
     assert.deepEqual(await page.evaluate(() => window.data.backupOptions.folders), [], 'Scheduled selection must not overwrite manual folders');
     assert.equal(await scheduler.getByText('Upcoming preview').count(), 0);
+    const scheduleToggle = page.getByRole('switch', { name: 'Scheduled backups', exact: true });
+    const track = await scheduler.locator('.toggle-track').boundingBox();
+    assert.ok(track.width >= 34 && track.height >= 20, 'Scheduler switch keeps a visible track');
+    await scheduleToggle.uncheck();
+    assert.equal(await page.evaluate(() => window.scheduleState.enabled), true, 'Master switch leaves the individual schedule enabled');
+    assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('fixture-backup-switches')).scheduledBackupsEnabled), false);
+    assert.deepEqual(await page.evaluate(() => window.scheduleState.settings.folders), ['Sent'], 'Status toggle keeps scheduled folders');
+    await scheduleToggle.check();
+    await page.waitForFunction(() => window.scheduleState.enabled === true);
+    assert.equal(await scheduler.getByRole('switch', { name: 'Enable scheduled backups', exact: true }).isChecked(), true);
     await go('Preferences');
     const schedulePreferences = page.locator('#schedule-preferences-form');
     await schedulePreferences.getByLabel('Wake the computer to run', { exact: true }).check();
@@ -852,10 +863,26 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     const allFolders = sidebar.locator('[data-action="select-folder"][data-folder=""]');
     assert.equal(await allFolders.locator('svg').isVisible(), true);
     assert.equal(await allFolders.getAttribute('title'), 'All folders');
+    await page.evaluate(() => {
+      window.sidebarFrames = [];
+      window.sampleSidebar = true;
+      const sample = () => {
+        const icon = document.querySelector('.folder-list > .folder-item svg');
+        if (icon) window.sidebarFrames.push(icon.getBoundingClientRect().y);
+        if (window.sampleSidebar) requestAnimationFrame(sample);
+      };
+      sample();
+    });
     await sidebar.locator('.folder-row .folder-item').first().click();
     assert.equal(await sidebarWidth(), 56, 'Folders remain usable without expanding the rail');
     await go('Activity'); await go('Home');
     assert.equal(await sidebarWidth(), 56, 'Collapsed state survives tab redraws');
+    const sidebarFrames = await page.evaluate(() => {
+      window.sampleSidebar = false;
+      return window.sidebarFrames;
+    });
+    assert.ok(sidebarFrames.length > 2, 'Sample sidebar positions across navigation frames');
+    assert.ok(Math.max(...sidebarFrames) - Math.min(...sidebarFrames) < 1, 'Collapsed sidebar icons stay in place throughout folder and tab navigation');
     await page.reload();
     await page.getByRole('button', { name: 'Expand sidebar', exact: true }).waitFor();
     await page.waitForFunction(() => document.querySelector('.folder-sidebar').getBoundingClientRect().width === 56);
@@ -1283,6 +1310,38 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     const viewport = page.viewportSize();
     assert.ok(Math.abs(bounds.x + bounds.width / 2 - viewport.width / 2) < 3, 'Search popup is centered');
     await page.keyboard.press('Escape');
+    await page.evaluate(() => {
+      window.data.cloudDrive = { configured: true, connected: true, automatic: false, stage: 'ready' };
+      window.data.cloudDropbox = { configured: true, connected: true, automatic: true, stage: 'ready' };
+      window.data.cloudIcloud = { connected: false, automatic: false, stage: 'disconnected' };
+    });
+    await refreshLocal();
+    const cloudToggle = page.getByRole('switch', { name: 'Cloud backups', exact: true });
+    assert.equal(await cloudToggle.isChecked(), true, 'Master switch is independent of provider settings');
+    await cloudToggle.uncheck();
+    assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('fixture-backup-switches')).cloudBackupsEnabled), false);
+    assert.equal(await page.evaluate(() => window.data.cloudDropbox.automatic), true, 'Master switch preserves provider preferences');
+    assert.equal(await page.evaluate(() => window.data.cloudDrive.automatic), false);
+    await cloudToggle.check();
+    const footer = page.locator('.statusbar');
+    assert.equal(await footer.evaluate(element => element.lastElementChild.classList.contains('status-toggles')), true, 'Backup toggles stay in the right corner');
+    assert.ok(await cloudToggle.getAttribute('title'), 'Cloud toggle has a tooltip');
+    await page.waitForFunction(() => !document.querySelector('[data-action="toggle-cloud-backups"]').disabled);
+    await cloudToggle.focus();
+    await page.evaluate(() => { window.focusedCloudToggle = document.activeElement; });
+    await refreshLocal();
+    assert.equal(await page.evaluate(() => document.activeElement === window.focusedCloudToggle), true, 'Status polling preserves toggle keyboard focus');
+    await page.evaluate(() => {
+      for (const field of ['cloudDrive', 'cloudDropbox', 'cloudIcloud']) window.data[field] = { connected: false, automatic: false };
+      window.data.scheduleInstalled = false; window.data.schedule = null;
+    });
+    await refreshLocal();
+    await cloudToggle.uncheck();
+    await page.getByRole('switch', { name: 'Scheduled backups', exact: true }).uncheck();
+    await page.reload();
+    await page.waitForFunction(() => !document.querySelector('[data-action="toggle-cloud-backups"]').disabled);
+    assert.equal(await cloudToggle.isChecked(), false, 'Cloud master switch persists without a provider');
+    assert.equal(await page.getByRole('switch', { name: 'Scheduled backups', exact: true }).isChecked(), false, 'Scheduler master switch persists without a schedule');
     assert.deepEqual(errors, []);
     assert.equal(await page.locator('.statusbar progress').count(), 0, 'Finished runs clear the status progress bar');
     console.log('Tabbed workspace passed: no duplicate panels, keyboard tabs, retained drafts, independent scheduled folders, calendar, retries, history, notifications and responsive layout.');

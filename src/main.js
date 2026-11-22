@@ -11,6 +11,7 @@ import { userMessage, createSafeInvoke, installGlobalErrorHandlers } from './err
 const invoke = createSafeInvoke(nativeInvoke);
 import { workspaceTabs, workspaceTabStrip } from './workspace.js';
 import { renderWorkspace } from './workspace-render.js';
+import { controlIcon } from './control-icons.js';
 import { historyPane } from './history.js';
 import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
@@ -25,7 +26,7 @@ import { windowControls, controlWindow, startupHeader } from './window-chrome.js
 import { normalizeNewMailCount, totalNewMail, createBadgeSync } from './notifications.js';
 import { folderNavigation, savedMailPane, mailboxFolders } from './desktop.js';
 import { progressPanel, statusDownloadProgress, backupControls } from './progress.js';
-import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, calendarMarkup, scheduleSummary, localDate, updateClock, scheduleStatusMarkup, schedulePreferencesMarkup, powerFromForm } from './scheduler.js';
+import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, calendarMarkup, localDate, updateClock, scheduleStatusMarkup, schedulePreferencesMarkup, powerFromForm } from './scheduler.js';
 import { backupOptionsView, folderChoices, advancedFromForm } from './selection.js';
 
 const app = document.querySelector('#app');
@@ -58,17 +59,18 @@ const cloudKey = provider => `${dashboard.user}:${provider}`;
 function cloudMarkup(provider = 'drive') {
   const { view, field } = cloudProviders[provider];
   const status = dashboard[field];
-  return view(status, { pending: cloudOperations.get(cloudKey(provider)), backupRunning: dashboard.backupRunning,
+  return view(status, { pending: cloudOperations.get(cloudKey(provider)), backupRunning: dashboard.backupRunning || desktopPreferences?.cloudBackupsEnabled === false,
     ready: dashboard.user.includes('@'), error: cloudErrors.get(cloudKey(provider)) }, escapeHtml, formatDate);
 }
 
 function updateCloudBackup() {
+  updateStatusBar();
   if (activeTab !== 'preferences') return;
   for (const [provider, { id, field }] of Object.entries(cloudProviders)) {
     const panel = document.getElementById(id);
     if (!panel) continue;
     const status = dashboard[field];
-    const signature = JSON.stringify([status, cloudOperations.get(cloudKey(provider)), cloudErrors.get(cloudKey(provider)), dashboard.backupRunning]);
+    const signature = JSON.stringify([status, cloudOperations.get(cloudKey(provider)), cloudErrors.get(cloudKey(provider)), dashboard.backupRunning, desktopPreferences?.cloudBackupsEnabled]);
     if (panel.dataset.signature === signature || renderGuard.defer()) continue;
     const focus = panel.contains(document.activeElement) ? document.activeElement.id : '';
     panel.outerHTML = cloudMarkup(provider);
@@ -78,6 +80,7 @@ function updateCloudBackup() {
 }
 
 async function cloudOperation(action, value, provider = 'drive') {
+  if (action === 'sync' && desktopPreferences?.cloudBackupsEnabled === false) { toast('Cloud backups are disabled. Turn on the cloud backup switch to continue.', true); return; }
   if (action === 'preferences') { await selectTab('preferences'); document.querySelector('#cloud-backup-settings')?.scrollIntoView({ block: 'center' }); return; }
   if (action === 'guide') { await invoke('cloud_drive', { action }).catch(error => toast(userMessage(error), true)); return; }
   const account = dashboard.user;
@@ -101,6 +104,7 @@ async function loadDesktopPreferences() {
     preferencesError = '';
   } catch (error) { preferencesError = userMessage(error); }
   if (dashboard && activeTab === 'preferences') render();
+  else if (dashboard) updateStatusBar();
 }
 
 async function saveCloseBehavior(value) {
@@ -109,7 +113,7 @@ async function saveCloseBehavior(value) {
   render();
   let saved = false;
   try {
-    desktopPreferences = await invoke('save_desktop_preferences', { preferences: { closeToTray: value === 'tray' } });
+    desktopPreferences = await invoke('save_desktop_preferences', { preferences: { ...desktopPreferences, closeToTray: value === 'tray' } });
     saved = true;
   } catch (error) { preferencesError = userMessage(error); }
   finally {
@@ -133,10 +137,8 @@ function rememberNewMail(snapshot, account = dashboard.user) {
   savedMail.key = '';
   newMailByAccount.set(account, new Map((snapshot?.folders || []).map(folder => [folder.name, normalizeNewMailCount(folder.newMessages)])));
   if (account === dashboard?.user) void syncMailBadge(account, totalNewMail(mailIndicators()));
-  const count = totalNewMail(mailIndicators());
-  if (account === dashboard?.user && count > 0) notificationCenter.notify(`${count} new email${count === 1 ? '' : 's'} found in your mailbox.`, {
-    level: 'info', transient: false, key: `mail:${snapshot.checkedAt || JSON.stringify(snapshot.folders)}`,
-  });
+  const count = totalNewMail(newMailByAccount.get(account));
+  notificationCenter.syncMail(count, account);
 }
 
 async function checkStartupMail() {
@@ -368,11 +370,20 @@ function folderStatus() {
   const checked = dashboard.mailboxStatus && (!selectedFolder || server.length);
   const onServer = checked ? formatNumber(selectedFolder ? server.reduce((sum, folder) => sum + folder.serverMessages, 0) : dashboard.mailboxStatus.totalServerMessages) : 'Not checked';
   const remaining = checked ? formatNumber(selectedFolder ? server.reduce((sum, folder) => sum + folder.missingMessages, 0) : dashboard.mailboxStatus.missingMessages) : 'Not checked';
-  return `${selectedFolder || 'All folders'}: ${formatNumber(local)} saved | ${onServer} on server | ${remaining} remaining at last mailbox check`;
+  return `${selectedFolder || 'All folders'}: ${formatNumber(local)} saved | ${onServer} on server | ${remaining} remaining`;
 }
 
 function statusBarContents() {
-  return `${sidebarToggle()}<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Syncing mailbox...' : 'Working...') : dashboard.backupRunning ? 'Backup active' : ''}</span>${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-summary"><span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span></span>`;
+  return `${sidebarToggle()}<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Syncing mailbox...' : 'Working...') : dashboard.backupRunning ? 'Backup active' : ''}</span>${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-summary"><span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span></span>${statusBackupToggles()}`;
+}
+
+function statusBackupToggles() {
+  const button = (action, icon, name, key) => {
+    const enabled = desktopPreferences?.[key] !== false;
+    const title = `${name}: ${enabled ? 'on' : 'off'} - ${enabled ? 'Disable' : 'Enable'} for all accounts`;
+    return `<button type="button" class="status-icon" data-action="${action}" role="switch" aria-label="${name}" aria-checked="${enabled}" title="${escapeHtml(title)}" ${preferencesSaving || !desktopPreferences ? 'disabled' : ''}><span class="status-switch-track" aria-hidden="true"><span class="status-switch-thumb">${controlIcon(icon)}</span></span></button>`;
+  };
+  return `<div class="status-toggles" role="group" aria-label="Backup master switches">${button('toggle-scheduled-backups', 'schedule', 'Scheduled backups', 'scheduledBackupsEnabled')}${button('toggle-cloud-backups', 'cloud', 'Cloud backups', 'cloudBackupsEnabled')}</div>`;
 }
 
 function updateBackupControls() {
@@ -429,8 +440,18 @@ function updateStatusBar() {
       const template = document.createElement('template');
       template.innerHTML = statusBarContents();
       template.content.querySelector('.sidebar-toggle')?.remove();
-      for (const child of [...footer.childNodes]) if (child !== toggle) child.remove();
-      footer.append(template.content);
+      const toggles = footer.querySelector('.status-toggles');
+      const replacement = template.content.querySelector('.status-toggles');
+      if (toggles && replacement) {
+        for (const control of toggles.querySelectorAll('button')) {
+          const next = replacement.querySelector(`[data-action="${control.dataset.action}"]`);
+          for (const { name } of [...control.attributes]) if (!next.hasAttribute(name)) control.removeAttribute(name);
+          for (const { name, value } of next.attributes) if (control.getAttribute(name) !== value) control.setAttribute(name, value);
+        }
+        replacement.remove();
+      }
+      for (const child of [...footer.childNodes]) if (child !== toggle && child !== toggles) child.remove();
+      footer.insertBefore(template.content, toggles);
     }
   }
   const bell = document.querySelector('.navbar-notifications');
@@ -466,7 +487,7 @@ function render() {
   if (messageFolderKey !== folderKey) { messageFolderKey = folderKey; selectedMessage = { file: '', message: null, loading: false, error: '' }; }
   const workspaceBody = activeTab === 'preferences' ? preferencesView(themePreference(), desktopPreferences, preferencesSaving, preferencesError, escapeHtml, schedulePreferencesMarkup(dashboard.schedule, { saving: schedulePreferencesSaving, error: schedulePreferencesError, backupRunning: dashboard.backupRunning }, escapeHtml), cloudMarkup() + cloudMarkup('dropbox') + cloudMarkup('icloud') + onedriveBackupView())
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
-    : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions"><button type="button" data-action="cloud-preferences">Cloud backup</button>${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button data-action="open-backups">Open backup folder</button></div><div class="backup-progress-slot">${progressPanel(currentProgressDashboard(), escapeHtml, formatNumber)}</div>${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
+    : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions"><button type="button" class="backup-icon" data-action="cloud-preferences" aria-label="Cloud backup" title="Cloud backup">${controlIcon('cloud')}</button>${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button class="backup-icon" data-action="open-backups" aria-label="Open backup folder" title="Open backup folder">${controlIcon('folder')}</button></div><div class="backup-progress-slot">${progressPanel(currentProgressDashboard(), escapeHtml, formatNumber)}</div>${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
     : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
     : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readerToggle()}${readingPane({ ...selectedMessage, backupBusy: busy || dashboard.backupRunning }, escapeHtml, formatDate)}</div>`;
 
@@ -680,6 +701,8 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (action === 'toggle-scheduled-backups') { void toggleBackupPermission('scheduledBackupsEnabled'); return; }
+  if (action === 'toggle-cloud-backups') { void toggleBackupPermission('cloudBackupsEnabled'); return; }
   if (action === 'toggle-reader') { toggleReader(app); return; }
   if (action === 'toggle-sidebar') { toggleSidebar(app); return; }
   if (action === 'expand-account' || action === 'expand-folder-filter') { toggleSidebar(app, action === 'expand-account' ? '#active-account' : '#folder-filter'); return; }
@@ -1009,6 +1032,17 @@ async function loadScheduledFolders(button) {
     document.querySelector('#schedule-error').textContent = '';
   } catch (error) { document.querySelector('#schedule-error').textContent = userMessage(error); }
   finally { busy = false; controls.forEach(control => control.disabled = false); button.disabled = false; button.textContent = 'Refresh folders'; dashboardPoller?.reschedule(); }
+}
+
+async function toggleBackupPermission(key) {
+  if (preferencesSaving || !desktopPreferences) return;
+  preferencesSaving = true; updateStatusBar();
+  try {
+    desktopPreferences = await invoke('save_desktop_preferences', {
+      preferences: { ...desktopPreferences, [key]: desktopPreferences[key] === false },
+    });
+  } catch (error) { toast(userMessage(error), true); }
+  finally { preferencesSaving = false; updateCloudBackup(); dashboardPoller?.reschedule(); }
 }
 
 async function saveSchedulePreferences(form) {

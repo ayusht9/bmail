@@ -8,12 +8,12 @@ function readControl(root, runId, readJson) {
   const control = readJson(path.join(root, 'control.json'), null);
   return control?.runId === runId ? control.command : null;
 }
-function createControl(root, client, progress, readJson) {
+function createControl(root, client, progress, readJson, stopRequested = () => false) {
   let inMessage = false;
   let closed = false;
   let terminal = null;
   const command = () => {
-    const requested = readControl(root, progress.context.runId, readJson);
+    const requested = stopRequested() ? 'stop' : readControl(root, progress.context.runId, readJson);
     if (requested === 'cancel') terminal = 'cancel';
     else if (requested === 'stop' && !terminal) terminal = 'stop';
     return terminal || requested;

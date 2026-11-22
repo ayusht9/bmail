@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
 const { DriveClient, DriveError, messages, oauthRequest, tokenRequest } = require('./drive-client.cjs');
-const { dataDirectory } = require('./paths.cjs');
+const { dataDirectory, backupEnabled } = require('./paths.cjs');
 
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 function readJson(file, fallback = null) { try { return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')); } catch { return fallback; } }
@@ -150,6 +150,7 @@ async function syncArchive(data, config, credentials, update, { store = credenti
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   update({ folderName, folderId, totalFiles: files.length, totalBytes });
   for (const file of files) {
+    if (!backupEnabled(data, 'cloud')) { update({ stage: 'ready', errorCode: '' }); return; }
     const parent = path.posix.dirname(file.relative) === '.' ? '' : path.posix.dirname(file.relative);
     const result = await client.upload(file, await folderFor(parent), key('file/' + file.relative), index, persist, bytes => update({ uploadedBytes: uploadedBytes + bytes }));
     uploadedBytes += file.size; completedFiles++; if (result.skipped) skippedFiles++;
@@ -158,6 +159,7 @@ async function syncArchive(data, config, credentials, update, { store = credenti
   update({ stage: 'ready', errorCode: '', lastSyncedAt: new Date().toISOString(), completedFiles, uploadedBytes, skippedFiles });
 }
 async function run(data, action, value, options = {}) {
+  if (action === 'sync' && !backupEnabled(data, 'cloud')) return publicStatus(data);
   if (action === 'status') return publicStatus(data);
   const release = acquire(data);
   const stateFile = path.join(data, 'cloud-drive.json');

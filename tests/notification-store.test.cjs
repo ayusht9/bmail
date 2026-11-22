@@ -1,6 +1,39 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+test('mail notifications follow the current snapshot without repeated unread entries', async () => {
+  const { createNotificationStore } = await import('../src/notification-store.js');
+  let saved = [], state = {};
+  const options = { read: () => saved, write: value => saved = structuredClone(value), readState: () => state, writeState: value => state = structuredClone(value) };
+  const store = createNotificationStore(options);
+  const sync = (target, count) => target.reconcile('first', count ? `${count} new emails` : null, { key: 'mail:current', prefix: 'mail:' });
+  store.add('second', 'Other account', { key: 'mail:old' });
+  sync(store, 3); store.markRead('first'); sync(store, 3);
+  assert.equal(store.unread('first'), 0);
+  assert.equal(store.list('first').length, 1);
+  sync(store, 1);
+  assert.equal(store.list('first')[0].message, '1 new emails');
+  assert.equal(store.unread('first'), 1);
+  sync(store, 0);
+  assert.equal(store.list('first').length, 0);
+  assert.equal(store.list('second').length, 1);
+  sync(store, 3); store.clear('first');
+  sync(createNotificationStore(options), 3);
+  assert.equal(saved.filter(item => item.account === 'first').length, 0, 'Cleared current state does not reappear on the next poll or restart');
+});
+
+test('cleared backup notifications stay deduplicated across restarts', async () => {
+  const { createNotificationStore } = await import('../src/notification-store.js');
+  let saved = [], state = {};
+  const options = { read: () => saved, write: value => saved = structuredClone(value), readState: () => state, writeState: value => state = structuredClone(value) };
+  const store = createNotificationStore(options);
+  store.add('account', 'Completed', { key: 'backup:run-1:completed' });
+  store.clear('account');
+  const reloaded = createNotificationStore(options);
+  assert.equal(reloaded.add('account', 'Completed', { key: 'backup:run-1:completed' }), null);
+  assert.ok(reloaded.add('account', 'Completed again', { key: 'backup:run-2:completed' }));
+});
+
 test('notification history persists, deduplicates events, and keeps account read states separate', async () => {
   const { createNotificationStore } = await import('../src/notification-store.js');
   let saved = [];

@@ -4,6 +4,15 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Backup-Paths.ps1')
 try {
     if ($Scheduled -and $Mode -ne 'Backup') { throw 'Scheduled mode is only available for backups.' }
+    if ($Scheduled) {
+        $parent = Split-Path -Parent $dataDirectory
+        $base = if ((Split-Path -Leaf $parent) -ieq 'accounts') { Split-Path -Parent $parent } else { $dataDirectory }
+        $settingsPath = Join-Path $base 'desktop-settings.json'
+        if (Test-Path -LiteralPath $settingsPath) {
+            $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+            if ($settings.scheduledBackupsEnabled -eq $false) { Write-Output 'Scheduled backups are disabled globally.'; exit 0 }
+        }
+    }
     $credential = Import-Clixml -LiteralPath (Join-Path $dataDirectory '.private\zoho-credential.xml')
     $config = Get-Content -LiteralPath (Join-Path $dataDirectory 'backup-config.json') -Raw | ConvertFrom-Json
     if ($config.authType -eq 'oauth2') {

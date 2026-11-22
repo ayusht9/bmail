@@ -5,6 +5,7 @@ Built with Tauri 2, a bundled Node.js backup engine, and Windows-encrypted
 mailbox credentials. Supports isolated accounts, backup selection, schedules,
 live progress, pause/resume/stop controls, and full-mailbox coverage statistics.
 
+- [Website](https://ayusht9.github.io/bmail/)
 - [Download the Windows installer](https://github.com/ayusht9/bmail/releases/latest)
 - [Release notes](RELEASES.md)
 - [Windows setup and development](docs/WINDOWS.md)
