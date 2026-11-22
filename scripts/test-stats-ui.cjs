@@ -852,10 +852,26 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     const allFolders = sidebar.locator('[data-action="select-folder"][data-folder=""]');
     assert.equal(await allFolders.locator('svg').isVisible(), true);
     assert.equal(await allFolders.getAttribute('title'), 'All folders');
+    await page.evaluate(() => {
+      window.sidebarFrames = [];
+      window.sampleSidebar = true;
+      const sample = () => {
+        const icon = document.querySelector('.folder-list > .folder-item svg');
+        if (icon) window.sidebarFrames.push(icon.getBoundingClientRect().y);
+        if (window.sampleSidebar) requestAnimationFrame(sample);
+      };
+      sample();
+    });
     await sidebar.locator('.folder-row .folder-item').first().click();
     assert.equal(await sidebarWidth(), 56, 'Folders remain usable without expanding the rail');
     await go('Activity'); await go('Home');
     assert.equal(await sidebarWidth(), 56, 'Collapsed state survives tab redraws');
+    const sidebarFrames = await page.evaluate(() => {
+      window.sampleSidebar = false;
+      return window.sidebarFrames;
+    });
+    assert.ok(sidebarFrames.length > 2, 'Sample sidebar positions across navigation frames');
+    assert.ok(Math.max(...sidebarFrames) - Math.min(...sidebarFrames) < 1, 'Collapsed sidebar icons stay in place throughout folder and tab navigation');
     await page.reload();
     await page.getByRole('button', { name: 'Expand sidebar', exact: true }).waitFor();
     await page.waitForFunction(() => document.querySelector('.folder-sidebar').getBoundingClientRect().width === 56);
