@@ -213,6 +213,20 @@ button.primary:hover:not(:disabled) {
 .statusbar .sidebar-toggle { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:30px; min-height:22px; height:22px; padding:2px 5px; border-color:transparent; background:transparent; }
 .sidebar-toggle[aria-expanded="false"] svg { transform:scaleX(-1); }
 .statusbar { padding-left:4px; }
+.status-toggles { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+.statusbar .status-icon { display:inline-flex; align-items:center; justify-content:center; width:28px; min-height:22px; height:22px; padding:2px 5px; border-color:transparent; background:transparent; color:var(--muted); }
+.status-icon svg, .backup-icon svg { width:18px; height:18px; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
+.statusbar .status-icon[aria-checked="true"] { color:var(--strong-link); background:var(--selected); border-color:var(--line); }
+.backup-page-actions .backup-icon { display:inline-flex; align-items:center; justify-content:center; min-width:36px; width:36px; padding:7px; }
+.toggle-control { display:inline-flex; align-items:center; gap:9px; position:relative; cursor:pointer; font-size:calc(12px * var(--app-font-scale, 1)); }
+.toggle-control input { position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:pointer; z-index:1; }
+.toggle-track { width:34px; height:20px; flex-shrink:0; border:1px solid var(--button-border); border-radius:12px; background:var(--surface); position:relative; }
+.toggle-track::after { content:''; position:absolute; width:14px; height:14px; left:2px; top:2px; border-radius:50%; background:var(--muted); }
+.toggle-control input:checked + .toggle-track { background:var(--accent); border-color:var(--accent); }
+.toggle-control input:checked + .toggle-track::after { transform:translateX(14px); background:#fff; }
+.toggle-control input:focus-visible + .toggle-track { outline:2px solid var(--strong-link); outline-offset:3px; }
+.toggle-control input:disabled + .toggle-track { opacity:.5; }
+@media (prefers-reduced-motion: no-preference) { .toggle-track, .toggle-track::after { transition:background-color 120ms ease, transform 120ms ease; } }
 .sidebar-collapsed .folder-sidebar { min-width:0; }
 .sidebar-collapsed .account-switcher { padding:8px 6px; }
 .sidebar-collapsed .account-heading { flex-direction:column; gap:4px; margin:4px 0 0; }
@@ -1258,6 +1272,7 @@ button.download-icon:disabled { opacity: .35; cursor: default; }
 .scheduler-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
 .scheduler-head h2 { margin: 0; }
 .scheduler-head .folder-choice { margin: 0; font-weight: 600; }
+.scheduler-page .scheduler-head .toggle-control { display:inline-flex; margin:0; font-weight:600; }
 .scheduler-page .scheduler-layout { grid-template-columns: minmax(320px, 400px) minmax(0, 1fr); gap: 16px; margin-top: 0; align-items: start; }
 .scheduler-page .scheduler-calendar-pane { border: 1px solid var(--line); border-radius: 6px; padding: 18px; }
 .scheduler-page .scheduler-clock { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-bottom: 18px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }

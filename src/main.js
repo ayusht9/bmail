@@ -11,6 +11,7 @@ import { userMessage, createSafeInvoke, installGlobalErrorHandlers } from './err
 const invoke = createSafeInvoke(nativeInvoke);
 import { workspaceTabs, workspaceTabStrip } from './workspace.js';
 import { renderWorkspace } from './workspace-render.js';
+import { controlIcon } from './control-icons.js';
 import { historyPane } from './history.js';
 import { readingPane } from './reader.js';
 import { createDashboardPoller } from './polling.js';
@@ -63,6 +64,7 @@ function cloudMarkup(provider = 'drive') {
 }
 
 function updateCloudBackup() {
+  updateStatusBar();
   if (activeTab !== 'preferences') return;
   for (const [provider, { id, field }] of Object.entries(cloudProviders)) {
     const panel = document.getElementById(id);
@@ -372,7 +374,20 @@ function folderStatus() {
 }
 
 function statusBarContents() {
-  return `${sidebarToggle()}<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Syncing mailbox...' : 'Working...') : dashboard.backupRunning ? 'Backup active' : ''}</span>${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-summary"><span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span><span class="status-schedule">Schedule: ${escapeHtml(scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled))}</span></span>`;
+  return `${sidebarToggle()}<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Syncing mailbox...' : 'Working...') : dashboard.backupRunning ? 'Backup active' : ''}</span>${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-summary"><span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span></span>${statusBackupToggles()}`;
+}
+
+function connectedCloudProviders() {
+  return Object.entries(cloudProviders).filter(([, { field }]) => dashboard[field]?.connected);
+}
+
+function statusBackupToggles() {
+  const scheduled = Boolean(dashboard.scheduleInstalled && dashboard.schedule?.enabled);
+  const connected = connectedCloudProviders();
+  const automatic = connected.length > 0 && connected.every(([, { field }]) => dashboard[field].automatic);
+  const cloudPending = Object.keys(cloudProviders).some(provider => cloudOperations.has(cloudKey(provider)));
+  const button = (action, icon, name, enabled, title, disabled) => `<button type="button" class="status-icon" data-action="${action}" role="switch" aria-label="${name}" aria-checked="${enabled}" title="${escapeHtml(title)}" ${disabled ? 'disabled' : ''}>${controlIcon(icon)}</button>`;
+  return `<div class="status-toggles" role="group" aria-label="Automatic backups">${button('toggle-scheduled-backups', 'schedule', 'Scheduled backups', scheduled, `${scheduled ? 'Pause' : 'Enable'} scheduled backups · ${scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled)}`, busy || schedulerBusy || dashboard.backupRunning || !dashboard.credentialReady)}${button('toggle-cloud-backups', 'cloud', 'Automatic cloud backup', automatic, connected.length ? `${automatic ? 'Disable' : 'Enable'} automatic cloud backup for all connected providers` : 'Set up cloud backup', busy || cloudPending || dashboard.backupRunning || !dashboard.credentialReady)}</div>`;
 }
 
 function updateBackupControls() {
@@ -429,8 +444,18 @@ function updateStatusBar() {
       const template = document.createElement('template');
       template.innerHTML = statusBarContents();
       template.content.querySelector('.sidebar-toggle')?.remove();
-      for (const child of [...footer.childNodes]) if (child !== toggle) child.remove();
-      footer.append(template.content);
+      const toggles = footer.querySelector('.status-toggles');
+      const replacement = template.content.querySelector('.status-toggles');
+      if (toggles && replacement) {
+        for (const control of toggles.querySelectorAll('button')) {
+          const next = replacement.querySelector(`[data-action="${control.dataset.action}"]`);
+          for (const { name } of [...control.attributes]) if (!next.hasAttribute(name)) control.removeAttribute(name);
+          for (const { name, value } of next.attributes) if (control.getAttribute(name) !== value) control.setAttribute(name, value);
+        }
+        replacement.remove();
+      }
+      for (const child of [...footer.childNodes]) if (child !== toggle && child !== toggles) child.remove();
+      footer.insertBefore(template.content, toggles);
     }
   }
   const bell = document.querySelector('.navbar-notifications');
@@ -466,7 +491,7 @@ function render() {
   if (messageFolderKey !== folderKey) { messageFolderKey = folderKey; selectedMessage = { file: '', message: null, loading: false, error: '' }; }
   const workspaceBody = activeTab === 'preferences' ? preferencesView(themePreference(), desktopPreferences, preferencesSaving, preferencesError, escapeHtml, schedulePreferencesMarkup(dashboard.schedule, { saving: schedulePreferencesSaving, error: schedulePreferencesError, backupRunning: dashboard.backupRunning }, escapeHtml), cloudMarkup() + cloudMarkup('dropbox') + cloudMarkup('icloud') + onedriveBackupView())
     : activeTab === 'scheduler' ? schedulerView(dashboard, escapeHtml, schedulerDraft)
-    : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions"><button type="button" data-action="cloud-preferences">Cloud backup</button>${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button data-action="open-backups">Open backup folder</button></div><div class="backup-progress-slot">${progressPanel(currentProgressDashboard(), escapeHtml, formatNumber)}</div>${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
+    : activeTab === 'options' ? `<div class="backup-page"><div class="backup-page-actions"><button type="button" class="backup-icon" data-action="cloud-preferences" aria-label="Cloud backup" title="Cloud backup">${controlIcon('cloud')}</button>${backupControls(dashboard, busy, controlBusy, busyAction, escapeHtml)}<button class="backup-icon" data-action="open-backups" aria-label="Open backup folder" title="Open backup folder">${controlIcon('folder')}</button></div><div class="backup-progress-slot">${progressPanel(currentProgressDashboard(), escapeHtml, formatNumber)}</div>${backupOptionsView(dashboard, escapeHtml, backupOptionsDraft)}</div>`
     : activeTab === 'activity' ? historyPane(dashboard, historyFilter, selectedHistoryRun, escapeHtml, formatDate, formatNumber)
     : `<div class="mailbox-panes">${mailList()}${paneDivider('mail')}${readerToggle()}${readingPane({ ...selectedMessage, backupBusy: busy || dashboard.backupRunning }, escapeHtml, formatDate)}</div>`;
 
@@ -680,6 +705,8 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (action === 'toggle-scheduled-backups') { void toggleScheduledBackups(); return; }
+  if (action === 'toggle-cloud-backups') { void toggleCloudBackups(); return; }
   if (action === 'toggle-reader') { toggleReader(app); return; }
   if (action === 'toggle-sidebar') { toggleSidebar(app); return; }
   if (action === 'expand-account' || action === 'expand-folder-filter') { toggleSidebar(app, action === 'expand-account' ? '#active-account' : '#folder-filter'); return; }
@@ -1009,6 +1036,42 @@ async function loadScheduledFolders(button) {
     document.querySelector('#schedule-error').textContent = '';
   } catch (error) { document.querySelector('#schedule-error').textContent = userMessage(error); }
   finally { busy = false; controls.forEach(control => control.disabled = false); button.disabled = false; button.textContent = 'Refresh folders'; dashboardPoller?.reschedule(); }
+}
+
+async function toggleScheduledBackups() {
+  if (busy || schedulerBusy || dashboard.backupRunning || !dashboard.credentialReady) return;
+  if (!dashboard.scheduleInstalled || !dashboard.schedule?.settings) { await selectTab('scheduler'); return; }
+  const account = dashboard.user;
+  captureTabDraft();
+  schedulerBusy = true; busy = true; updateStatusBar();
+  try {
+    const schedule = normalizeSchedule({ ...dashboard.schedule.settings, enabled: !dashboard.schedule.enabled });
+    const result = await invoke('manage_schedule', { action: 'save', schedule });
+    if (dashboard.user === account) {
+      dashboard.schedule = result; dashboard.scheduleInstalled = result.installed;
+      if (schedulerDraft) schedulerDraft.enabled = result.enabled;
+      const input = document.querySelector('#scheduler-form [name="enabled"]');
+      if (input) { input.checked = result.enabled; updateSchedulePreview(); }
+      updateScheduleStatus();
+    }
+  } catch (error) { toast(userMessage(error), true, account); }
+  finally { schedulerBusy = false; busy = false; updateScheduleStatus(); updateStatusBar(); dashboardPoller?.reschedule(); }
+}
+
+async function toggleCloudBackups() {
+  if (busy || dashboard.backupRunning || !dashboard.credentialReady || Object.keys(cloudProviders).some(provider => cloudOperations.has(cloudKey(provider)))) return;
+  const connected = connectedCloudProviders();
+  if (!connected.length) { await cloudOperation('preferences'); return; }
+  const enabled = !connected.every(([, { field }]) => dashboard[field].automatic);
+  // Hold account switching until every provider has saved its own setting.
+  busy = true; updateStatusBar();
+  try {
+    await Promise.all(connected.map(([provider]) => cloudOperation('automatic', enabled, provider)));
+    for (const [provider] of connected) {
+      const error = cloudErrors.get(cloudKey(provider));
+      if (error) toast(error, true);
+    }
+  } finally { busy = false; updateStatusBar(); dashboardPoller?.reschedule(); }
 }
 
 async function saveSchedulePreferences(form) {

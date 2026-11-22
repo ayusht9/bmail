@@ -1,3 +1,5 @@
+import { controlIcon } from './control-icons.js';
+
 export const formatBytes = (bytes = 0) => bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(2)} GB`
   : bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
 export const duration = seconds => {
@@ -41,9 +43,9 @@ export function backupControls(dashboard, busy, controlBusy, busyAction, escapeH
   const disabled = busy || controlBusy || !active;
   const runId = active ? escapeHtml(p.runId) : '';
   return `<div class="backup-controls" role="group" aria-label="Backup controls">
-    <button class="primary" data-action="backup" ${busy || controlBusy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${busyAction === 'backup' ? 'Starting...' : 'Start backup'}</button>
-    <button data-action="${paused ? 'resume' : 'pause'}" data-run-id="${runId}" aria-label="${paused ? 'Resume backup' : 'Pause backup'}" ${disabled || stopping || waiting ? 'disabled' : ''}>${waiting ? paused ? 'Resuming...' : 'Pausing...' : paused ? 'Resume' : 'Pause'}</button>
-    <button data-action="stop" data-run-id="${runId}" aria-label="Stop backup" title="Finish the current email, then stop" ${disabled || stopping ? 'disabled' : ''}>${stopping ? 'Stopping...' : 'Stop'}</button>
+    <button class="primary backup-icon" data-action="backup" aria-label="Start backup" title="${busyAction === 'backup' ? 'Starting backup...' : 'Start backup'}" ${busy || controlBusy || dashboard.backupRunning || !dashboard.credentialReady ? 'disabled' : ''}>${controlIcon('play')}</button>
+    <button class="backup-icon" data-action="${paused ? 'resume' : 'pause'}" data-run-id="${runId}" aria-label="${paused ? 'Resume backup' : 'Pause backup'}" title="${waiting ? paused ? 'Resuming backup...' : 'Pausing backup...' : paused ? 'Resume backup' : 'Pause backup'}" ${disabled || stopping || waiting ? 'disabled' : ''}>${controlIcon(paused ? 'play' : 'pause')}</button>
+    <button class="backup-icon" data-action="stop" data-run-id="${runId}" aria-label="Stop backup" title="${stopping ? 'Stopping backup...' : 'Finish the current email, then stop'}" ${disabled || stopping ? 'disabled' : ''}>${controlIcon('stop')}</button>
     <button class="cancel-backup" data-action="cancel" data-run-id="${runId}" aria-label="Cancel backup" title="Cancel now; completed emails are kept" ${disabled || pending === 'cancel' ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
   </div>`;
 }
