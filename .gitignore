@@ -14,6 +14,8 @@ backup-audit.json
 backup-config.json
 cloud-drive.json
 cloud-drive.json.*.pending
+cloud-icloud.json
+cloud-icloud.json.*.pending
 cloud-dropbox.json
 cloud-dropbox.json.*.pending
 client_secret_*.json

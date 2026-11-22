@@ -18,6 +18,7 @@ try {
     if ($request.host -notmatch '^[a-zA-Z0-9.-]+$') { $failureCode = 'INVALID_HOST'; throw 'Invalid host' }
     if ([int]$request.port -lt 1 -or [int]$request.port -gt 65535) { $failureCode = 'INVALID_PORT'; throw 'Invalid port' }
     if ($request.host -ieq 'imap.gmail.com' -and [int]$request.port -ne 993) { $failureCode = 'GMAIL_REQUIRES_993'; throw 'Invalid Gmail port' }
+    if ($request.host -ieq 'imap.mail.me.com' -and [int]$request.port -ne 993) { $failureCode = 'ICLOUD_REQUIRES_993'; throw 'Invalid iCloud Mail port' }
     $outlookAddressHostPattern = '^(outlook|hotmail|live|msn)\.(com|in|co\.uk)$'
     if ($request.host -imatch $outlookAddressHostPattern) { $request.host = 'outlook.office365.com' }
     $outlook = $request.host -iin @('outlook.office365.com', 'imap-mail.outlook.com')

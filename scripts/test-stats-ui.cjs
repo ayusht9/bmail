@@ -32,6 +32,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
       window.scheduleState = { installed: false, enabled: false, state: 'Not installed', settings: null, checkedAt: new Date().toISOString() };
       window.data = { user: 'fixture@example.com', accounts: ['fixture@example.com'], host: 'imap.gmail.com', port: 993,
         credentialReady: true, hasManifest: true, backupRunning: false, backupOptions: { folders: ['INBOX'] }, folderCount: 1,
+        cloudIcloud: { connected: false, automatic: false, stage: 'disconnected' },
         cloudDropbox: { configured: true, connected: false, automatic: false, stage: 'disconnected' },
         localStats: { messages: 3, bytes: 1048576, folders: [{ name: 'INBOX', messages: 3 }], recent: [
           { file: 'emails/INBOX/one.eml', subject: '<img src=x onerror="window.injected=true">', sender: 'fixture@example.com', folder: 'INBOX', sentAt: '2020-01-02T00:00:00Z', bytes: 2048, backedUp: true, backedUpAt: '2026-11-15T00:00:00Z' },
@@ -47,6 +48,19 @@ const { paginateMail } = require('../engine/mail-page.cjs');
         }
         if (name === 'configure_mailbox') { window.mailboxSettings = { ...args.settings }; return 'Mailbox saved'; }
 
+        if (name === 'open_icloud_help') { window.openedAppleHelp = true; return; }
+        if (name === 'cloud_icloud') {
+          const state = window.data.cloudIcloud;
+          if (args.action === 'setup' && !window.cancelIcloudSetup) Object.assign(state, { connected: true, automatic: false, stage: 'ready', folderName: 'iCloud Drive/Bmail/fixture', errorCode: '' });
+          if (args.action === 'automatic') state.automatic = args.value;
+          if (args.action === 'sync') {
+            Object.assign(state, { stage: 'copying', totalFiles: 2, completedFiles: 0, errorCode: '' });
+            if (window.holdIcloud) await new Promise(resolve => { window.finishIcloud = resolve; });
+            Object.assign(state, window.failIcloud ? { stage: 'error', errorCode: 'files' } : { stage: 'copied', completedFiles: 2, lastCopiedAt: new Date().toISOString() });
+          }
+          if (args.action === 'disconnect') Object.assign(state, { connected: false, automatic: false, stage: 'disconnected', folderName: '' });
+          return { ...state };
+        }
         if (name === 'open_directory') { window.openedDirectory = args.kind; return; }
         if (name === 'get_desktop_preferences') return { closeToTray: sessionStorage.getItem('fixture-close-to-tray') !== 'false' };
         if (name === 'cloud_dropbox') {
@@ -95,7 +109,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
           if (['stop', 'cancel'].includes(args.command)) { window.data.backupRunning = false; window.data.progress.state = args.command === 'stop' ? 'stopped' : 'cancelled'; }
           return 'Control applied';
         }
-        if (name === 'get_saved_message') { if (window.failReader) throw 'Saved email is unavailable'; window.lastReadFile = args.file; return { subject: 'Preview subject', from: 'Sender <sender@example.com>', to: 'reader@example.com', date: '2026-11-16T09:00:00Z', html: '<p>Hello from the selected email</p><script>window.previewInjected=true</script><img alt="Remote logo" src="https://tracking.invalid/pixel"><img alt="Embedded logo" src="data:image/png;base64,iVBORw0KGgo="><a href="javascript:alert(1)">link</a>', text: '', attachments: [] }; }
+        if (name === 'get_saved_message') { if (window.holdReader) await new Promise(resolve => { window.finishReader = resolve; }); if (window.failReader) throw 'Saved email is unavailable'; window.lastReadFile = args.file; return { subject: 'Preview subject', from: 'Sender <sender@example.com>', to: 'reader@example.com', date: '2026-11-16T09:00:00Z', html: '<p>Hello from the selected email</p><script>window.previewInjected=true</script><img alt="Remote logo" src="https://tracking.invalid/pixel"><img alt="Embedded logo" src="data:image/png;base64,iVBORw0KGgo="><a href="javascript:alert(1)">link</a>', text: '', attachments: [] }; }
         if (name === 'get_mail_page') return window.fixtureMailPage(window.data.localStats.recent.filter(mail => !args.folder || mail.folder === args.folder), args);
         if (name === 'get_saved_mail') return window.data.localStats.recent.filter(mail => mail.backedUp && (!args.folder || mail.folder === args.folder));
         if (name === 'get_dashboard') { window.dashboardForces.push(args?.force); return structuredClone(window.data); }
@@ -139,6 +153,10 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.getByRole('button', { name: 'Maximize or restore window', exact: true }).click();
     const tab = name => page.getByRole('tab', { name, exact: true });
     const go = async name => { await tab(name).click(); await page.getByRole('tabpanel', { name, exact: true }).waitFor(); };
+    const chooseProvider = async value => {
+      await page.getByRole('combobox', { name: 'Email provider', exact: true }).click();
+      await page.locator(`.mail-provider-option[data-provider="${value}"]`).click();
+    };
     const dismissToasts = async () => {
       while (await page.locator('#toast [data-action="toast-dismiss"]').count()) {
         await page.locator('#toast [data-action="toast-dismiss"]').last().click();
@@ -266,6 +284,39 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.frameLocator('iframe[title="Email content"]').getByText('Hello from the selected email', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.previewInjected), undefined);
     assert.match(content, /data:image\/png/);
+    const expandedMailHeight = await page.locator('.mail-pane').evaluate(pane => pane.getBoundingClientRect().height);
+    const splitBeforeCollapse = await page.evaluate(() => JSON.parse(localStorage.getItem('bmail-pane-sizes') || '{}').mailRatio ?? null);
+    const readsBeforeCollapse = await page.evaluate(() => window.calls.filter(name => name === 'get_saved_message').length);
+    await page.evaluate(() => {
+      window.retainedEmailFrame = document.querySelector('.email-body');
+      const pane = document.querySelector('.reading-pane'); pane.scrollTop = 35; window.retainedReaderScroll = pane.scrollTop;
+    });
+    await page.getByRole('button', { name: 'Collapse mail reader', exact: true }).click();
+    assert.equal(await page.getByRole('button', { name: 'Expand mail reader', exact: true }).getAttribute('aria-expanded'), 'false');
+    assert.equal(await page.locator('#mail-reader').isVisible(), false);
+    assert.equal(await page.locator('[data-pane-divider="mail"]').isVisible(), false);
+    assert.ok(await page.locator('.mail-pane').evaluate(pane => pane.getBoundingClientRect().height) > expandedMailHeight + 50);
+    assert.equal(await page.evaluate(() => window.retainedEmailFrame.isConnected), true, 'Collapsing retains the email document');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('bmail-pane-sizes')).readerCollapsed), true);
+    await page.getByRole('button', { name: 'Expand mail reader', exact: true }).press('Space');
+    await reader.getByRole('heading', { name: 'Preview subject', exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.retainedEmailFrame === document.querySelector('.email-body')), true, 'Expanding does not reload the selected email');
+    assert.equal(await page.evaluate(() => document.querySelector('.reading-pane').scrollTop === window.retainedReaderScroll), true);
+    assert.equal(await page.evaluate(() => window.calls.filter(name => name === 'get_saved_message').length), readsBeforeCollapse);
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('bmail-pane-sizes')).mailRatio ?? null), splitBeforeCollapse);
+    assert.ok(Math.abs(await page.locator('.mail-pane').evaluate(pane => pane.getBoundingClientRect().height) - expandedMailHeight) < 2);
+    await page.evaluate(() => { window.holdReader = true; });
+    await recent.locator('.mail-subject').first().click();
+    await page.waitForFunction(() => Boolean(window.finishReader));
+    await page.getByRole('button', { name: 'Collapse mail reader', exact: true }).click();
+    await page.evaluate(() => { window.holdReader = false; window.finishReader(); });
+    await page.waitForFunction(() => !document.querySelector('.reading-pane').hasAttribute('aria-busy'));
+    assert.equal(await page.locator('#mail-reader').isVisible(), false, 'A finished message request respects the collapsed state');
+    assert.equal(await page.getByRole('button', { name: 'Expand mail reader', exact: true }).getAttribute('aria-expanded'), 'false');
+    await page.screenshot({ path: '.cache/collapsed-mail-reader.png' });
+    await page.getByRole('button', { name: 'Expand mail reader', exact: true }).click();
+    await reader.getByRole('heading', { name: 'Preview subject', exact: true }).waitFor();
+
     await go('Preferences');
     await page.getByLabel('Email images', { exact: true }).selectOption('hidden');
     await go('Home');
@@ -779,8 +830,14 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     const storedList = await listHeight();
     await go('Activity'); await go('Home');
     assert.ok(Math.abs(await listHeight() - storedList) < 2);
+    await page.getByRole('button', { name: 'Collapse mail reader', exact: true }).click();
     await page.reload();
     await page.locator('.mail-table tbody tr').first().waitFor();
+    await page.getByRole('button', { name: 'Expand mail reader', exact: true }).waitFor();
+    assert.equal(await page.locator('.reading-pane').isVisible(), false, 'Reader collapse survives reload');
+    await go('Activity'); await go('Home');
+    assert.equal(await page.locator('.reading-pane').isVisible(), false, 'Reader collapse survives tab changes');
+    await page.getByRole('button', { name: 'Expand mail reader', exact: true }).click();
     await page.waitForFunction(expected => Math.abs(document.querySelector('.folder-sidebar').getBoundingClientRect().width - expected) < 2, storedSidebar);
     assert.ok(Math.abs(await listHeight() - storedList) < 2, 'Pane sizes persist after reload');
     await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click();
@@ -810,19 +867,34 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.getByRole('button', { name: 'Filter folders', exact: true }).click();
     assert.equal(await page.locator('#folder-filter').evaluate(el => el === document.activeElement), true);
     await sidebarWidth();
+    const exportsBeforeSidebarDrag = await page.evaluate(() => window.exports.length);
     const narrowBox = await sidebarDivider.boundingBox();
     await page.mouse.move(narrowBox.x + 3, narrowBox.y + 100); await page.mouse.down();
     await page.mouse.move(140, narrowBox.y + 100, { steps: 8 });
     const intermediate = await sidebarWidth();
     assert.ok(intermediate > 120 && intermediate < 150, `During a drag the width follows the pointer through the compact range (${intermediate}px)`);
+    const actionDuringDrag = await sidebar.locator('.folder-row .download-icon').first().evaluate(button => ({ width: button.getBoundingClientRect().width, opacity: Number(getComputedStyle(button).opacity) }));
+    assert.ok(actionDuringDrag.width > 0 && actionDuringDrag.width < 32, `Download actions release their space progressively during collapse (${actionDuringDrag.width}px)`);
+    assert.ok(actionDuringDrag.opacity < 1, 'Download actions fade with the narrowing sidebar');
+    assert.equal(await sidebar.evaluate(el => getComputedStyle(el).overflowX), 'hidden', 'Narrowing the sidebar cannot create a horizontal scrollbar');
     const fading = await page.locator('.desktop-layout').evaluate(el => Number(el.style.getPropertyValue('--sidebar-label-opacity')));
     assert.ok(fading > 0 && fading < 1, 'Labels progressively fade before icons-only mode');
+    await page.mouse.move(130, narrowBox.y + 100, { steps: 4 });
+    const smallerActionWidth = await sidebar.locator('.folder-row .download-icon').first().evaluate(button => button.getBoundingClientRect().width);
+    assert.ok(smallerActionWidth < actionDuringDrag.width, 'Download actions continue shrinking as the pointer moves left');
+    await page.mouse.move(150, narrowBox.y + 100, { steps: 4 });
+    assert.ok(Math.abs(await sidebarWidth() - 150) < 2, 'Reversing the drag does not stick or jump');
+    assert.ok(await sidebar.locator('.folder-row .download-icon').first().evaluate(button => button.getBoundingClientRect().width) > smallerActionWidth, 'Download actions recover space when reversing the drag');
     await page.mouse.move(90, narrowBox.y + 100, { steps: 8 });
+    assert.equal(await sidebar.locator('.folder-row .download-icon').first().evaluate(button => button.getBoundingClientRect().width), 0, 'Download actions reserve no space near the icon rail');
+    assert.equal(await sidebar.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, 'Clipped folder contents do not force horizontal scrolling');
     assert.ok(await sidebarWidth() > 56, 'The sidebar does not snap away from the pointer during the drag');
     await page.mouse.up();
     assert.equal(await sidebarWidth(), 56, 'Dragging narrow snaps to icons rather than clipped text');
     await sidebarDivider.focus(); await page.keyboard.press('ArrowRight');
     assert.equal(await sidebarWidth(), 160, 'Keyboard users can expand the rail');
+    assert.equal(await sidebar.locator('.folder-row .download-icon').first().evaluate(button => button.getBoundingClientRect().width), 32, 'Expanding restores download targets');
+    assert.equal(await page.evaluate(() => window.exports.length), exportsBeforeSidebarDrag, 'Dragging does not trigger a folder download');
     await page.keyboard.press('ArrowLeft');
     assert.equal(await sidebarWidth(), 56, 'Keyboard users can collapse the sidebar');
     await sidebarDivider.dblclick();
@@ -913,38 +985,104 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.locator('.operation-error').getByRole('button', { name: 'Retry', exact: true }).click();
     await page.waitForFunction(() => window.newMailChecks === 2 && !document.querySelector('.operation-error') && document.querySelector('.folder-row[data-folder="INBOX"] .new-mail-badge'));
     await page.locator('[data-action="add-account"]').click();
-    await page.locator('#mail-provider').selectOption('outlook');
-    assert.equal(await page.locator('#mail-host').inputValue(), 'outlook.office365.com');
+    const providerOptions = await page.locator('#mail-provider option').evaluateAll(options => options.map(option => ({ label: option.textContent, value: option.value, disabled: option.disabled })));
+    assert.deepEqual(providerOptions, [
+      { label: 'Gmail', value: 'google', disabled: false },
+      { label: 'Outlook (Coming soon)', value: 'outlook', disabled: true },
+      { label: 'Zoho', value: 'zoho', disabled: false },
+      { label: 'iCloud', value: 'icloud', disabled: false },
+      { label: 'Others', value: 'other', disabled: false },
+    ]);
+    const providerTrigger = page.getByRole('combobox', { name: 'Email provider', exact: true });
+    await providerTrigger.click();
+    const providerList = page.getByRole('listbox', { name: 'Email provider', exact: true });
+    await providerList.waitFor();
+    assert.equal(await providerList.getByRole('option').count(), 5);
+    await page.waitForFunction(() => [...document.querySelectorAll('.mail-provider-option img')].every(img => img.complete && img.naturalWidth > 0));
+    const upcomingOutlook = providerList.getByRole('option', { name: 'Outlook Coming soon', exact: true });
+    assert.equal(await upcomingOutlook.isDisabled(), true);
+    await upcomingOutlook.dispatchEvent('click');
+    assert.equal(await page.locator('#mail-provider').inputValue(), 'google');
+    await providerTrigger.press('ArrowDown');
+    assert.equal(await providerTrigger.getAttribute('aria-activedescendant'), 'mail-provider-option-zoho', 'Arrow navigation skips the disabled Outlook option');
+    assert.equal(await page.locator('#mail-provider').inputValue(), 'google', 'Exploring options does not change provider settings');
+    await providerTrigger.press('Escape');
+    assert.equal(await page.locator('#mailbox-dialog').isVisible(), true, 'Escape dismisses the picker before closing the dialog');
+    assert.equal(await providerTrigger.getAttribute('aria-expanded'), 'false');
+    await providerTrigger.press('Enter');
+    await providerTrigger.press('End');
+    await providerTrigger.press('Tab');
+    assert.equal(await page.locator('#mail-provider').inputValue(), 'other');
+    assert.equal(await page.locator('#mail-user').evaluate(input => input === document.activeElement), true, 'Tab commits and moves to the next field');
+    await providerTrigger.focus();
+    await providerTrigger.press('z');
+    await providerTrigger.press('Enter');
+    assert.equal(await page.locator('#mail-provider').inputValue(), 'zoho', 'Typeahead can choose a provider');
+    assert.equal(await providerTrigger.locator('.mail-provider-name').textContent(), 'Zoho');
+    await providerTrigger.click();
+    await page.locator('#setup-title').click();
+    assert.equal(await providerTrigger.getAttribute('aria-expanded'), 'false', 'Outside clicks dismiss the picker');
+    await chooseProvider('google');
+    await providerTrigger.click();
+    await page.locator('#mailbox-dialog').screenshot({ path: '.cache/mail-provider-icons.png' });
+    await providerTrigger.press('Escape');
+    await chooseProvider('icloud');
+    assert.equal(await page.locator('#mail-host').inputValue(), 'imap.mail.me.com');
+    assert.equal(await page.locator('#mail-port').inputValue(), '993');
+    assert.equal(await page.locator('#mail-port').getAttribute('readonly'), '');
+    assert.equal(await page.locator('#mail-password').isVisible(), true);
+    assert.match(await page.locator('#provider-help').textContent(), /Apple app-specific password/);
+    await page.getByRole('button', { name: 'How to create an Apple app-specific password', exact: true }).click();
+    await page.waitForFunction(() => window.openedAppleHelp === true);
+    await page.locator('#mail-user').fill('mail-fixture@icloud.com');
+    await page.locator('#mail-password').fill('fixture-apple-app-password');
+    await page.locator('#mailbox-form [type="submit"]').click();
+    await page.waitForFunction(() => window.mailboxSettings?.host === 'imap.mail.me.com');
+    assert.equal(await page.evaluate(() => window.mailboxSettings.port), 993);
+    await page.waitForFunction(() => !document.querySelector('#mailbox-dialog').open);
+    await page.evaluate(() => { window.mailboxSettings = null; });
+    await page.locator('[data-action="add-account"]').click();
+    await chooseProvider('zoho');
+    assert.equal(await page.locator('#mail-host').inputValue(), 'imappro.zoho.in');
+    assert.equal(await page.locator('#mailbox-form [type="submit"]').isEnabled(), true);
+    await chooseProvider('other');
+    await page.locator('#mail-host').fill('outlook.office365.com');
+    await page.locator('#mail-host').press('Tab');
+    await page.locator('#mail-user').fill('fixture@outlook.com');
+    assert.equal(await page.locator('#mail-provider').inputValue(), 'outlook');
+    assert.equal(await page.locator('.mail-provider-value .mail-provider-name').textContent(), 'Outlook');
     assert.equal(await page.locator('#mail-port').inputValue(), '993');
     assert.equal(await page.locator('#mail-password').isVisible(), false);
-    assert.equal(await page.locator('label[for="mail-password"]').isVisible(), false);
-    await page.locator('#mail-user').fill('fixture@outlook.com');
-    assert.equal(await page.locator('#outlook-client-id').count(), 0);
-    await page.locator('#mailbox-form [type="submit"]').click();
-    await page.getByText('Start Microsoft sign-in first.', { exact: true }).waitFor();
-    await page.getByRole('button', { name: 'Sign in with Microsoft', exact: true }).click();
-    await page.locator('#outlook-sign-in-status').filter({ hasText: 'TEST-CODE' }).waitFor();
-    await page.locator('#mailbox-form [type="submit"]').click();
-    await page.waitForFunction(() => window.mailboxSettings?.device_code === 'fixture-device');
-    assert.deepEqual(await page.evaluate(() => window.mailboxSettings), {
-      user: 'fixture@outlook.com', host: 'outlook.office365.com', port: 993,
-      password: '', device_code: 'fixture-device', device_interval: 5,
+    await page.locator('#outlook-availability').filter({ hasText: /^Coming soon$/ }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Sign in with Microsoft', exact: true }).isDisabled(), true);
+    assert.equal(await page.locator('#mailbox-form [type="submit"]').isDisabled(), true);
+    await page.evaluate(() => {
+      document.querySelector('[name="device_code"]').value = 'fixture-device';
+      document.querySelector('#mailbox-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
-    await page.waitForFunction(() => !document.querySelector('#mailbox-dialog').open);
+    await page.locator('#setup-error').filter({ hasText: /^Outlook support is coming soon\.$/ }).waitFor();
+    assert.equal(await page.evaluate(() => Boolean(window.microsoftSignInArgs || window.mailboxSettings)), false, 'Coming-soon Outlook cannot sign in or save through custom-host entry');
+    await chooseProvider('google');
+    assert.equal(await page.locator('#mail-host').inputValue(), 'imap.gmail.com');
+    assert.equal(await page.locator('#mailbox-form [type="submit"]').isEnabled(), true);
+    assert.equal(await page.locator('#setup-error').textContent(), '');
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.evaluate(() => { window.data.host = 'outlook.in'; window.data.hasManifest = false; });
     await refreshLocal();
     await page.locator('[data-action="setup"]').first().click();
     assert.equal(await page.locator('#mail-provider').inputValue(), 'outlook');
+    assert.equal(await page.locator('.mail-provider-value .mail-provider-name').textContent(), 'Outlook');
     assert.equal(await page.locator('#mail-host').inputValue(), 'outlook.office365.com');
     assert.equal(await page.locator('#mail-password').isVisible(), false);
-    await page.getByText('The saved server was an Outlook email domain.', { exact: false }).waitFor();
-    assert.match(await page.locator('#provider-help').textContent(), /password is entered only on the Microsoft/);
+    assert.equal(await page.locator('#provider-help').textContent(), 'Outlook support is coming soon.');
+    assert.equal(await page.locator('#mailbox-form [type="submit"]').isDisabled(), true);
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.locator('[data-action="add-account"]').click();
-    await page.locator('#mail-provider').selectOption('other');
+    await chooseProvider('other');
     await page.locator('#mail-host').fill('outlook.in');
     await page.locator('#mail-host').press('Tab');
     assert.equal(await page.locator('#mail-provider').inputValue(), 'outlook');
+    assert.equal(await page.locator('.mail-provider-value .mail-provider-name').textContent(), 'Outlook');
     assert.equal(await page.locator('#mail-host').inputValue(), 'outlook.office365.com');
     assert.equal(await page.locator('#mail-password').isVisible(), false);
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -965,12 +1103,14 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.evaluate(() => sessionStorage.setItem('fixture-microsoft-unavailable', 'true'));
     await page.reload();
     await page.locator('[data-action="add-account"]').click();
-    await page.locator('#mail-provider').selectOption('outlook');
-    await page.locator('#outlook-availability').filter({ hasText: 'Outlook accounts cannot be connected yet.' }).waitFor();
+    await chooseProvider('other');
+    await page.locator('#mail-host').fill('outlook.office365.com');
+    await page.locator('#mail-host').press('Tab');
+    await page.locator('#outlook-availability').filter({ hasText: 'Coming soon' }).waitFor();
     assert.equal(await page.locator('#outlook-client-id').count(), 0);
     assert.equal(await page.getByRole('button', { name: 'Sign in with Microsoft', exact: true }).isDisabled(), true);
     assert.equal(await page.locator('#mailbox-form [type="submit"]').isDisabled(), true);
-    await page.locator('#mail-provider').selectOption('google');
+    await chooseProvider('google');
     assert.equal(await page.locator('#mailbox-form [type="submit"]').isDisabled(), false);
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     assert.equal(await page.locator('body').evaluate(element => element.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))), false);
@@ -993,11 +1133,19 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await go('Preferences');
     const cloud = page.locator('#cloud-backup-settings');
     const cloudGroup = page.getByRole('region', { name: 'Cloud backup', exact: true });
-    assert.equal(await cloudGroup.getByRole('article').count(), 2, 'Both providers belong to the single Cloud backup section');
+    assert.equal(await cloudGroup.getByRole('article').count(), 4, 'Available and upcoming providers belong to the single Cloud backup section');
     assert.equal(await page.getByRole('heading', { name: 'Cloud backup', exact: true }).count(), 1);
     assert.equal(await page.locator('.preferences-header p').count(), 0, 'Preferences has no introductory filler');
-    assert.equal(await cloudGroup.locator('img').count(), 2);
+    assert.equal(await cloudGroup.locator('img').count(), 4);
     await page.waitForFunction(() => [...document.querySelectorAll('.cloud-provider img')].every(img => img.complete && img.naturalWidth > 0));
+    const upcomingCloud = page.locator('#onedrive-backup-settings');
+    assert.equal(await upcomingCloud.getAttribute('aria-disabled'), 'true');
+    await upcomingCloud.getByText('Coming soon', { exact: true }).waitFor();
+    assert.equal(await upcomingCloud.locator('button, input, a').count(), 0);
+    const cloudRows = await cloudGroup.getByRole('article').evaluateAll(rows => rows.map(row => { const rect = row.getBoundingClientRect(); return { x: rect.x, y: rect.y, bottom: rect.bottom, width: rect.width }; }));
+    assert.ok(cloudRows.every(row => Math.abs(row.x - cloudRows[0].x) < 1 && Math.abs(row.width - cloudRows[0].width) < 1));
+    assert.ok(cloudRows[1].y >= cloudRows[0].bottom && cloudRows[2].y >= cloudRows[1].bottom && cloudRows[3].y >= cloudRows[2].bottom, 'Cloud providers use stacked rows');
+    await page.locator('.cloud-backup-group').screenshot({ path: '.cache/cloud-provider-list.png' });
     await cloud.getByRole('button', { name: 'Set up Google Drive', exact: true }).click();
     await cloud.getByRole('button', { name: 'Connect Google Drive', exact: true }).click();
     await cloud.getByText('drive-fixture@example.test', { exact: true }).waitFor();
@@ -1038,6 +1186,34 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await dropbox.getByRole('button', { name: 'Disconnect Dropbox', exact: true }).click();
     await dropbox.getByRole('button', { name: 'Connect Dropbox', exact: true }).waitFor();
     assert.equal(await dropbox.getByLabel('Upload to Dropbox after successful local backups', { exact: true }).isChecked(), false);
+    const icloud = page.locator('#icloud-backup-settings');
+    await page.evaluate(() => { window.cancelIcloudSetup = true; });
+    await icloud.getByRole('button', { name: 'Choose iCloud Drive folder', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('[data-action="icloud-setup"]').disabled);
+    assert.equal(await icloud.getByText('No folder selected', { exact: true }).isVisible(), true);
+    await page.evaluate(() => { window.cancelIcloudSetup = false; });
+    await icloud.getByRole('button', { name: 'Choose iCloud Drive folder', exact: true }).click();
+    await icloud.getByText('Folder selected', { exact: true }).waitFor();
+    await icloud.getByLabel('Copy to iCloud Drive after successful local backups', { exact: true }).check();
+    await page.waitForFunction(() => window.data.cloudIcloud.automatic === true);
+    assert.equal(await page.evaluate(() => window.data.cloudDrive.automatic), false);
+    await page.evaluate(() => { window.holdIcloud = true; });
+    await icloud.getByRole('button', { name: 'Copy backup now', exact: true }).click();
+    await page.waitForFunction(() => Boolean(window.finishIcloud));
+    await icloud.getByRole('progressbar', { name: 'iCloud Drive local copy progress', exact: true }).waitFor();
+    await go('Home'); await go('Preferences');
+    assert.equal(await icloud.getByRole('button', { name: 'Copying...', exact: true }).isDisabled(), true);
+    await page.evaluate(() => { window.holdIcloud = false; window.finishIcloud(); });
+    await icloud.getByText('Copied locally', { exact: true }).waitFor();
+    await icloud.getByText('Last local copy', { exact: true }).waitFor();
+    assert.equal(await icloud.getByText('Last backup', { exact: true }).count(), 0);
+    await page.locator('.cloud-backup-group').screenshot({ path: '.cache/icloud-backup-list.png' });
+    await page.evaluate(() => { window.failIcloud = true; });
+    await icloud.getByRole('button', { name: 'Copy backup now', exact: true }).click();
+    await icloud.getByRole('alert').filter({ hasText: 'Some local backup files are incomplete, missing, or changed.' }).waitFor();
+    await icloud.getByRole('button', { name: 'Remove destination', exact: true }).click();
+    await icloud.getByRole('button', { name: 'Choose iCloud Drive folder', exact: true }).waitFor();
+    assert.equal(await icloud.getByLabel('Copy to iCloud Drive after successful local backups', { exact: true }).isDisabled(), true);
     await go('Home');
     const activityBounds = await tab('Activity').boundingBox();
     await page.mouse.move(activityBounds.x + activityBounds.width / 2, activityBounds.y + activityBounds.height / 2);

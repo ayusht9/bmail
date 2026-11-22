@@ -1,6 +1,6 @@
 # Bmail
 
-A Windows desktop app for local, read-only Gmail and Zoho email backups.
+A Windows desktop app for local, read-only Gmail, Zoho, and iCloud Mail backups.
 Built with Tauri 2, a bundled Node.js backup engine, and Windows-encrypted
 mailbox credentials. Supports isolated accounts, backup selection, schedules,
 live progress, pause/resume/stop controls, and full-mailbox coverage statistics.
@@ -12,6 +12,7 @@ live progress, pause/resume/stop controls, and full-mailbox coverage statistics.
 - [Backup engine documentation](docs/BACKUP-README.md)
 - [Google Drive cloud backup and setup](docs/GOOGLE-DRIVE.md)
 - [Dropbox cloud backup and public app registration](docs/DROPBOX.md)
+- [iCloud Mail and iCloud Drive folder copies](docs/ICLOUD.md)
 - [Backup statistics](docs/STATS.md)
 - [Scheduler, advanced preferences, notifications and history](docs/SCHEDULER.md)
 
@@ -34,7 +35,7 @@ Third-party components retain their own licenses and notices. Packaged builds
 include Bmail's license in `engine/LICENSE`, Node.js notices in
 `engine/NODE-LICENSE.txt`, and the production dependencies' distributed license files.
 
-For Outlook.com, Hotmail, and Microsoft 365, see [Outlook setup](docs/OUTLOOK.md).
+Mailbox setup lists Gmail, Outlook, Zoho, iCloud, and Others. Outlook is disabled and marked **Coming soon**; Microsoft sign-in is unavailable in the setup dialog. The existing [Outlook integration notes](docs/OUTLOOK.md) remain available for reference.
 
 ### Mail metadata and background updates
 
@@ -62,6 +63,8 @@ webhooks and full flag synchronization are not part of this implementation.
 
 Open Search with Ctrl+K and choose **Mails**, then expand **Mail filters**. Combine a
 sender name/address, folder, sent-date range and backup status with the search text.
+The sender field offers choices from the account's full index and also accepts typed
+text. Empty date fields show today's local date as a placeholder without applying a filter.
 Filters apply in SQLite before pagination, and changing a filter returns to page one.
 Dates include both selected days in your local time; undated messages are excluded
 when a date range is active. **Clear filters** removes the mail filters while keeping

@@ -185,7 +185,10 @@ async function listMailPage(root, options = {}) {
     return require('./mail-metadata.cjs').metadataPage(root, state.list.revision, state.list.rows, options);
   } catch {
     // Read-only storage, an older runtime, or a damaged derived DB must not hide mail.
-    return paginateMail(options.folder ? state.list.rows.filter(row => row.folder === options.folder) : state.list.rows, options);
+    const result = paginateMail(options.folder ? state.list.rows.filter(row => row.folder === options.folder) : state.list.rows, options);
+    if (options.includeSenders) result.senders = [...new Set(state.list.rows.map(row => row.sender).filter(sender => typeof sender === 'string' && sender.trim()))]
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    return result;
   }
 }
 

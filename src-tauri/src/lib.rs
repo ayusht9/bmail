@@ -65,6 +65,7 @@ struct LogSummary { name: String, tail: String }
 struct Dashboard {
     cloud_drive: Value,
     cloud_dropbox: Value,
+    cloud_icloud: Value,
     user: String,
     host: String,
     port: u16,
@@ -277,6 +278,7 @@ fn read_dashboard(app: &tauri::AppHandle, force: bool) -> Result<Dashboard, Stri
     Ok(Dashboard {
         cloud_drive: cloud::status(&root),
         cloud_dropbox: cloud::dropbox_status(&root),
+        cloud_icloud: cloud::icloud_status(&root),
         mail_index_stamp: fs::metadata(backup_root.join("mail-index.json")).ok().and_then(|meta| meta.modified().ok().and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok()).map(|time| format!("{}:{}", meta.len(), time.as_nanos()))),
         host: config.get("host").and_then(Value::as_str).unwrap_or("imap.gmail.com").to_owned(),
         port: config.get("port").and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).unwrap_or(993),
@@ -379,6 +381,7 @@ async fn configure_mailbox(app: tauri::AppHandle, mut settings: MailboxSettings,
                 "INVALID_EMAIL" => "Enter your complete email address.",
                 "INVALID_HOST" => "Enter a valid IMAP server hostname.",
                 "INVALID_PORT" => "Enter a TLS port between 1 and 65535.",
+                "ICLOUD_REQUIRES_993" => "iCloud Mail requires TLS port 993.",
                 "GMAIL_REQUIRES_993" => "Gmail requires TLS port 993. Port 25 cannot receive Gmail backups.",
                 "PASSWORD_REQUIRED" => "Enter your application-specific password. Spaces between Google app-password groups are accepted.",
                 "MAILBOX_IDENTITY_MISMATCH" => "This profile already belongs to another mailbox. Keep its saved email and server to update the password.",
@@ -691,6 +694,12 @@ async fn run_action(app: tauri::AppHandle, action: String) -> Result<String, Str
 }
 
 #[tauri::command]
+fn open_icloud_help() -> Result<(), String> {
+    hidden_command("explorer.exe").arg("https://support.apple.com/102654")
+        .spawn().map(|_| ()).map_err(|_| "Could not open Apple app-password help.".into())
+}
+
+#[tauri::command]
 fn open_google_help() -> Result<(), String> {
     Command::new("explorer.exe").arg("https://support.google.com/accounts/answer/185833")
         .spawn().map(|_| ()).map_err(|e| format!("Could not open Google help: {e}"))
@@ -724,7 +733,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(desktop::handle_window_event)
-        .invoke_handler(tauri::generate_handler![cloud::cloud_dropbox, cloud::cloud_drive, mail_watch::watch_mail, mail::get_mail_page, desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, get_microsoft_sign_in_status, begin_outlook_sign_in, configure_mailbox, switch_account, remove_mailbox, start_backup, save_backup_options, control_backup, run_action, open_google_help, open_directory, manage_schedule, test_notification])
+        .invoke_handler(tauri::generate_handler![cloud::cloud_icloud, cloud::cloud_dropbox, cloud::cloud_drive, mail_watch::watch_mail, mail::get_mail_page, desktop::get_desktop_preferences, desktop::save_desktop_preferences, notifications::set_mail_badge, startup::finish_startup, mail::get_saved_message, mail::get_saved_mail, export::export_mail, get_dashboard, get_microsoft_sign_in_status, begin_outlook_sign_in, configure_mailbox, switch_account, remove_mailbox, start_backup, save_backup_options, control_backup, run_action, open_icloud_help, open_google_help, open_directory, manage_schedule, test_notification])
         .run(tauri::generate_context!())
         .expect("error while running Bmail");
 }

@@ -70,7 +70,10 @@ function queryPage(root, revision, rows, options = {}) {
     const result = db.prepare(`SELECT m.payload FROM ordering o JOIN messages m ON m.id=o.id
       ${where ? where + ' AND' : 'WHERE'} o.sort=? ORDER BY o.rank LIMIT ? OFFSET ?`)
       .all(...args, sort, pageSize, (page - 1) * pageSize).map(row => JSON.parse(row.payload));
-    return { rows: result, total, page, pageSize, pages };
+    const response = { rows: result, total, page, pageSize, pages };
+    if (options.includeSenders) response.senders = db.prepare(`SELECT DISTINCT json_extract(payload, '$.sender') AS sender
+      FROM messages WHERE trim(sender) <> '' ORDER BY sender COLLATE NOCASE`).all().map(row => row.sender);
+    return response;
   } finally { db.close(); }
 }
 

@@ -1,0 +1,10 @@
+{
+  "folder": "Choose an existing iCloud Drive folder. Check that iCloud for Windows is installed and the folder is available.",
+  "overlap": "Choose an iCloud Drive folder outside your Bmail account and local backup folders.",
+  "files": "Some local backup files are incomplete, missing, or changed. Verify your local backup and try again.",
+  "archive": "Complete a local mailbox backup before copying to iCloud Drive.",
+  "busy": "An iCloud Drive copy is already running. Wait for it to finish and try again.",
+  "disk": "There is not enough space to copy the backup to your iCloud Drive folder. Your local backup is safe.",
+  "permission": "Bmail could not write to the selected iCloud Drive folder. Check its permissions and try again.",
+  "failed": "The iCloud Drive folder copy could not finish. Your local backup is safe. Check the selected folder and try again."
+}
