@@ -62,7 +62,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
           return { ...state };
         }
         if (name === 'open_directory') { window.openedDirectory = args.kind; return; }
-        if (name === 'get_desktop_preferences') return { closeToTray: sessionStorage.getItem('fixture-close-to-tray') !== 'false' };
+        if (name === 'get_desktop_preferences') return { closeToTray: sessionStorage.getItem('fixture-close-to-tray') !== 'false', scheduledBackupsEnabled: true, cloudBackupsEnabled: true, ...JSON.parse(sessionStorage.getItem('fixture-backup-switches') || '{}') };
         if (name === 'cloud_dropbox') {
           const state = window.data.cloudDropbox;
           if (args.action === 'connect') Object.assign(state, { connected: true, stage: 'ready', dropboxAccount: 'dropbox-fixture@example.test', errorCode: '' });
@@ -91,6 +91,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
         if (name === 'save_desktop_preferences') {
           if (window.failPreferences) throw 'Could not save desktop preferences';
           sessionStorage.setItem('fixture-close-to-tray', String(args.preferences.closeToTray));
+          sessionStorage.setItem('fixture-backup-switches', JSON.stringify(args.preferences));
           return args.preferences;
         }
         if (name === 'set_mail_badge') { (window.badgeUpdates ||= []).push(args); return; }
@@ -560,7 +561,8 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     const track = await scheduler.locator('.toggle-track').boundingBox();
     assert.ok(track.width >= 34 && track.height >= 20, 'Scheduler switch keeps a visible track');
     await scheduleToggle.uncheck();
-    await page.waitForFunction(() => window.scheduleState.enabled === false);
+    assert.equal(await page.evaluate(() => window.scheduleState.enabled), true, 'Master switch leaves the individual schedule enabled');
+    assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('fixture-backup-switches')).scheduledBackupsEnabled), false);
     assert.deepEqual(await page.evaluate(() => window.scheduleState.settings.folders), ['Sent'], 'Status toggle keeps scheduled folders');
     await scheduleToggle.check();
     await page.waitForFunction(() => window.scheduleState.enabled === true);
@@ -1314,14 +1316,13 @@ const { paginateMail } = require('../engine/mail-page.cjs');
       window.data.cloudIcloud = { connected: false, automatic: false, stage: 'disconnected' };
     });
     await refreshLocal();
-    const cloudToggle = page.getByRole('switch', { name: 'Automatic cloud backup', exact: true });
-    assert.equal(await cloudToggle.isChecked(), false, 'A mixed provider configuration is not shown as fully enabled');
-    await cloudToggle.check();
-    await page.waitForFunction(() => window.data.cloudDrive.automatic && window.data.cloudDropbox.automatic);
-    assert.equal(await page.evaluate(() => window.data.cloudIcloud.automatic), false, 'Disconnected providers stay unchanged');
-    await page.waitForFunction(() => !document.querySelector('[data-action="toggle-cloud-backups"]').disabled);
+    const cloudToggle = page.getByRole('switch', { name: 'Cloud backups', exact: true });
+    assert.equal(await cloudToggle.isChecked(), true, 'Master switch is independent of provider settings');
     await cloudToggle.uncheck();
-    await page.waitForFunction(() => !window.data.cloudDrive.automatic && !window.data.cloudDropbox.automatic);
+    assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('fixture-backup-switches')).cloudBackupsEnabled), false);
+    assert.equal(await page.evaluate(() => window.data.cloudDropbox.automatic), true, 'Master switch preserves provider preferences');
+    assert.equal(await page.evaluate(() => window.data.cloudDrive.automatic), false);
+    await cloudToggle.check();
     const footer = page.locator('.statusbar');
     assert.equal(await footer.evaluate(element => element.lastElementChild.classList.contains('status-toggles')), true, 'Backup toggles stay in the right corner');
     assert.ok(await cloudToggle.getAttribute('title'), 'Cloud toggle has a tooltip');
@@ -1330,6 +1331,17 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await page.evaluate(() => { window.focusedCloudToggle = document.activeElement; });
     await refreshLocal();
     assert.equal(await page.evaluate(() => document.activeElement === window.focusedCloudToggle), true, 'Status polling preserves toggle keyboard focus');
+    await page.evaluate(() => {
+      for (const field of ['cloudDrive', 'cloudDropbox', 'cloudIcloud']) window.data[field] = { connected: false, automatic: false };
+      window.data.scheduleInstalled = false; window.data.schedule = null;
+    });
+    await refreshLocal();
+    await cloudToggle.uncheck();
+    await page.getByRole('switch', { name: 'Scheduled backups', exact: true }).uncheck();
+    await page.reload();
+    await page.waitForFunction(() => !document.querySelector('[data-action="toggle-cloud-backups"]').disabled);
+    assert.equal(await cloudToggle.isChecked(), false, 'Cloud master switch persists without a provider');
+    assert.equal(await page.getByRole('switch', { name: 'Scheduled backups', exact: true }).isChecked(), false, 'Scheduler master switch persists without a schedule');
     assert.deepEqual(errors, []);
     assert.equal(await page.locator('.statusbar progress').count(), 0, 'Finished runs clear the status progress bar');
     console.log('Tabbed workspace passed: no duplicate panels, keyboard tabs, retained drafts, independent scheduled folders, calendar, retries, history, notifications and responsive layout.');

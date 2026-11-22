@@ -9,4 +9,13 @@ function dataDirectory(engineDirectory = __dirname, configuredDirectory = proces
   return fs.existsSync(path.join(parent, 'package.json')) ? parent : engineDirectory;
 }
 
-module.exports = { dataDirectory };
+function backupEnabled(data, kind) {
+  const parent = path.dirname(path.resolve(data));
+  const base = path.basename(parent).toLowerCase() === 'accounts' ? path.dirname(parent) : data;
+  try {
+    const settings = JSON.parse(fs.readFileSync(path.join(base, 'desktop-settings.json'), 'utf8').replace(/^\uFEFF/, ''));
+    return settings[kind === 'schedule' ? 'scheduledBackupsEnabled' : 'cloudBackupsEnabled'] !== false;
+  } catch (error) { return error.code === 'ENOENT'; }
+}
+
+module.exports = { dataDirectory, backupEnabled };

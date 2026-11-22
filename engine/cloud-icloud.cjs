@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { dataDirectory } = require('./paths.cjs');
+const { dataDirectory, backupEnabled } = require('./paths.cjs');
 const { readJson, writeJson, acquire, alive, archiveFiles } = require('./cloud-drive.cjs');
 const messages = require('./icloud-messages.json');
 
@@ -109,6 +109,7 @@ async function copyArchive(data, config, state, update, options = {}) {
   let completedFiles = 0, copiedBytes = 0, skippedFiles = 0;
   update({ folderName: destination, totalFiles, totalBytes });
   for (const file of [...mail, { data: manifestData, size: manifestData.length, relative: 'manifest.json' }]) {
+    if (!backupEnabled(data, 'cloud')) { update({ stage: 'ready', errorCode: '' }); return; }
     // Revalidate the directory chain before each publication, including resume
     // after an awaited copy. No files are removed from the iCloud destination.
     const validate = () => { validateDestination(data, config, selected); safeDirectory(selected, ['Bmail', accountFolder(config), 'messages']); };
@@ -120,6 +121,7 @@ async function copyArchive(data, config, state, update, options = {}) {
 }
 
 async function run(data, action, value, options = {}) {
+  if (action === 'sync' && !backupEnabled(data, 'cloud')) return publicStatus(data);
   if (action === 'status') return publicStatus(data);
   if (action === 'setup' && value == null) return publicStatus(data); // Picker cancelled.
   let release;

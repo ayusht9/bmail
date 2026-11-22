@@ -26,7 +26,7 @@ import { windowControls, controlWindow, startupHeader } from './window-chrome.js
 import { normalizeNewMailCount, totalNewMail, createBadgeSync } from './notifications.js';
 import { folderNavigation, savedMailPane, mailboxFolders } from './desktop.js';
 import { progressPanel, statusDownloadProgress, backupControls } from './progress.js';
-import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, calendarMarkup, scheduleSummary, localDate, updateClock, scheduleStatusMarkup, schedulePreferencesMarkup, powerFromForm } from './scheduler.js';
+import { schedulerView, scheduleFolderChoices, scheduleFromForm, normalizeSchedule, calendarMarkup, localDate, updateClock, scheduleStatusMarkup, schedulePreferencesMarkup, powerFromForm } from './scheduler.js';
 import { backupOptionsView, folderChoices, advancedFromForm } from './selection.js';
 
 const app = document.querySelector('#app');
@@ -59,7 +59,7 @@ const cloudKey = provider => `${dashboard.user}:${provider}`;
 function cloudMarkup(provider = 'drive') {
   const { view, field } = cloudProviders[provider];
   const status = dashboard[field];
-  return view(status, { pending: cloudOperations.get(cloudKey(provider)), backupRunning: dashboard.backupRunning,
+  return view(status, { pending: cloudOperations.get(cloudKey(provider)), backupRunning: dashboard.backupRunning || desktopPreferences?.cloudBackupsEnabled === false,
     ready: dashboard.user.includes('@'), error: cloudErrors.get(cloudKey(provider)) }, escapeHtml, formatDate);
 }
 
@@ -70,7 +70,7 @@ function updateCloudBackup() {
     const panel = document.getElementById(id);
     if (!panel) continue;
     const status = dashboard[field];
-    const signature = JSON.stringify([status, cloudOperations.get(cloudKey(provider)), cloudErrors.get(cloudKey(provider)), dashboard.backupRunning]);
+    const signature = JSON.stringify([status, cloudOperations.get(cloudKey(provider)), cloudErrors.get(cloudKey(provider)), dashboard.backupRunning, desktopPreferences?.cloudBackupsEnabled]);
     if (panel.dataset.signature === signature || renderGuard.defer()) continue;
     const focus = panel.contains(document.activeElement) ? document.activeElement.id : '';
     panel.outerHTML = cloudMarkup(provider);
@@ -80,6 +80,7 @@ function updateCloudBackup() {
 }
 
 async function cloudOperation(action, value, provider = 'drive') {
+  if (action === 'sync' && desktopPreferences?.cloudBackupsEnabled === false) { toast('Cloud backups are disabled. Turn on the cloud backup switch to continue.', true); return; }
   if (action === 'preferences') { await selectTab('preferences'); document.querySelector('#cloud-backup-settings')?.scrollIntoView({ block: 'center' }); return; }
   if (action === 'guide') { await invoke('cloud_drive', { action }).catch(error => toast(userMessage(error), true)); return; }
   const account = dashboard.user;
@@ -103,6 +104,7 @@ async function loadDesktopPreferences() {
     preferencesError = '';
   } catch (error) { preferencesError = userMessage(error); }
   if (dashboard && activeTab === 'preferences') render();
+  else if (dashboard) updateStatusBar();
 }
 
 async function saveCloseBehavior(value) {
@@ -111,7 +113,7 @@ async function saveCloseBehavior(value) {
   render();
   let saved = false;
   try {
-    desktopPreferences = await invoke('save_desktop_preferences', { preferences: { closeToTray: value === 'tray' } });
+    desktopPreferences = await invoke('save_desktop_preferences', { preferences: { ...desktopPreferences, closeToTray: value === 'tray' } });
     saved = true;
   } catch (error) { preferencesError = userMessage(error); }
   finally {
@@ -377,17 +379,13 @@ function statusBarContents() {
   return `${sidebarToggle()}<span class="status-message">${busy ? loadingIndicator(busyAction === 'new-mail' ? 'Checking new mail...' : busyAction === 'stats' ? 'Syncing mailbox...' : 'Working...') : dashboard.backupRunning ? 'Backup active' : ''}</span>${statusDownloadProgress(dashboard, formatNumber, activeExports)}<span class="status-summary"><span class="status-folder" title="${escapeHtml(folderStatus())}">${escapeHtml(folderStatus())}</span></span>${statusBackupToggles()}`;
 }
 
-function connectedCloudProviders() {
-  return Object.entries(cloudProviders).filter(([, { field }]) => dashboard[field]?.connected);
-}
-
 function statusBackupToggles() {
-  const scheduled = Boolean(dashboard.scheduleInstalled && dashboard.schedule?.enabled);
-  const connected = connectedCloudProviders();
-  const automatic = connected.length > 0 && connected.every(([, { field }]) => dashboard[field].automatic);
-  const cloudPending = Object.keys(cloudProviders).some(provider => cloudOperations.has(cloudKey(provider)));
-  const button = (action, icon, name, enabled, title, disabled) => `<button type="button" class="status-icon" data-action="${action}" role="switch" aria-label="${name}" aria-checked="${enabled}" title="${escapeHtml(title)}" ${disabled ? 'disabled' : ''}>${controlIcon(icon)}</button>`;
-  return `<div class="status-toggles" role="group" aria-label="Automatic backups">${button('toggle-scheduled-backups', 'schedule', 'Scheduled backups', scheduled, `${scheduled ? 'Pause' : 'Enable'} scheduled backups · ${scheduleSummary(dashboard.schedule, dashboard.scheduleInstalled)}`, busy || schedulerBusy || dashboard.backupRunning || !dashboard.credentialReady)}${button('toggle-cloud-backups', 'cloud', 'Automatic cloud backup', automatic, connected.length ? `${automatic ? 'Disable' : 'Enable'} automatic cloud backup for all connected providers` : 'Set up cloud backup', busy || cloudPending || dashboard.backupRunning || !dashboard.credentialReady)}</div>`;
+  const button = (action, icon, name, key) => {
+    const enabled = desktopPreferences?.[key] !== false;
+    const title = `${name}: ${enabled ? 'on' : 'off'} - ${enabled ? 'Disable' : 'Enable'} for all accounts`;
+    return `<button type="button" class="status-icon" data-action="${action}" role="switch" aria-label="${name}" aria-checked="${enabled}" title="${escapeHtml(title)}" ${preferencesSaving || !desktopPreferences ? 'disabled' : ''}>${controlIcon(icon)}<span class="status-switch-track" aria-hidden="true"></span></button>`;
+  };
+  return `<div class="status-toggles" role="group" aria-label="Backup master switches">${button('toggle-scheduled-backups', 'schedule', 'Scheduled backups', 'scheduledBackupsEnabled')}${button('toggle-cloud-backups', 'cloud', 'Cloud backups', 'cloudBackupsEnabled')}</div>`;
 }
 
 function updateBackupControls() {
@@ -705,8 +703,8 @@ app.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
-  if (action === 'toggle-scheduled-backups') { void toggleScheduledBackups(); return; }
-  if (action === 'toggle-cloud-backups') { void toggleCloudBackups(); return; }
+  if (action === 'toggle-scheduled-backups') { void toggleBackupPermission('scheduledBackupsEnabled'); return; }
+  if (action === 'toggle-cloud-backups') { void toggleBackupPermission('cloudBackupsEnabled'); return; }
   if (action === 'toggle-reader') { toggleReader(app); return; }
   if (action === 'toggle-sidebar') { toggleSidebar(app); return; }
   if (action === 'expand-account' || action === 'expand-folder-filter') { toggleSidebar(app, action === 'expand-account' ? '#active-account' : '#folder-filter'); return; }
@@ -1038,40 +1036,15 @@ async function loadScheduledFolders(button) {
   finally { busy = false; controls.forEach(control => control.disabled = false); button.disabled = false; button.textContent = 'Refresh folders'; dashboardPoller?.reschedule(); }
 }
 
-async function toggleScheduledBackups() {
-  if (busy || schedulerBusy || dashboard.backupRunning || !dashboard.credentialReady) return;
-  if (!dashboard.scheduleInstalled || !dashboard.schedule?.settings) { await selectTab('scheduler'); return; }
-  const account = dashboard.user;
-  captureTabDraft();
-  schedulerBusy = true; busy = true; updateStatusBar();
+async function toggleBackupPermission(key) {
+  if (preferencesSaving || !desktopPreferences) return;
+  preferencesSaving = true; updateStatusBar();
   try {
-    const schedule = normalizeSchedule({ ...dashboard.schedule.settings, enabled: !dashboard.schedule.enabled });
-    const result = await invoke('manage_schedule', { action: 'save', schedule });
-    if (dashboard.user === account) {
-      dashboard.schedule = result; dashboard.scheduleInstalled = result.installed;
-      if (schedulerDraft) schedulerDraft.enabled = result.enabled;
-      const input = document.querySelector('#scheduler-form [name="enabled"]');
-      if (input) { input.checked = result.enabled; updateSchedulePreview(); }
-      updateScheduleStatus();
-    }
-  } catch (error) { toast(userMessage(error), true, account); }
-  finally { schedulerBusy = false; busy = false; updateScheduleStatus(); updateStatusBar(); dashboardPoller?.reschedule(); }
-}
-
-async function toggleCloudBackups() {
-  if (busy || dashboard.backupRunning || !dashboard.credentialReady || Object.keys(cloudProviders).some(provider => cloudOperations.has(cloudKey(provider)))) return;
-  const connected = connectedCloudProviders();
-  if (!connected.length) { await cloudOperation('preferences'); return; }
-  const enabled = !connected.every(([, { field }]) => dashboard[field].automatic);
-  // Hold account switching until every provider has saved its own setting.
-  busy = true; updateStatusBar();
-  try {
-    await Promise.all(connected.map(([provider]) => cloudOperation('automatic', enabled, provider)));
-    for (const [provider] of connected) {
-      const error = cloudErrors.get(cloudKey(provider));
-      if (error) toast(error, true);
-    }
-  } finally { busy = false; updateStatusBar(); dashboardPoller?.reschedule(); }
+    desktopPreferences = await invoke('save_desktop_preferences', {
+      preferences: { ...desktopPreferences, [key]: desktopPreferences[key] === false },
+    });
+  } catch (error) { toast(userMessage(error), true); }
+  finally { preferencesSaving = false; updateCloudBackup(); dashboardPoller?.reschedule(); }
 }
 
 async function saveSchedulePreferences(form) {

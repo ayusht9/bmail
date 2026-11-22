@@ -10,10 +10,12 @@ use tauri::{
 #[serde(default, rename_all = "camelCase")]
 pub struct DesktopPreferences {
     pub close_to_tray: bool,
+    pub scheduled_backups_enabled: bool,
+    pub cloud_backups_enabled: bool,
 }
 
 impl Default for DesktopPreferences {
-    fn default() -> Self { Self { close_to_tray: true } }
+    fn default() -> Self { Self { close_to_tray: true, scheduled_backups_enabled: true, cloud_backups_enabled: true } }
 }
 
 pub struct DesktopState(pub Mutex<DesktopPreferences>);
@@ -104,7 +106,7 @@ mod tests {
         fs::create_dir_all(&base).unwrap();
         fs::write(base.join("app-settings.json"), br#"{"activeAccount":"fixture@example.com"}"#).unwrap();
         assert!(read_preferences(&base).close_to_tray);
-        let preferences = DesktopPreferences { close_to_tray: false };
+        let preferences = DesktopPreferences { close_to_tray: false, scheduled_backups_enabled: false, cloud_backups_enabled: false };
         write_preferences(&base, &preferences).unwrap();
         assert_eq!(read_preferences(&base), preferences);
         assert_eq!(crate::read_json(&base.join("app-settings.json")).unwrap()["activeAccount"], "fixture@example.com");

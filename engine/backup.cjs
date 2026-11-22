@@ -8,7 +8,7 @@ const { normalizeSelection, searchForSelection, scheduledSelection } = require('
 const { RunInterrupted, readControl, createControl } = require('./backup-control.cjs');
 const { checkMailbox } = require('./backup-stats.cjs');
 const { recordRun, notifyRun } = require('./backup-history.cjs');
-const { dataDirectory: resolveDataDirectory } = require('./paths.cjs');
+const { dataDirectory: resolveDataDirectory, backupEnabled } = require('./paths.cjs');
 let redactions = [];
 
 function safeError(error) {
@@ -183,7 +183,7 @@ async function backup(client, root, config, log = console.log, context = {}) {
   try { progress = createProgress(root, atomicWrite, context); }
   catch (error) { try { client.close(); } finally { release(); } throw error; }
   const status = { startedAt: context.startedAt, runId: context.runId, success: false, downloaded: context.downloaded, folders: [] };
-  const controls = createControl(root, client, progress, readJson);
+  const controls = createControl(root, client, progress, readJson, () => config._scheduledDataDirectory && !backupEnabled(config._scheduledDataDirectory, 'schedule'));
   try {
     await controls.checkpoint();
     const manifest = readJson(manifestPath, { version: 1, user: config.user, host: config.host, folders: {} });
@@ -379,7 +379,7 @@ async function backupWithRetries(makeClient, root, config, log = console.log, wa
       log('Temporary connection failure (' + error.code + '). Resuming in ' + delay / 1000 + ' seconds; completed downloads are retained.');
       let remaining = delay;
       while (remaining > 0) {
-        const requested = readControl(root, context.runId, readJson);
+        const requested = config._scheduledDataDirectory && !backupEnabled(config._scheduledDataDirectory, 'schedule') ? 'stop' : readControl(root, context.runId, readJson);
         const snapshot = readJson(path.join(root, 'progress.json'), {});
         if (requested === 'cancel' || requested === 'stop') {
           const outcome = requested === 'cancel' ? 'cancelled' : 'stopped';
@@ -408,6 +408,8 @@ async function main() {
   const config = readJson(path.join(dataDirectory, 'backup-config.json'));
   if (process.env.BMAIL_BACKUP_MESSAGE) config.backupMessage = JSON.parse(process.env.BMAIL_BACKUP_MESSAGE);
   if (process.argv.includes('--scheduled')) {
+    if (!backupEnabled(dataDirectory, 'schedule')) { console.log('Scheduled backups are disabled globally.'); return; }
+    config._scheduledDataDirectory = dataDirectory;
     const selected = scheduledSelection(config.backupOptions, readJson(path.join(dataDirectory, 'backup-schedule.json'), null));
     if (!selected) { console.log('Scheduled backup is paused or has been removed.'); return; }
     config.backupOptions = selected;
