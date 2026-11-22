@@ -383,7 +383,7 @@ function statusBackupToggles() {
   const button = (action, icon, name, key) => {
     const enabled = desktopPreferences?.[key] !== false;
     const title = `${name}: ${enabled ? 'on' : 'off'} - ${enabled ? 'Disable' : 'Enable'} for all accounts`;
-    return `<button type="button" class="status-icon" data-action="${action}" role="switch" aria-label="${name}" aria-checked="${enabled}" title="${escapeHtml(title)}" ${preferencesSaving || !desktopPreferences ? 'disabled' : ''}>${controlIcon(icon)}<span class="status-switch-track" aria-hidden="true"></span></button>`;
+    return `<button type="button" class="status-icon" data-action="${action}" role="switch" aria-label="${name}" aria-checked="${enabled}" title="${escapeHtml(title)}" ${preferencesSaving || !desktopPreferences ? 'disabled' : ''}><span class="status-switch-track" aria-hidden="true"><span class="status-switch-thumb">${controlIcon(icon)}</span></span></button>`;
   };
   return `<div class="status-toggles" role="group" aria-label="Backup master switches">${button('toggle-scheduled-backups', 'schedule', 'Scheduled backups', 'scheduledBackupsEnabled')}${button('toggle-cloud-backups', 'cloud', 'Cloud backups', 'cloudBackupsEnabled')}</div>`;
 }
