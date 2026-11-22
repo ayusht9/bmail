@@ -332,7 +332,7 @@ const { paginateMail } = require('../engine/mail-page.cjs');
     await go('Home');
 
     assert.equal(await page.locator('.workspace-heading, .run-banner, .folder-pane').count(), 0, 'Mailbox starts directly with the email list');
-    assert.match(await page.locator('.status-folder').textContent(), /saved.*on server.*last mailbox check/);
+    assert.match(await page.locator('.status-folder').textContent(), /saved.*on server.*remaining$/);
     const listBox = await recent.boundingBox(); const readerBox = await reader.boundingBox();
     assert.ok(readerBox.y >= listBox.y + listBox.height - 1, 'The reader is below the message list');
     if (process.env.BMAIL_READER_SCREENSHOT) await page.screenshot({ path: process.env.BMAIL_READER_SCREENSHOT });
