@@ -1,9 +1,9 @@
 # Packages an already-built release. Does not build, sign, install or upload it.
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$IdentityName,
-    [Parameter(Mandatory)][string]$IdentityPublisher,
-    [Parameter(Mandatory)][string]$PublisherDisplayName,
+    [string]$IdentityName = 'ayusht9.BmailBackup',
+    [string]$IdentityPublisher = 'CN=4A4A20B8-2002-4EC9-80EC-2648D9A48E26',
+    [string]$PublisherDisplayName = 'ayusht9',
     [switch]$ValidateOnly
 )
 $ErrorActionPreference = 'Stop'

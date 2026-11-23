@@ -15,6 +15,19 @@ MSIX publication: Microsoft signs certified Store packages.
    `Package/Identity/Publisher` and `Package/Properties/PublisherDisplayName`.
    The Tauri identifier `com.bmail.desktop` is not the Store-assigned identity.
 
+The reserved Store product is **Bmail Backup**, published by **ayusht9**.
+The packaging script defaults to these public Partner Center identifiers:
+
+| Field | Value |
+|---|---|
+| Package/Identity/Name | `ayusht9.BmailBackup` |
+| Package/Identity/Publisher | `CN=4A4A20B8-2002-4EC9-80EC-2648D9A48E26` |
+| Package/Properties/PublisherDisplayName | `ayusht9` |
+
+These values identify the Store package and are not credentials. Keep them stable
+for future updates. The Store package display name is Bmail Backup; the existing
+desktop executable and application data paths remain Bmail.
+
 ## Packaging (only when a release build is requested)
 
 The free Windows SDK supplies MakeAppx. The script currently targets x64 only.
@@ -25,9 +38,7 @@ The fourth component remains zero for Store submission.
 Validate inputs without generating an app or package:
 
 ```powershell
-./scripts/package-store.ps1 -IdentityName 'COPY_FROM_PARTNER_CENTER' `
-  -IdentityPublisher 'CN=COPY_FROM_PARTNER_CENTER' `
-  -PublisherDisplayName 'YOUR_REGISTERED_PUBLISHER' -ValidateOnly
+./scripts/package-store.ps1 -ValidateOnly
 ```
 
 When authorized, create a fresh release and then package it:
@@ -36,9 +47,7 @@ When authorized, create a fresh release and then package it:
 npm.cmd test
 npm.cmd run build
 npm.cmd run tauri -- build --no-bundle
-./scripts/package-store.ps1 -IdentityName 'COPY_FROM_PARTNER_CENTER' `
-  -IdentityPublisher 'CN=COPY_FROM_PARTNER_CENTER' `
-  -PublisherDisplayName 'YOUR_REGISTERED_PUBLISHER'
+./scripts/package-store.ps1
 ```
 
 Do not use an old executable or runtime. The script packages the existing release
