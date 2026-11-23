@@ -82,6 +82,20 @@ elevation.
 
 ## Listing and privacy
 
+Generate listing PNGs after `npm.cmd run build`:
+
+```powershell
+node scripts/create-store-artwork.cjs
+```
+
+Output: `.store-output/listing-assets/`. It contains six 1920 x 1080 desktop
+screenshots using fictional mail, poster art at 720 x 1080 and 1440 x 2160,
+square box art at 1080 x 1080 and 2160 x 2160, and a 300 x 300 app tile.
+`UPLOAD-GUIDE.txt` maps files to Partner Center fields. The generator checks PNG
+dimensions and the 50 MB limit. It requires Microsoft Edge and does not access
+mail accounts or build the desktop app. Poster dimensions follow the Store form;
+despite the form's 9:16 label, those numeric dimensions have a 2:3 ratio.
+
 Prepare a public privacy-policy URL and support URL, product description, feature
 list, screenshots with fictional mail, category, markets, age rating, and free
 pricing. Existing GitHub Pages hosting can host these pages at no hosting cost.

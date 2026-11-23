@@ -8,7 +8,9 @@ const path = require('node:path');
 const { paginateMail } = require('../engine/mail-page.cjs');
 
 const root = path.resolve('dist');
-const out = path.resolve('docs/images');
+const out = path.resolve(process.env.BMAIL_SCREENSHOT_OUTPUT || 'docs/images');
+const viewport = process.env.BMAIL_SCREENSHOT_STORE === '1'
+  ? { width: 1920, height: 1080 } : { width: 1280, height: 800 };
 
 const day = n => new Date(Date.UTC(2026, 10, 20 - n, 9 + (n * 7) % 9, (n * 13) % 60)).toISOString();
 const inbox = [
@@ -84,7 +86,7 @@ const fixture = {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
     for (const scheme of ['light', 'dark']) {
-      const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, colorScheme: scheme, timezoneId: 'Europe/London', locale: 'en-GB' });
+      const page = await browser.newPage({ viewport, deviceScaleFactor: 1, colorScheme: scheme, timezoneId: 'Europe/London', locale: 'en-GB' });
       page.on('pageerror', error => console.error('page error:', error.message));
       await page.exposeFunction('fixtureMailPage', (rows, options) => paginateMail(rows, options));
       await page.addInitScript(fx => {
